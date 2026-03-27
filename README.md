@@ -1,13 +1,13 @@
 # G-Trade
 
-**Multi-asset ML trading signal system covering 300+ instruments across global markets.**
+**ML-driven trading signal engine for 300+ assets across crypto, equities, forex, and commodities.**
 
-Combines CatBoost, LSTM+Attention, Transformer, and TCN models into a 4-architecture ensemble with walk-forward validation, Kelly-based position sizing, and real-time Telegram alerts.
+4-architecture ensemble (CatBoost + LSTM+Attention + Transformer + TCN) with walk-forward validation, fractional Kelly sizing, and automated risk controls.
 
 ![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue)
 ![TensorFlow](https://img.shields.io/badge/TensorFlow-2.10%2B-orange)
 ![CatBoost](https://img.shields.io/badge/CatBoost-1.2%2B-yellow)
-![License: MIT](https://img.shields.io/badge/license-MIT-green)
+![License: CC BY-NC 4.0](https://img.shields.io/badge/license-CC%20BY--NC%204.0-lightgrey)
 
 ## Features
 
