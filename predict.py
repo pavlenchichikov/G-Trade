@@ -44,9 +44,7 @@ except ImportError:
 
 from core.logger import get_logger
 from core.features import engineer_features, add_weekly_features
-from core.architectures import ReduceSumLayer, build_lstm_attention
-from core.ensemble import ensemble_with_gating, build_stacking_features
-from core.profiles import FOREX
+from core.ensemble import build_stacking_features
 from backtest import _load_lstm_model, _get_lookback
 
 logger = get_logger("predict")

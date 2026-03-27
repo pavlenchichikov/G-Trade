@@ -5,14 +5,12 @@ G-Trade — GUI Launcher (Tkinter)
 
 import os
 import sys
-import io
 import codecs
 import subprocess
 import threading
 import sqlite3
 import tkinter as tk
 from tkinter import ttk, scrolledtext
-from datetime import datetime
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 PY = sys.executable
@@ -610,7 +608,7 @@ class GTradeLauncher(tk.Tk):
         self._clear_log()
         chain_name = " → ".join(s[1] for s in steps)
         self._log_msg(f"[CHAIN] {chain_name}\n\n", "info")
-        self._task_label.configure(text=f"Running: Full Cycle", fg=FG_ACCENT)
+        self._task_label.configure(text="Running: Full Cycle", fg=FG_ACCENT)
         self._btn_stop.configure(state="normal")
         self._running_task = "Full Cycle"
 

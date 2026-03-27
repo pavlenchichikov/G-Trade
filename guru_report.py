@@ -201,7 +201,7 @@ def fetch_yf_deep(symbol):
             pass
 
         return result
-    except Exception as e:
+    except Exception:
         return None
 
 
@@ -533,7 +533,7 @@ def print_full(name, symbol, fund, tech, guru):
 
     # --- Price & Valuation ---
     print(f"\n  {'─' * (w - 4)}")
-    print(f"  VALUATION")
+    print("  VALUATION")
     print(f"  {'─' * (w - 4)}")
     if fund:
         price = fund.get('price', 0)
@@ -560,12 +560,12 @@ def print_full(name, symbol, fund, tech, guru):
     elif tech:
         print(f"  Price:        {_fmt_num(tech['close'], ',.2f')}")
     else:
-        print(f"  No price data")
+        print("  No price data")
 
     # --- Profitability ---
     if fund and fund.get('roe', 0) != 0:
         print(f"\n  {'─' * (w - 4)}")
-        print(f"  PROFITABILITY")
+        print("  PROFITABILITY")
         print(f"  {'─' * (w - 4)}")
         print(f"  ROE:            {_fmt_pct(fund.get('roe'), 100)}")
         print(f"  Gross Margin:   {_fmt_pct(fund.get('gross_margin'), 100)}")
@@ -575,7 +575,7 @@ def print_full(name, symbol, fund, tech, guru):
     # --- Balance Sheet ---
     if fund and fund.get('total_assets'):
         print(f"\n  {'─' * (w - 4)}")
-        print(f"  BALANCE SHEET")
+        print("  BALANCE SHEET")
         print(f"  {'─' * (w - 4)}")
         print(f"  Total Assets:      {_fmt_money(fund.get('total_assets'))}")
         print(f"  Total Liabilities: {_fmt_money(fund.get('total_liabilities'))}")
@@ -605,7 +605,7 @@ def print_full(name, symbol, fund, tech, guru):
     # --- Cash Flow ---
     if fund and (fund.get('operating_cf') or fund.get('fcf')):
         print(f"\n  {'─' * (w - 4)}")
-        print(f"  CASH FLOW")
+        print("  CASH FLOW")
         print(f"  {'─' * (w - 4)}")
         print(f"  Operating CF:  {_fmt_money(fund.get('operating_cf'))}")
         print(f"  CapEx:         {_fmt_money(fund.get('capex'))}")
@@ -622,7 +622,7 @@ def print_full(name, symbol, fund, tech, guru):
     has_quarters = fund and any(k in fund for k in ['revenue_quarters', 'net_income_quarters', 'fcf_quarters'])
     if has_quarters:
         print(f"\n  {'─' * (w - 4)}")
-        print(f"  QUARTERLY TRENDS")
+        print("  QUARTERLY TRENDS")
         print(f"  {'─' * (w - 4)}")
 
         for label, key in [("Revenue", "revenue_quarters"),
@@ -650,7 +650,7 @@ def print_full(name, symbol, fund, tech, guru):
     # --- Dividends ---
     if fund and (fund.get('dividend_yield', 0) > 0 or fund.get('payout_ratio', 0) > 0):
         print(f"\n  {'─' * (w - 4)}")
-        print(f"  DIVIDENDS")
+        print("  DIVIDENDS")
         print(f"  {'─' * (w - 4)}")
         print(f"  Div Yield:     {_fmt_num(fund.get('dividend_yield'), '.1f')}%")
         print(f"  Payout Ratio:  {_fmt_pct(fund.get('payout_ratio'), 100)}")
@@ -658,14 +658,14 @@ def print_full(name, symbol, fund, tech, guru):
     # --- Risk ---
     if fund:
         print(f"\n  {'─' * (w - 4)}")
-        print(f"  RISK")
+        print("  RISK")
         print(f"  {'─' * (w - 4)}")
         print(f"  Beta:          {_fmt_num(fund.get('beta'), '.2f')}")
 
     # --- Technical ---
     if tech:
         print(f"\n  {'─' * (w - 4)}")
-        print(f"  TECHNICAL")
+        print("  TECHNICAL")
         print(f"  {'─' * (w - 4)}")
         print(f"  RSI(14):       {_fmt_num(tech['rsi'], '.1f')}  {_bar(tech['rsi'])}")
         print(f"  52W Range:     {_fmt_num(tech['pct_52w'], '.0f')}%  {_bar(tech['pct_52w'])}")
@@ -676,7 +676,7 @@ def print_full(name, symbol, fund, tech, guru):
 
     # --- Guru Verdicts ---
     print(f"\n  {'─' * (w - 4)}")
-    print(f"  GURU COUNCIL")
+    print("  GURU COUNCIL")
     print(f"  {'─' * (w - 4)}")
     for g_name, g_key in [("Lynch (GARP)", "lynch"), ("Buffett (Quality)", "buffett"),
                            ("Graham (Value)", "graham"), ("Munger (Risk)", "munger")]:
@@ -700,7 +700,6 @@ def main():
 
     # Parse args
     full_mode = False
-    sector_filter = None
     assets_requested = []
 
     i = 0
@@ -809,7 +808,7 @@ def main():
         if full_mode:
             print_full(name, symbol, fund, tech, guru)
         else:
-            print(f"\r", end="")
+            print("\r", end="")
             print_short(name, guru, source)
 
         # Collect
@@ -823,7 +822,7 @@ def main():
 
     # --- Summary ---
     print(f"\n{'=' * 60}")
-    print(f"  SUMMARY")
+    print("  SUMMARY")
     print(f"{'=' * 60}")
     print(f"  BUY:   {len(buy_list)}", end="")
     if buy_list:

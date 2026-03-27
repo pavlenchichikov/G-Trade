@@ -58,9 +58,9 @@ except ImportError:
 # -- Shared ML components from train_hybrid --
 from train_hybrid import (
     engineer_features, add_weekly_features,
-    ensemble_with_gating, FOREX
+    ensemble_with_gating
 )
-from backtest import _load_lstm_model, _get_lookback, _detect_format
+from backtest import _load_lstm_model, _get_lookback
 
 from sqlalchemy import create_engine
 

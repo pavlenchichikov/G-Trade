@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from core.features import engineer_features, CANDIDATE_FEATURES
+from core.features import engineer_features
 
 
 @pytest.fixture

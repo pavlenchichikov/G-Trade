@@ -1,7 +1,6 @@
 """Tests for core.architectures — neural network model builders."""
 
 import numpy as np
-import pytest
 import tensorflow as tf
 
 from core.architectures import (

@@ -41,7 +41,7 @@ except ImportError:
 from config import FULL_ASSET_MAP
 from train_hybrid import (
     engineer_features, add_weekly_features, add_crossasset_features,
-    build_sequences, make_walk_forward_splits, adaptive_split_params,
+    make_walk_forward_splits, adaptive_split_params,
     pnl_from_signals, max_drawdown_from_returns, score_strategy,
     make_signals, apply_regime_filter, get_profile,
     COMMISSION, SLIPPAGE, FOREX_COMMISSION, FOREX_SLIPPAGE, FOREX,
@@ -89,7 +89,7 @@ def _catboost_objective(trial, df, selected_features, profile, asset):
     depth      = trial.suggest_int("cb_depth",       4, 10)
     iterations = trial.suggest_int("cb_iterations",  200, 1000, step=50)
     lr         = trial.suggest_float("cb_lr",        0.005, 0.15, log=True)
-    lookback   = trial.suggest_int("lookback",       15, 50, step=5)
+    trial.suggest_int("lookback",       15, 50, step=5)
 
     sp = adaptive_split_params(len(df))
     if sp is None:
@@ -112,7 +112,7 @@ def _catboost_objective(trial, df, selected_features, profile, asset):
             X_va = scaler.transform(df.loc[va, selected_features].values)
             y_va = df.loc[va, 'target'].values
             X_te = scaler.transform(df.loc[te, selected_features].values)
-            y_te = df.loc[te, 'target'].values
+            df.loc[te, 'target'].values
 
             cb = CatBoostClassifier(
                 iterations=iterations, depth=depth, learning_rate=lr,

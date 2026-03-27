@@ -10,12 +10,10 @@ import time
 import re
 import argparse
 import xml.etree.ElementTree as ET
-from datetime import datetime, timezone
 from urllib.parse import quote_plus
 from html import unescape
 
 import requests
-import pandas as pd
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, BASE_DIR)
@@ -904,7 +902,7 @@ def _print_digest(digest: list[dict], lang: str, cat: str):
                 cats[c] = []
             cats[c].append(i["weighted_score"])
         if len(cats) > 1:
-            print(f"\n  By category:")
+            print("\n  By category:")
             for c, scores in sorted(cats.items()):
                 c_avg = sum(scores) / len(scores)
                 print(f"    {c:<12} {_sentiment_label(c_avg)} ({c_avg:+.2f}, {len(scores)} articles)")

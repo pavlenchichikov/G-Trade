@@ -1,7 +1,6 @@
 """Tests for core.db_backup — SQLite backup utility."""
 
 import os
-import tempfile
 
 from core.db_backup import backup_db, _prune_old_backups
 

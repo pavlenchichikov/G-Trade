@@ -1,7 +1,6 @@
 import yfinance as yf
 import pandas as pd
 import os
-from datetime import datetime
 
 try:
     from config import FULL_ASSET_MAP
@@ -22,7 +21,7 @@ for name, symbol in FULL_ASSET_MAP.items():
             # Flatten MultiIndex columns if present (new yfinance behavior)
             if isinstance(data.columns, pd.MultiIndex):
                 data.columns = data.columns.get_level_values(0)
-            
+
             # Save to CSV
             file_path = os.path.join(output_dir, f"{name.lower()}_data.csv")
             data.to_csv(file_path)

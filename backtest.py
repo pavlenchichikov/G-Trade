@@ -11,7 +11,6 @@ Fixes over V71:
 """
 
 import json
-import logging
 import os
 import sys
 import warnings
@@ -204,7 +203,9 @@ def _detect_lookback_from_h5(h5_path):
 
 def _load_lstm_model(lstm_path, lookback, n_features):
     """Load LSTM handling V49, V50, HDF5, ZIP, and Keras 3.x formats."""
-    import shutil, zipfile, tempfile
+    import shutil
+    import zipfile
+    import tempfile
     fmt = _detect_format(lstm_path)
 
     # For HDF5 files saved as .keras: need .h5 extension for load_weights
@@ -557,17 +558,17 @@ def run_forensic_test():
     dual_count = len(df_res[df_res['Mode'].str.startswith('DUAL')])
     cb_count = len(df_res) - dual_count
 
-    print(f"\nTOP 5 BY PROFIT:")
+    print("\nTOP 5 BY PROFIT:")
     for _, row in df_res.head(5).iterrows():
         print(f"   {row['Asset']:<8}  profit={row['Profit']:+.2f}%  "
               f"sharpe={row['Sharpe']:.2f}  calmar={row['Calmar']:.2f}  {row['Mode']}")
 
-    print(f"\nBOTTOM 5 BY PROFIT:")
+    print("\nBOTTOM 5 BY PROFIT:")
     for _, row in df_res.tail(5).iterrows():
         print(f"   {row['Asset']:<8}  profit={row['Profit']:+.2f}%  "
               f"max_dd={row['MaxDD']:.1f}%  {row['Mode']}")
 
-    print(f"\nPORTFOLIO AGGREGATES:")
+    print("\nPORTFOLIO AGGREGATES:")
     profitable = df_res[df_res["Profit"] > 0]
     print(f"   Assets tested:     {len(df_res)}")
     print(f"   DUAL (AI) mode:    {dual_count}")

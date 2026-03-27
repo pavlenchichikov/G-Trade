@@ -7,12 +7,12 @@ except ImportError:
     pass  # python-dotenv not installed; rely on environment variables being set externally
 
 # --- 1. ПАРАМЕТРЫ МОДЕЛИ ---
-SEQ_LEN = 10 
+SEQ_LEN = 10
 
 # Оптимизированные пороги на основе Backtest V67
 THRESHOLDS = {
     "DEFAULT": 0.55,    # Базовый порог
-    
+
     # ELITE (lower threshold for high-performing assets)
     "TSLA": 0.53,
     "ETH": 0.53,

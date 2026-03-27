@@ -5,7 +5,7 @@
 import os
 import json
 import argparse
-from datetime import date, datetime
+from datetime import date
 
 import pandas as pd
 from sqlalchemy import create_engine

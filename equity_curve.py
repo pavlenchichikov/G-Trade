@@ -5,9 +5,11 @@ Equity Curve — график капитала по результатам Paper
   python equity_curve.py --backtest    — из backtest результатов
 """
 
-import os, sys, argparse, sqlite3
+import os
+import sys
+import argparse
+import sqlite3
 import pandas as pd
-import numpy as np
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 PAPER_DB = os.path.join(BASE_DIR, "paper.db")
@@ -138,15 +140,15 @@ def show_equity_curve(source="paper"):
 
     if df is None or df.empty:
         print(f"  No equity data available for source='{source}'.")
-        print(f"  Paper Trading: make some trades first.")
-        print(f"  Backtest: run backtest or train models first.")
+        print("  Paper Trading: make some trades first.")
+        print("  Backtest: run backtest or train models first.")
         return
 
     try:
         import matplotlib
         matplotlib.use("TkAgg")
         import matplotlib.pyplot as plt
-        import matplotlib.dates as mdates
+        import matplotlib.dates as mdates  # noqa: F401
     except ImportError:
         # Fallback: text output
         print(f"\n  {title}")

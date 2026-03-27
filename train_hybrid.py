@@ -21,7 +21,6 @@ import tensorflow as tf
 from core.logger import get_logger
 
 logger = get_logger("train_hybrid")
-from tensorflow.keras.layers import LSTM, Dense, Dropout, Input, Multiply, Flatten, RepeatVector, Permute
 from tensorflow.keras.models import Model
 from tensorflow.keras.callbacks import EarlyStopping, Callback
 from sklearn.preprocessing import StandardScaler
@@ -96,13 +95,11 @@ if _HAS_GPU:
 
 # ── Imports from core/ modules ────────────────────────────────────────────────
 from core.architectures import (
-    ReduceSumLayer, attention_block,
-    build_lstm_attention, build_transformer_encoder,
+    build_transformer_encoder,
     build_lstm_multitask, build_tcn,
 )
 from core.profiles import (
-    TRENDY, MEANREV, RUS, FOREX,
-    PROFILE_DEFAULT, PROFILE_TRENDY, PROFILE_MEANREV, PROFILE_RUS, PROFILE_FOREX,
+    FOREX,
     get_profile,
 )
 from core.features import engineer_features, add_weekly_features, add_crossasset_features
@@ -111,9 +108,9 @@ from core.backtesting import (
     pnl_from_signals, max_drawdown_from_returns, score_strategy,
     make_signals, apply_regime_filter,
     COMMISSION, SLIPPAGE, FOREX_COMMISSION, FOREX_SLIPPAGE,
-    MAX_TRADE_RET, INITIAL_CAPITAL, POSITION_FRACTION,
+    MAX_TRADE_RET,
 )
-from core.ensemble import ensemble_with_gating, tune_ensemble_weights, build_stacking_features
+from core.ensemble import build_stacking_features
 
 
 class EpochStateCallback(Callback):
@@ -394,7 +391,7 @@ def _train_one_asset(asset, candidate_features, prev_registry_entry):
         best_fold = None
         best_fold_score = -1e9
 
-        n_folds = len(precomputed)
+        len(precomputed)
         for k, fold_data in enumerate(precomputed, 1):
             if _stop_requested:
                 _safe_print(f"  [STOP] {asset:<12} interrupted on fold {k}/{len(splits)}")
@@ -622,8 +619,8 @@ def _train_one_asset(asset, candidate_features, prev_registry_entry):
             buy_thr = float(np.mean([c[0] for c in top3]))
             sell_thr = float(np.mean([c[1] for c in top3]))
             val_profit = top3[0][2]
-            val_trades = top3[0][3]
-            val_win = top3[0][4]
+            top3[0][3]
+            top3[0][4]
             val_mdd = top3[0][5]
 
             sig_test = make_signals(test_prob, buy_thr, sell_thr, profile['no_trade_band'])
@@ -809,7 +806,7 @@ def train_system():
     print(f"  {datetime.now().strftime('%Y-%m-%d  %H:%M:%S')}")
     print(f"  Device : {_dev_label}")
     print(f"  Workers: {_N_WORKERS} parallel  |  GPU slots: {_GPU_SLOTS}  |  CB threads: {_CB_THREADS}  |  Assets: {total_assets}")
-    print(f"  Ctrl+C = safe stop (saves results)")
+    print("  Ctrl+C = safe stop (saves results)")
     print("=" * W)
 
     # ── GPU DIAGNOSTICS ──────────────────────────────────────────────────────
@@ -1085,12 +1082,12 @@ def train_system():
         with open(os.path.join(EXPERIMENTS_DIR, f'experiment_{stamp}.json'), 'w', encoding='utf-8') as f:
             json.dump(exp_rows, f, ensure_ascii=False, indent=2)
 
-    elapsed_total = time.time() - _t_start if '_t_start' in dir() else 0
+    # elapsed = time.time() - _t_start  # removed: _t_start not defined
     print()
     print("=" * 72)
     print("  DONE")
     print(f"  Trained : {completed_assets}/{total_assets} assets")
-    print(f"  Saved   : thresholds + champion registry")
+    print("  Saved   : thresholds + champion registry")
     if _stop_requested:
         print("  Stopped : Ctrl+C (results saved)")
     print("=" * 72)

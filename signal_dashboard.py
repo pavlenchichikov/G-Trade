@@ -5,7 +5,6 @@ import warnings
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 warnings.filterwarnings("ignore")
 
-import json
 import numpy as np
 import pandas as pd
 from sqlalchemy import create_engine
@@ -26,7 +25,7 @@ except Exception:
 from config import FULL_ASSET_MAP
 from train_hybrid import (
     engineer_features, add_weekly_features,
-    ensemble_with_gating, FOREX,
+    ensemble_with_gating,
 )
 from backtest import _load_lstm_model, _get_lookback, _load_json
 
@@ -81,7 +80,9 @@ def _load_transformer(path, lookback, n_features):
     """Try loading a transformer model — returns (model, lookback) or (None, lookback)."""
     try:
         from train_hybrid import build_transformer_encoder
-        import shutil, zipfile, tempfile
+        import shutil
+        import zipfile
+        import tempfile
         from backtest import _detect_format, _load_weights_keras3, _detect_lookback_from_h5
 
         fmt = _detect_format(path)

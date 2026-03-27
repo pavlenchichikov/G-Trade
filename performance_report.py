@@ -5,10 +5,13 @@ Performance Report — генерация HTML-отчёта по состоян�
   python performance_report.py --output f.html
 """
 
-import os, sys, json, argparse, webbrowser
+import os
+import sys
+import json
+import argparse
+import webbrowser
 from datetime import datetime
 import pandas as pd
-import numpy as np
 from sqlalchemy import create_engine
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -275,13 +278,13 @@ def export_report(output=None, open_browser=True):
 
     size_kb = os.path.getsize(output) / 1024
     print(f"\n{'='*60}")
-    print(f"  PERFORMANCE REPORT")
+    print("  PERFORMANCE REPORT")
     print(f"{'='*60}")
     print(f"  Generated: {output}")
     print(f"  Size: {size_kb:.1f} KB")
 
     if open_browser:
-        print(f"  Opening in browser...")
+        print("  Opening in browser...")
         webbrowser.open(f"file:///{output}")
 
     return output

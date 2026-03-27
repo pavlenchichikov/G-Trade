@@ -5,7 +5,6 @@ Uses only stdlib: shutil, glob, os, sys, argparse.
 """
 
 import os
-import sys
 import shutil
 import glob
 import argparse

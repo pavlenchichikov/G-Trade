@@ -1,6 +1,5 @@
 import streamlit as st
 import pandas as pd
-import numpy as np
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import os
@@ -175,7 +174,7 @@ def get_smartlab_data():
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
         'Cache-Control': 'no-cache'
     }
-    
+
     try:
         r = requests.get(url, headers=headers, timeout=10, verify=False)
         if r.status_code == 200:
@@ -222,9 +221,9 @@ def get_smartlab_data():
 
             if f_map:
                 return f_map, "[ON] LIVE (Smart-Lab)"
-    except Exception as e:
+    except Exception:
         pass
-    
+
     return {}, "[OFF] OFFLINE (Using Backup)"
 
 # --- 4. ТЕХНИЧЕСКИЙ АНАЛИЗ (SQL) ---
@@ -583,45 +582,45 @@ tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9, tab10, tab11, tab12, tab13
 with tab1:
     if df is not None:
         last = df.iloc[-1]
-        
+
         # Метрики
         c1, c2, c3, c4 = st.columns(4)
         c1.metric("ЦЕНА", f"{last['close']:,.2f}")
-        
+
         # RSI Logic
         rsi_val = last['RSI']
         if rsi_val > 70: rsi_lbl = "[!] SELL"; rsi_col = "inverse"
         elif rsi_val < 30: rsi_lbl = "[+] BUY"; rsi_col = "normal"
         else: rsi_lbl = "Normal"; rsi_col = "off"
         c2.metric("RSI (14)", f"{rsi_val:.1f}", delta=rsi_lbl, delta_color=rsi_col)
-        
+
         # Taleb Risk Logic
         risk_val = last['taleb_index']
         risk_lbl = "CRASH" if risk_val > 5 else "SAFE"
         risk_col = "inverse" if risk_val > 5 else "normal"
         c3.metric("RISK", f"{risk_val:.2f}", delta=risk_lbl, delta_color=risk_col)
-        
+
         # Kelly Logic
         lstm_acc = stats['LSTM_Acc'] if stats is not None else 0.50
         kel = calculate_kelly(lstm_acc, risk_val)
         c4.metric("KELLY", f"{kel:.1f}%")
-        
+
         st.divider()
-        
+
         # AI Центр
         st.subheader("Neural Intelligence Decision")
         ac1, ac2, ac3 = st.columns(3)
         cb_acc = stats['CB_Acc'] if stats is not None else 0.50
         ac1.metric("LSTM (Context)", f"{lstm_acc:.1%}")
         ac2.metric("CatBoost (Logic)", f"{cb_acc:.1%}")
-        
+
         # AI VERDICT LOGIC
         if lstm_acc > 0.55: final_dec = "[>>] SNIPER BUY"; final_col = "normal"
         elif lstm_acc < 0.45: final_dec = "[<<] SNIPER SELL"; final_col = "inverse"
         elif rsi_val > 75: final_dec = "[!] TAKE PROFIT"; final_col = "inverse"
         elif lstm_acc > 0.52 and cb_acc > 0.52: final_dec = "[OK] CONSENSUS BUY"; final_col = "normal"
         else: final_dec = "[--] WAIT"; final_col = "off"
-        
+
         ac3.metric("AI VERDICT", final_dec, delta=f"Conf: {lstm_acc:.0%}", delta_color=final_col)
 
         # Шпаргалка
@@ -681,11 +680,11 @@ with tab1:
 # === ВКЛАДКА 2: ИНВЕСТИРОВАНИЕ ===
 with tab2:
     st.header(f"Совет Легенд: {selected_asset}")
-    
+
     # Получаем анализ
     current_price = df['close'].iloc[-1] if df is not None else 0
     curs = get_guru_analysis(symbol, df, s_data)
-    
+
     if curs:
         # Council Vote banner
         council = curs.get('council', {})
@@ -1265,7 +1264,8 @@ with tab7:
 
             if st.button("Execute Trade", key="paper_execute"):
                 try:
-                    import io, contextlib
+                    import io
+                    import contextlib
                     buf = io.StringIO()
                     with contextlib.redirect_stdout(buf):
                         if trade_action == "BUY":
@@ -1303,8 +1303,8 @@ with tab7:
                                      use_container_width=True, hide_index=True)
                     else:
                         st.info("No closed trades yet.")
-                except Exception as e:
-                    st.info(f"No trade history available."  )
+                except Exception:
+                    st.info("No trade history available."  )
 
         except Exception as e:
             st.error(f"Paper trading error: {e}")

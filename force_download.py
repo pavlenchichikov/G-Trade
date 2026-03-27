@@ -18,7 +18,7 @@ def download():
         print(f"Downloading {name}...", end=" ")
         try:
             df = yf.Ticker(symbol).history(period="2y", interval="1d")
-            if df.empty: 
+            if df.empty:
                 print("Failed")
                 continue
             if isinstance(df.columns, pd.MultiIndex): df.columns = df.columns.get_level_values(0)

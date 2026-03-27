@@ -174,7 +174,7 @@ def verify_signals():
         return 0
 
     updated = 0
-    now = datetime.now()
+    datetime.now()
     for r in rows:
         sig_time = datetime.strptime(r["timestamp"][:10], "%Y-%m-%d")
         asset = r["asset"]

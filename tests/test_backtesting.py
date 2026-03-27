@@ -1,7 +1,6 @@
 """Tests for core.backtesting — walk-forward splits, PnL, scoring."""
 
 import numpy as np
-import pytest
 
 from core.backtesting import (
     adaptive_split_params,

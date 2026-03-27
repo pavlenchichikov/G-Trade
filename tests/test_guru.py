@@ -5,7 +5,6 @@ import pytest
 from core.guru import (
     calc_peg,
     calc_graham_number,
-    technical_context,
     lynch_analysis,
     buffett_analysis,
     graham_analysis,

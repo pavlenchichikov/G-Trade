@@ -2,7 +2,6 @@ import os
 import sys
 import io
 import time
-import contextlib
 import pandas as pd
 import requests
 import logging
@@ -206,17 +205,17 @@ def fetch_yahoo_smart(symbol, last_date):
 def fetch_moex_smart(symbol, last_date):
     clean = symbol.split('.')[0]
     print(f"   -> [🇷🇺 MOEX] {clean:<12}", end=" ", flush=True)
-    
+
     # MOEX позволяет указать дату старта 'YYYY-MM-DD'
     start_str = (last_date + timedelta(days=1)).strftime('%Y-%m-%d') if last_date else "2015-01-01"
-    
+
     all_data = []
     # Качаем порциями (если история большая)
     for offset in [0, 500, 1000]:
         url = f"https://iss.moex.com/iss/engines/stock/markets/shares/boards/TQBR/securities/{clean}/candles.json?interval=24&from={start_str}&start={offset}"
-        if clean == "IMOEX": 
+        if clean == "IMOEX":
              url = f"https://iss.moex.com/iss/engines/stock/markets/index/boards/SNDX/securities/IMOEX/candles.json?interval=24&from={start_str}&start={offset}"
-        
+
         try:
             r = requests.get(url, timeout=10)
             data = r.json()['candles']['data']
@@ -224,14 +223,14 @@ def fetch_moex_smart(symbol, last_date):
             all_data.extend(data)
             cols = r.json()['candles']['columns']
             if len(data) < 500: break # Конец данных
-        except: break
-        
+        except Exception: break
+
     if not all_data:
         print("[OK] (Up to date)"); return None
-        
+
     df = pd.DataFrame(all_data, columns=cols).rename(columns={'begin': 'Date', 'open': 'Open', 'close': 'Close', 'high': 'High', 'low': 'Low', 'volume': 'Volume'})
     df['Date'] = pd.to_datetime(df['Date'])
-    
+
     if last_date:
         df = df[df['Date'] > last_date]
 

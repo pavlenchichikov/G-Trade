@@ -226,7 +226,7 @@ def cmd_run():
     def _handle_signal(signum, frame):
         global _stop_flag
         _stop_flag = True
-        print(f"\n  [STOP] Shutting down scheduler...")
+        print("\n  [STOP] Shutting down scheduler...")
 
     signal.signal(signal.SIGINT, _handle_signal)
     signal.signal(signal.SIGTERM, _handle_signal)
@@ -280,7 +280,7 @@ def cmd_run():
                 break
             time.sleep(1)
 
-    print(f"  [DONE] Scheduler stopped.")
+    print("  [DONE] Scheduler stopped.")
 
 
 def main():

@@ -3,7 +3,6 @@
 # using data from SQLite market.db.
 
 import os
-import sys
 import json
 import argparse
 import warnings

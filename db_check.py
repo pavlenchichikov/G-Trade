@@ -351,7 +351,7 @@ def main_fix():
     results = run_diagnostics(cur, tables)
 
     if not results["has_problems"]:
-        print(f"\n  База чистая — исправлять нечего.")
+        print("\n  База чистая — исправлять нечего.")
         print_stats(cur, tables)
         conn.close()
         return

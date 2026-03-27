@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 import sqlite3
-import pandas as pd
 import os
 import sys
 
@@ -21,27 +20,27 @@ def run_audit():
     try:
         conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
-        
+
         # Ïîëó÷àåì ñïèñîê òàáëèö
         cursor.execute("SELECT name FROM sqlite_master WHERE type='table';")
         tables = cursor.fetchall()
-        
+
         print("\n" + "="*60)
         print(f" DATABASE AUDIT: {len(tables)} tables found")
         print("="*60)
         print(f"{'Table Name':<15} | {'Rows':<8} | {'Status'}")
         print("-" * 60)
-        
+
         for table in tables:
             name = table[0]
             # Ñ÷èòàåì êîëè÷åñòâî ñòðîê
             cursor.execute(f"SELECT COUNT(*) FROM {name}")
             row_count = cursor.fetchone()[0]
-            
+
             # Ïðîâåðÿåì ñòðóêòóðó (êîëîíêè)
             cursor.execute(f"PRAGMA table_info({name})")
-            columns = [col[1] for col in cursor.fetchall()]
-            
+            [col[1] for col in cursor.fetchall()]
+
             # Îïðåäåëÿåì ñòàòóñ
             # Äëÿ îáó÷åíèÿ íóæíî ìèíèìóì 100 ñòðîê
             if row_count >= 100:
@@ -50,9 +49,9 @@ def run_audit():
                 status = "Low Data (Skipping)"
             else:
                 status = "EMPTY"
-                
+
             print(f"{name:<15} | {row_count:<8} | {status}")
-            
+
         conn.close()
         print("="*60)
         print("Tip: If US assets (nvda, gold) are EMPTY, check your Proxy settings in Step 1.")

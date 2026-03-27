@@ -450,7 +450,7 @@ def main():
     )
     args = parser.parse_args()
 
-    print(f"\nG-Trade What-If Simulator")
+    print("\nG-Trade What-If Simulator")
     print(f"  Capital: ${args.capital:,.0f} | Days back: {args.days} | Strategy: {args.strategy}")
 
     if args.top > 0:
