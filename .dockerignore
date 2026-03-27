@@ -1,0 +1,12 @@
+__pycache__
+*.pyc
+.env
+market.db
+models/
+hybrid_models/
+backups/
+exports/
+*.log
+.git
+.pytest_cache
+PLAN.md

@@ -1,0 +1,49 @@
+# ── Credentials & secrets ─────────────────────────────────
+.env
+
+# ── Python ────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# ── ML models (binary, too large for git) ─────────────────
+*.pkl
+*.h5
+*.keras
+*.cbm
+models/
+hybrid_models/
+index_models/
+
+# ── Data & databases ──────────────────────────────────────
+market.db
+paper.db
+*.db-journal
+market_data/
+
+# ── Logs ──────────────────────────────────────────────────
+*.log
+catboost_info/
+
+# ── Backups & exports ─────────────────────────────────────
+backups/
+exports/
+backtest_results*.pkl
+
+# ── Scheduler state ───────────────────────────────────────
+scheduler_state.json
+
+# ── Internal docs (outdated) ──────────────────────────────
+PLAN.md
+
+# ── IDE & OS ──────────────────────────────────────────────
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db

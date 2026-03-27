@@ -1,0 +1,47 @@
+{
+  "default": [
+    "BTC",
+    "ETH",
+    "SBER",
+    "NVDA",
+    "GOLD",
+    "SP500",
+    "IMOEX"
+  ],
+  "crypto": [
+    "BTC",
+    "ETH",
+    "SOL",
+    "XRP",
+    "DOGE",
+    "BNB",
+    "TON"
+  ],
+  "us_tech": [
+    "NVDA",
+    "TSLA",
+    "AAPL",
+    "MSFT",
+    "GOOGL",
+    "AMZN",
+    "META",
+    "AMD"
+  ],
+  "russia": [
+    "SBER",
+    "GAZP",
+    "LKOH",
+    "ROSN",
+    "YNDX",
+    "IMOEX"
+  ],
+  "macro": [
+    "SP500",
+    "NASDAQ",
+    "DOW",
+    "VIX",
+    "DXY",
+    "GOLD",
+    "OIL"
+  ]
+}

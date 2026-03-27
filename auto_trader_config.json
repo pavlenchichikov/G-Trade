@@ -1,0 +1,13 @@
+{
+  "min_confidence": 0.6,
+  "min_kelly": 2.0,
+  "max_positions": 10,
+  "default_amount": 500,
+  "use_kelly_sizing": true,
+  "allowed_signals": [
+    "BUY"
+  ],
+  "blacklist": [],
+  "whitelist": [],
+  "dry_run": true
+}
