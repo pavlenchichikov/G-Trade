@@ -13,9 +13,7 @@ Synced with train_hybrid V50:
 """
 
 import json
-import logging
 import os
-import shutil
 import sys
 import time
 import warnings
@@ -59,8 +57,8 @@ except ImportError:
 
 # -- Shared ML components from train_hybrid --
 from train_hybrid import (
-    engineer_features, add_weekly_features, ReduceSumLayer,
-    build_lstm_attention, ensemble_with_gating, FOREX
+    engineer_features, add_weekly_features,
+    ensemble_with_gating, FOREX
 )
 from backtest import _load_lstm_model, _get_lookback, _detect_format
 
