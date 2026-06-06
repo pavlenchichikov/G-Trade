@@ -13,10 +13,12 @@ import warnings
 warnings.filterwarnings('ignore')
 
 # --- 1. СИСТЕМНЫЕ НАСТРОЙКИ ---
-st.set_page_config(page_title="G-TRADE TERMINAL V97", layout="wide", page_icon="")
+st.set_page_config(page_title="G-TRADE TERMINAL", layout="wide", page_icon="")
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 if BASE_DIR not in sys.path: sys.path.append(BASE_DIR)
+
+from net import ssl_verify
 
 try:
     from config import FULL_ASSET_MAP, ASSET_TYPES
@@ -176,7 +178,7 @@ def get_smartlab_data():
     }
 
     try:
-        r = requests.get(url, headers=headers, timeout=10, verify=False)
+        r = requests.get(url, headers=headers, timeout=10, verify=ssl_verify())
         if r.status_code == 200:
             import io
             dfs = pd.read_html(io.StringIO(r.text))
@@ -537,7 +539,7 @@ def get_guru_analysis(symbol, df, smart_data_tuple):
     return _guru_analysis(fund, tech)
 
 # --- 6. ИНТЕРФЕЙС (STREAMLIT UI) ---
-st.title("G-TRADE: FINAL TERMINAL V97")
+st.title("G-TRADE")
 
 # Загрузка источников
 with st.spinner('Подключение к каналам данных...'):

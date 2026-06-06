@@ -26,6 +26,7 @@ if BASE_DIR not in sys.path:
     sys.path.append(BASE_DIR)
 
 from config import FULL_ASSET_MAP
+from net import ssl_verify
 from sqlalchemy import create_engine
 
 DB_PATH = os.path.join(BASE_DIR, "market.db")
@@ -213,7 +214,7 @@ def fetch_smartlab_data():
         'Accept': 'text/html,application/xhtml+xml',
     }
     try:
-        r = requests.get(url, headers=headers, timeout=10, verify=False)
+        r = requests.get(url, headers=headers, timeout=10, verify=ssl_verify())
         if r.status_code != 200:
             return {}
         import io

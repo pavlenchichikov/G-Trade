@@ -1,13 +1,8 @@
-"""
-Backtest V72 - G-Trade
-=========================================
-Fixes over V71:
-  - DB deduplication on load (remove duplicate Date rows)
-  - Weekly features now join correctly (Date column preserved)
-  - Walk-forward split uses Date column + registry updated_at
-  - Keras 3.x ZIP model loading (V71)
-  - Scaler fit on TRAIN only (V71)
-  - LSTM loader handles V49/V50/Keras3 (V71)
+"""Backtest: evaluate champions on held-out data.
+
+Loads each asset's champion ensemble, scales features fit-on-train (no leak),
+and reports PnL, win rate, Sharpe, directional accuracy, Brier, and buy & hold
+alpha. The LSTM loader handles the older and newer saved model formats.
 """
 
 import json
@@ -284,7 +279,7 @@ def run_forensic_test():
     thresholds = _load_json(THRESHOLDS_PATH)
 
     print("\n" + "=" * 95)
-    print("   G-TRADE V73: FORENSIC BACKTEST (4-Head Stacking Ensemble)")
+    print("   G-TRADE BACKTEST")
     print("   CB + LSTM + Transformer + TCN | Meta-Stacking | Adversarial Validation")
     print("=" * 95 + "\n")
     fmt = "{:<8} | {:>6} | {:>8} | {:>12} | {:>10} | {:>8} | {:>8} | {:<15}"

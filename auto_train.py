@@ -2,7 +2,7 @@ import time
 import subprocess
 
 def run_training():
-    print(">>> STARTING V29 AUTO-TRAINER CYCLE <<<")
+    print(">>> STARTING AUTO-TRAINER CYCLE <<<")
     # Run the training script and capture output
     process = subprocess.Popen(['python', 'train_all.py'],
                                stdout=subprocess.PIPE,

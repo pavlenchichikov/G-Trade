@@ -21,7 +21,7 @@ if %errorlevel% neq 0 (
 :menu
 cls
 echo =======================================================
-echo    G-TRADE V50: GPU ACCELERATED (RTX 2050)
+echo    G-TRADE
 echo =======================================================
 echo.
 echo  CORE                     ANALYTICS

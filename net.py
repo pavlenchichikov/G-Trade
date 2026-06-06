@@ -36,6 +36,16 @@ _PROXY_MODE = (os.getenv("GTRADE_PROXY_MODE") or "auto").strip().lower()
 _PROBE_TIMEOUT = float(os.getenv("GTRADE_PROXY_PROBE_TIMEOUT", "1.0"))
 _PROBE_TTL = 60.0
 
+
+def ssl_verify() -> bool:
+    """Whether outbound HTTPS requests should verify TLS certificates.
+
+    Defaults to False to preserve working data fetches behind the AmneziaVPN
+    SOCKS5 proxy / RU firewall, which can intercept TLS. In a trusted-network
+    deployment set GTRADE_SSL_VERIFY=1 (or true/yes/on) to enforce verification.
+    """
+    return (os.getenv("GTRADE_SSL_VERIFY") or "").strip().lower() in ("1", "true", "yes", "on")
+
 _alive_cache: bool | None = None
 _cache_ts: float = 0.0
 
@@ -96,13 +106,17 @@ def proxies_for(route: str = "auto") -> dict | None:
 
 
 def http_get(url, *, route="auto", headers=None, timeout=10,
-             verify=True, retries=3, **kwargs):
+             verify=None, retries=3, **kwargs):
     """GET with proxy auto-selection + one failover.
 
     On 'auto': if the proxy is alive it's tried first, then direct on
     transport failure. If the proxy is dead the attempt is skipped entirely.
     5xx triggers exponential-backoff retry within each route.
+
+    verify defaults to ssl_verify() (env GTRADE_SSL_VERIFY) when not passed.
     """
+    if verify is None:
+        verify = ssl_verify()
     headers = headers or {"User-Agent": "Mozilla/5.0"}
 
     def _attempt(proxies):

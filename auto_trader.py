@@ -149,12 +149,12 @@ def run_auto_trade() -> dict:
             # Fallback: try get_positions / get_balance separately
             try:
                 open_positions = set(paper_trading.get_positions().keys())
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("get_positions() fallback failed: %s", e)
             try:
                 balance = float(paper_trading.get_balance())
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("get_balance() fallback failed: %s", e)
         except Exception as e:
             logger.warning(f"Could not fetch portfolio: {e}")
 

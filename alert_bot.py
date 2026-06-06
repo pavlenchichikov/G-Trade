@@ -1,10 +1,10 @@
 """
-Telegram Alert Bot V76 - G-Trade
+Telegram Alert Bot - G-Trade
 ===================================================
-Synced with train_hybrid V50:
+Capabilities:
   * Features from champion_registry.json
-  * engineer_features() from train_hybrid
-  * Multi-arch LSTM loader (V49 + V50)
+  * engineer_features() from core.features
+  * Multi-arch LSTM loader
   * Ensemble with soft gating
   * Tuned thresholds per asset
   * Auto proxy/VPN detection
@@ -25,7 +25,6 @@ import requests
 import tensorflow as tf
 import yfinance as yf
 from catboost import CatBoostClassifier
-from sklearn.preprocessing import StandardScaler
 from telebot import TeleBot, apihelper
 
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
@@ -38,6 +37,7 @@ except Exception:
     pass
 
 from core.logger import get_logger
+from net import ssl_verify
 logger = get_logger("alert_bot")
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -55,11 +55,11 @@ except ImportError:
     logger.critical("config.py not found")
     sys.exit(1)
 
-# -- Shared ML components from train_hybrid --
-from train_hybrid import (
-    engineer_features, add_weekly_features,
-    ensemble_with_gating
-)
+# -- Shared ML components (core package) --
+from core.features import engineer_features, add_weekly_features, add_crossasset_features
+from core.ensemble import ensemble_with_gating
+from core.scaling import load_or_fit_scaler
+from core.calibration import load_calibrator, apply_calibrator
 from backtest import _load_lstm_model, _get_lookback
 
 from sqlalchemy import create_engine
@@ -112,7 +112,7 @@ def _load_json(path):
 
 def _test_url(url, proxies=None, timeout=5):
     try:
-        r = requests.get(url, proxies=proxies or {}, timeout=timeout, verify=False)
+        r = requests.get(url, proxies=proxies or {}, timeout=timeout, verify=ssl_verify())
         return r.status_code == 200
     except Exception:
         return False
@@ -189,7 +189,7 @@ def fetch_world(symbol, use_proxy):
 
 
 # ==============================================================================
-# ASSET ANALYSIS (synced with train_hybrid V50)
+# ASSET ANALYSIS
 # ==============================================================================
 
 def analyze_asset(df, name, registry, thresholds):
@@ -199,6 +199,7 @@ def analyze_asset(df, name, registry, thresholds):
         df = engineer_features(df)
         table = name.lower().replace("^", "").replace(".", "").replace("-", "")
         df = add_weekly_features(df, table, db_engine)
+        df = add_crossasset_features(df, table, db_engine)
 
         if len(df) < 50:
             return None
@@ -223,10 +224,12 @@ def analyze_asset(df, name, registry, thresholds):
         if len(features) < 3:
             return None
 
-        # Scale using last 500 bars
+        # Scale using the saved train-fold scaler (train/serve parity); fall back
+        # to fitting on the recent window only for legacy models without one.
         n_bars = min(500, len(df))
-        scaler = StandardScaler()
-        X_all = scaler.fit_transform(df[features].iloc[-n_bars:].values)
+        x_fit = df[features].iloc[-n_bars:].values
+        scaler, _ = load_or_fit_scaler(MODEL_DIR, table, x_fit)
+        X_all = scaler.transform(x_fit)
 
         # CatBoost prediction (last bar)
         cb = CatBoostClassifier()
@@ -258,6 +261,9 @@ def analyze_asset(df, name, registry, thresholds):
             )[0])
         else:
             prob = cb_prob
+
+        # Calibrate to an honest up-move frequency when a calibrator exists.
+        prob = float(apply_calibrator(load_calibrator(MODEL_DIR, table), np.array([prob]))[0])
 
         # Tuned thresholds
         thr = thresholds.get(name, {})
@@ -368,7 +374,7 @@ def run_cycle():
     thresholds = _load_json(THRESHOLDS_PATH)
 
     print(f"\n{'='*55}")
-    print(f"  G-TRADE SENTINEL V76  |  {datetime.now():%Y-%m-%d %H:%M}")
+    print(f"  G-TRADE SENTINEL  |  {datetime.now():%Y-%m-%d %H:%M}")
     print(f"{'='*55}")
     logger.info("=== New scan cycle started ===")
 

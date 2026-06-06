@@ -22,6 +22,7 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 if BASE_DIR not in sys.path: sys.path.append(BASE_DIR)
 
 from core.logger import get_logger
+from net import ssl_verify
 logger = get_logger("data_engine")
 
 try:
@@ -168,7 +169,7 @@ def fetch_yahoo_smart(symbol, last_date):
     if _use_proxy:
         r, exc = _get_with_retry(
             dict(url=url, headers={'User-Agent': 'Mozilla/5.0'},
-                 proxies={'https': PROXY_URL}, timeout=10, verify=False),
+                 proxies={'https': PROXY_URL}, timeout=10, verify=ssl_verify()),
             "proxy"
         )
         if r is not None:
@@ -188,7 +189,7 @@ def fetch_yahoo_smart(symbol, last_date):
 
     # 2) Fallback direct (no proxy)
     r, exc = _get_with_retry(
-        dict(url=url, headers={'User-Agent': 'Mozilla/5.0'}, timeout=10, verify=False),
+        dict(url=url, headers={'User-Agent': 'Mozilla/5.0'}, timeout=10, verify=ssl_verify()),
         "direct"
     )
     if r is not None:
@@ -339,7 +340,7 @@ def fetch_yahoo_weekly(symbol, last_date):
     def _try(proxies):
         try:
             r = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'},
-                             proxies=proxies, timeout=10, verify=False)
+                             proxies=proxies, timeout=10, verify=ssl_verify())
             if r.status_code != 200:
                 return None
             chart = r.json().get('chart', {})
@@ -505,7 +506,7 @@ def main():
 
     print()
     print('=' * W)
-    print('  G-TRADE DATA ENGINE  |  Smart Update V104')
+    print('  G-TRADE DATA ENGINE')
     print(f'  {datetime.now().strftime("%Y-%m-%d  %H:%M:%S")}')
     print('=' * W)
 

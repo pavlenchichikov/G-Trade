@@ -30,6 +30,8 @@ streamlit run app.py          # dashboard
 
 Run from a Russian IP, the two sources need opposite routing: Yahoo Finance is geo-blocked and needs a foreign exit, MOEX works only from a Russian IP. Run AmneziaVPN in SOCKS5-proxy mode (`127.0.0.1:12334`); `net.py` then routes Yahoo through the proxy and MOEX direct. Override with `GTRADE_PROXY_MODE=auto|on|off`.
 
+TLS verification on outbound requests defaults off (the proxy/firewall can intercept TLS). On a trusted network set `GTRADE_SSL_VERIFY=1` to enforce it.
+
 ## GPU
 
 Native TensorFlow on Windows is CPU-only since 2.11, so training runs on CPU here (fine for this workload). To use an NVIDIA GPU, run under WSL2 with `pip install tensorflow[and-cuda]`.

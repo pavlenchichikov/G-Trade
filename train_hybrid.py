@@ -113,8 +113,26 @@ from core.backtesting import (
     MAX_TRADE_RET,
 )
 from core.ensemble import build_stacking_features
-from core.scaling import save_scaler
+from core.scaling import save_scaler, scaler_path
 from core.calibration import fit_calibrator, save_calibrator
+
+
+def _env_flag(name: str) -> bool:
+    return (os.getenv(name) or "").strip().lower() in ("1", "true", "yes", "on")
+
+
+# Retraining policy (env flags):
+#   GTRADE_FORCE_PROMOTE=1   accept newly trained champions regardless of score.
+#   GTRADE_RETRAIN_FROZEN=1  train only assets that lack a saved scaler (the ones
+#                            that previously froze) AND force-promote them, so a
+#                            single run migrates every frozen asset to the new
+#                            pipeline (saved scaler + calibrator + live features).
+_FORCE_PROMOTE = _env_flag("GTRADE_FORCE_PROMOTE") or _env_flag("GTRADE_RETRAIN_FROZEN")
+_ONLY_FROZEN = _env_flag("GTRADE_RETRAIN_FROZEN")
+
+
+def _asset_table(asset: str) -> str:
+    return asset.lower().replace("^", "").replace(".", "").replace("-", "")
 
 
 class EpochStateCallback(Callback):
@@ -704,7 +722,9 @@ def _train_one_asset(asset, candidate_features, prev_registry_entry):
         cb_out = os.path.join(MODEL_DIR, f"{table}_cb.cbm")
         lstm_out = os.path.join(MODEL_DIR, f"{table}_lstm.keras")
 
-        promote = prev_registry_entry is None or best_fold['score'] > (prev_registry_entry.get('score', -1e9) + 0.2)
+        promote = (_FORCE_PROMOTE
+                   or prev_registry_entry is None
+                   or best_fold['score'] > (prev_registry_entry.get('score', -1e9) + 0.2))
 
         # If final best_fold differs from running best (edge case: adv_weight divergence),
         # its Keras models may have been freed. Fall back to FROZEN_CHAMPION gracefully.
@@ -818,15 +838,29 @@ def train_system():
     ensure_dirs()
     registry = load_registry()
 
+    # Asset selection: by default everything; in RETRAIN_FROZEN mode only assets
+    # that lack a saved scaler (i.e. never promoted under the new pipeline).
+    asset_list = list(FULL_ASSET_MAP.keys())
+    if _ONLY_FROZEN:
+        asset_list = [a for a in asset_list
+                      if not os.path.exists(scaler_path(MODEL_DIR, _asset_table(a)))]
+        if not asset_list:
+            print("\n  RETRAIN FROZEN: every asset already has a saved scaler - nothing to do.\n")
+            return
+
     W = 72
     _dev_label = f"GPU: {gpus[0].name}" if _HAS_GPU else "CPU only"
-    total_assets = len(FULL_ASSET_MAP)
+    total_assets = len(asset_list)
     print()
     print("=" * W)
-    print("  G-TRADE TRAINER  |  4-Head Stacking Ensemble (CB+LSTM+TF+TCN)")
+    print("  G-TRADE TRAINER  |  Ensemble (CB+LSTM+TF+TCN)")
     print(f"  {datetime.now().strftime('%Y-%m-%d  %H:%M:%S')}")
     print(f"  Device : {_dev_label}")
     print(f"  Workers: {_N_WORKERS} parallel  |  GPU slots: {_GPU_SLOTS}  |  CB threads: {_CB_THREADS}  |  Assets: {total_assets}")
+    if _ONLY_FROZEN:
+        print(f"  Mode   : RETRAIN FROZEN (only assets without a saved scaler, force-promote) | {total_assets} selected")
+    elif _FORCE_PROMOTE:
+        print("  Mode   : FORCE-PROMOTE (accept new champions regardless of score)")
     print("  Ctrl+C = safe stop (saves results)")
     print("=" * W)
 
@@ -1023,7 +1057,7 @@ def train_system():
     # --- N ASSETS SIMULTANEOUSLY ---
     with ThreadPoolExecutor(max_workers=_N_WORKERS) as executor:
         futures = {}
-        for asset in FULL_ASSET_MAP.keys():
+        for asset in asset_list:
             if _stop_requested:
                 break
             future = executor.submit(

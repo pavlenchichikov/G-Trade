@@ -218,7 +218,7 @@ class GTradeLauncher(tk.Tk):
                 ("   Equity Curve",     "График капитала",              self._run_equity),
             ]),
             ("СЕРВИСЫ", [
-                ("   Telegram Bot",     "Sentinel V76",                 self._run_bot),
+                ("   Telegram Bot",     "Sentinel",                     self._run_bot),
                 ("   Scheduler",        "Автозапуск по расписанию",     self._run_scheduler),
                 ("   DB Check",         "Проверка базы данных",         self._run_db_check),
                 ("   DB Fix",           "Авто-ремонт базы данных",     self._run_db_fix),

@@ -1,10 +1,10 @@
-"""
-Predict V51 - G-Trade
-========================================
-Synced with train_hybrid V50:
+"""Signal radar.
+
+Loads each asset's champion ensemble, reuses the saved scaler and calibrator,
+and prints BUY/SELL/WAIT per asset.
   * Features from champion_registry.json
-  * engineer_features() from train_hybrid
-  * Multi-arch LSTM loader (V49 + V50)
+  * engineer_features() from core.features
+  * Multi-arch LSTM loader
   * Tuned thresholds per asset
   * Ensemble with soft gating
 """

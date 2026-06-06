@@ -11,7 +11,7 @@ END_DATE = "2024-01-01"
 WINDOW = 60 # 3-month rolling window for metrics
 
 def calculate_tale_risk(series):
-    # Our V30 Formula
+    # Tail-risk (kurtosis) formula
     kurt = series.kurt()
     skew = series.skew()
     # Risk Score
@@ -69,12 +69,12 @@ plt.legend()
 
 # 2. Risk Index
 plt.subplot(3, 1, 2)
-plt.plot(df.index, df['risk_index'], color='#ffca28', label='V30 Black Swan Index')
+plt.plot(df.index, df['risk_index'], color='#ffca28', label='Black Swan Index')
 plt.axhline(70, color='red', linestyle=':', label='Danger Zone (70%)')
 plt.fill_between(df.index, df['risk_index'], 70, where=(df['risk_index'] >= 70), color='red', alpha=0.3)
 for date in unique_crashes:
     plt.axvline(date, color='red', linestyle='--', alpha=0.3)
-plt.title("V30 Black Swan Probability (Does it spike BEFORE crash?)")
+plt.title("Black Swan Probability")
 plt.legend()
 
 # 3. Kurtosis (The core metric)
