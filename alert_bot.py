@@ -50,7 +50,7 @@ try:
     try:
         from config import SOCKS5_PROXY
     except ImportError:
-        SOCKS5_PROXY = "socks5h://127.0.0.1:12334"
+        SOCKS5_PROXY = os.getenv("SOCKS5_PROXY", "")
 except ImportError:
     logger.critical("config.py not found")
     sys.exit(1)
@@ -60,7 +60,7 @@ from core.features import engineer_features, add_weekly_features, add_crossasset
 from core.ensemble import ensemble_with_gating
 from core.scaling import load_or_fit_scaler
 from core.calibration import load_calibrator, apply_calibrator
-from backtest import _load_lstm_model, _get_lookback
+from core.model_io import get_lookback as _get_lookback, load_lstm_model as _load_lstm_model
 
 from sqlalchemy import create_engine
 

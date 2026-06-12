@@ -37,7 +37,7 @@ if BASE_DIR not in sys.path:
     sys.path.append(BASE_DIR)
 
 try:
-    from config import FULL_ASSET_MAP
+    from config import FULL_ASSET_MAP, RADAR_GROUPS
 except ImportError:
     sys.exit("config.py not found!")
 
@@ -46,7 +46,7 @@ from core.features import engineer_features, add_weekly_features, add_crossasset
 from core.ensemble import build_stacking_features
 from core.scaling import load_or_fit_scaler
 from core.calibration import load_calibrator, apply_calibrator
-from backtest import _load_lstm_model, _get_lookback
+from core.model_io import get_lookback as _get_lookback, load_lstm_model as _load_lstm_model
 
 logger = get_logger("predict")
 
@@ -57,35 +57,7 @@ REGISTRY_PATH = os.path.join(MODEL_DIR, "champion_registry.json")
 THRESHOLDS_PATH = os.path.join(MODEL_DIR, "tuned_thresholds.json")
 
 
-_GROUPS = {
-    "INDICES & MACRO": ['VIX', 'DXY', 'TNX', 'SP500', 'NASDAQ', 'DOW'],
-    "COMMODITIES":     ['GOLD', 'SILVER', 'OIL', 'GAS'],
-    "US TECH":         ['NVDA', 'TSLA', 'AAPL', 'MSFT', 'GOOGL', 'AMZN',
-                        'META', 'AMD', 'PLTR', 'COIN', 'MSTR'],
-    "US HEALTHCARE":   ['JNJ', 'UNH', 'PFE', 'LLY', 'ABBV', 'MRK'],
-    "US FINANCE":      ['JPM', 'BAC', 'GS', 'V', 'MA', 'WFC'],
-    "US CONSUMER":     ['WMT', 'KO', 'PEP', 'MCD', 'NKE', 'DIS', 'NFLX', 'SBUX'],
-    "US INDUSTRIAL":   ['BA', 'CAT', 'XOM', 'CVX', 'COP'],
-    "US SEMI":         ['INTC', 'QCOM', 'AVGO', 'MU'],
-    "US SOFTWARE":     ['CRM', 'ORCL', 'ADBE', 'UBER', 'PYPL'],
-    "CRYPTO":          ['BTC', 'ETH', 'SOL', 'XRP', 'TON', 'DOGE', 'BNB',
-                        'ADA', 'AVAX', 'DOT', 'LINK', 'SHIB', 'ATOM', 'UNI', 'NEAR'],
-    "MOEX":            ['IMOEX', 'SBER', 'GAZP', 'LKOH', 'ROSN', 'NVTK',
-                        'TATN', 'SNGS', 'PLZL', 'SIBN', 'MGNT', 'TCSG',
-                        'VTBR', 'BSPB', 'MOEX_EX', 'CBOM',
-                        'YNDX', 'OZON', 'VKCO', 'POSI', 'MTSS', 'RTKM',
-                        'HHRU', 'SOFL', 'ASTR', 'WUSH',
-                        'CHMF', 'NLMK', 'MAGN', 'RUAL', 'ALRS', 'TRMK', 'MTLR', 'RASP',
-                        'IRAO', 'HYDR', 'FLOT', 'AFLT', 'PIKK',
-                        'FEES', 'UPRO', 'MSNG', 'NMTP',
-                        'PHOR', 'SGZH', 'FIVE', 'FIXP', 'LENT', 'MVID',
-                        'SMLT', 'LSRG'],
-    "FOREX":           ['EURUSD', 'GBPUSD', 'USDJPY', 'USDCHF', 'AUDUSD', 'USDCAD', 'NZDUSD', 'USDRUB',
-                        'EURGBP', 'EURJPY', 'EURCHF', 'EURAUD', 'EURCAD', 'EURNZD',
-                        'GBPJPY', 'GBPAUD', 'GBPCAD', 'GBPCHF', 'GBPNZD',
-                        'AUDCAD', 'AUDCHF', 'AUDJPY', 'AUDNZD', 'CADJPY', 'CHFJPY', 'NZDJPY',
-                        'USDTRY', 'USDMXN', 'USDZAR', 'USDSGD', 'USDNOK', 'USDSEK', 'USDPLN', 'USDCNH'],
-}
+_GROUPS = RADAR_GROUPS  # единый источник: config.ASSET_TYPES
 
 W = 62  # output width
 

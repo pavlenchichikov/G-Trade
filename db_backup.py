@@ -1,19 +1,16 @@
-"""
-DB BACKUP -- Backup and restore utility for market.db
-Creates timestamped backups, supports rotation, restore, and listing.
-Uses only stdlib: shutil, glob, os, sys, argparse.
+"""CLI для бэкапов market.db.
+
+Создание и ротация делаются в core.db_backup (общий движок, покрыт тестами),
+здесь только консольный интерфейс: список, восстановление, очистка.
 """
 
+import argparse
+import glob
 import os
 import shutil
-import glob
-import argparse
 from datetime import datetime
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DB_PATH = os.path.join(BASE_DIR, "market.db")
-BACKUP_DIR = os.path.join(BASE_DIR, "backups")
-DEFAULT_KEEP = 5
+from core.db_backup import BACKUP_DIR, DB_PATH, MAX_BACKUPS, backup_db, _prune_old_backups
 
 
 def _now_str():
@@ -42,8 +39,8 @@ def _ensure_backup_dir():
 
 
 def _get_backups():
-    """Return list of backup files sorted by modification time (newest first)."""
-    pattern = os.path.join(BACKUP_DIR, "market_backup_*.db")
+    """Бэкапы (новые market_*.db и старые market_backup_*.db), новые первыми."""
+    pattern = os.path.join(BACKUP_DIR, "market_*.db")
     files = glob.glob(pattern)
     files.sort(key=os.path.getmtime, reverse=True)
     return files
@@ -60,31 +57,22 @@ def _print_header():
 
 def create_backup(silent=False):
     """Create a timestamped backup of market.db. Returns backup path or None."""
-    if not os.path.exists(DB_PATH):
-        if not silent:
-            print(f"[{_now_str()}] [ERR] Database not found: {DB_PATH}")
+    backup_path = backup_db()
+    if backup_path is None:
+        print(f"[{_now_str()}] [ERR] Backup failed (see logs)")
         return None
 
-    _ensure_backup_dir()
-    backup_name = f"market_backup_{_timestamp()}.db"
-    backup_path = os.path.join(BACKUP_DIR, backup_name)
-
-    try:
-        shutil.copy2(DB_PATH, backup_path)
-        size = os.path.getsize(backup_path)
-        if not silent:
-            _print_header()
-            print(f"[BACKUP] Created: backups/{backup_name} ({_format_size(size)})")
-            print()
-            list_backups(header=False)
-        else:
-            # Auto mode: minimal output
-            print(f"[{_now_str()}] [BACKUP] backups/{backup_name} ({_format_size(size)})")
-        return backup_path
-    except Exception as e:
-        msg = f"[{_now_str()}] [ERR] Backup failed: {e}"
-        print(msg)
-        return None
+    size = os.path.getsize(backup_path)
+    name = os.path.basename(backup_path)
+    if not silent:
+        _print_header()
+        print(f"[BACKUP] Created: backups/{name} ({_format_size(size)})")
+        print()
+        list_backups(header=False)
+    else:
+        # Auto mode: minimal output
+        print(f"[{_now_str()}] [BACKUP] backups/{name} ({_format_size(size)})")
+    return backup_path
 
 
 def list_backups(header=True):
@@ -161,7 +149,7 @@ def restore_backup(backup_name, force=False):
     # Create safety backup of current DB before restoring
     if os.path.exists(DB_PATH):
         _ensure_backup_dir()
-        safety_name = f"market_backup_pre_restore_{_timestamp()}.db"
+        safety_name = f"market_pre_restore_{_timestamp()}.db"
         safety_path = os.path.join(BACKUP_DIR, safety_name)
         try:
             shutil.copy2(DB_PATH, safety_path)
@@ -178,33 +166,15 @@ def restore_backup(backup_name, force=False):
         return False
 
 
-def clean_backups(keep=DEFAULT_KEEP):
+def clean_backups(keep=MAX_BACKUPS):
     """Remove old backups, keeping the last N."""
     _print_header()
     _ensure_backup_dir()
-    backups = _get_backups()
-
-    if len(backups) <= keep:
-        print(f"  {len(backups)} backup(s) found, keeping all (limit: {keep}).")
-        print()
-        return
-
-    to_delete = backups[keep:]
-    print(f"  Total backups: {len(backups)}")
-    print(f"  Keeping: {keep}")
-    print(f"  Removing: {len(to_delete)}")
-    print()
-
-    for path in to_delete:
-        name = os.path.basename(path)
-        try:
-            os.remove(path)
-            print(f"  [DEL] {name}")
-        except Exception as e:
-            print(f"  [ERR] Could not delete {name}: {e}")
-
-    print()
-    print(f"  Done. {min(len(backups), keep)} backup(s) remaining.")
+    before = _get_backups()
+    print(f"  Total backups: {len(before)}")
+    print(f"  Keeping: {min(len(before), keep)}")
+    _prune_old_backups(BACKUP_DIR, max_keep=keep)
+    print(f"  Done. {len(_get_backups())} backup(s) remaining.")
     print()
 
 
@@ -217,8 +187,8 @@ def main():
     parser = argparse.ArgumentParser(description="DB Backup -- market.db backup and restore")
     parser.add_argument("--list", action="store_true", help="Show existing backups")
     parser.add_argument("--restore", metavar="BACKUP", help="Restore from a backup file")
-    parser.add_argument("--clean", action="store_true", help="Remove old backups (keep last 5)")
-    parser.add_argument("--keep", type=int, default=DEFAULT_KEEP, help="Number of backups to keep (default: 5)")
+    parser.add_argument("--clean", action="store_true", help=f"Remove old backups (keep last {MAX_BACKUPS})")
+    parser.add_argument("--keep", type=int, default=MAX_BACKUPS, help=f"Number of backups to keep (default: {MAX_BACKUPS})")
     parser.add_argument("--auto", action="store_true", help="Create backup silently (for scheduler/GUI)")
     args = parser.parse_args()
 

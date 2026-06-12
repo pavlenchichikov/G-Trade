@@ -34,8 +34,8 @@ THRESHOLDS = {
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "")
 TELEGRAM_USER_ID = os.getenv("TELEGRAM_USER_ID", "")
 
-# Proxy
-SOCKS5_PROXY = os.getenv("SOCKS5_PROXY", "socks5h://127.0.0.1:12334")
+# Proxy: пустая строка = без прокси. Адрес задаётся только через .env.
+SOCKS5_PROXY = os.getenv("SOCKS5_PROXY", "")
 
 # --- 2. КАРТА АКТИВОВ ---
 FULL_ASSET_MAP = {
@@ -155,6 +155,36 @@ ASSET_TYPES = {
                       "AUDCAD", "AUDCHF", "AUDJPY", "AUDNZD",
                       "CADJPY", "CHFJPY", "NZDJPY"],
     "FOREX EXOTIC": ["USDTRY", "USDMXN", "USDZAR", "USDSGD", "USDNOK", "USDSEK", "USDPLN", "USDCNH"],
+}
+
+
+# --- 3b. ГРУППЫ КОНСОЛЬНОГО РАДАРА (predict.py) ---
+# Укрупнённые группы для вывода в консоль. Собираются из ASSET_TYPES,
+# чтобы при добавлении актива не было второго списка, который надо не забыть обновить.
+
+def _merge_types(*keys: str) -> list:
+    out = []
+    for k in keys:
+        out.extend(ASSET_TYPES[k])
+    return out
+
+
+RADAR_GROUPS = {
+    "INDICES & MACRO": [a for a in ASSET_TYPES["INDICES & MACRO"] if a != "IMOEX"],
+    "COMMODITIES":     ASSET_TYPES["COMMODITIES"],
+    "US TECH":         ASSET_TYPES["US TECH"],
+    "US HEALTHCARE":   ASSET_TYPES["US HEALTHCARE"],
+    "US FINANCE":      ASSET_TYPES["US FINANCE"],
+    "US CONSUMER":     ASSET_TYPES["US CONSUMER"],
+    "US INDUSTRIAL":   ASSET_TYPES["US INDUSTRIAL"],
+    "US SEMI":         ASSET_TYPES["US SEMI"],
+    "US SOFTWARE":     ASSET_TYPES["US SOFTWARE"],
+    "CRYPTO":          ASSET_TYPES["CRYPTO"],
+    # IMOEX показываем вместе с российскими бумагами
+    "MOEX":            ["IMOEX"] + _merge_types(
+        "RUS BLUE CHIPS", "RUS FINANCE", "RUS TECH", "RUS METALS",
+        "RUS INFRA", "RUS CONSUMER", "RUS PROPERTY"),
+    "FOREX":           _merge_types("FOREX MAJORS", "FOREX CROSSES", "FOREX EXOTIC"),
 }
 
 

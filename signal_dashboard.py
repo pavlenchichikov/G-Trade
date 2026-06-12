@@ -27,7 +27,11 @@ from train_hybrid import (
     engineer_features, add_weekly_features,
     ensemble_with_gating,
 )
-from backtest import _load_lstm_model, _get_lookback, _load_json
+from core.model_io import (
+    get_lookback as _get_lookback,
+    load_json as _load_json,
+    load_lstm_model as _load_lstm_model,
+)
 
 DB_PATH = os.path.join(BASE_DIR, "market.db")
 MODEL_DIR = os.path.join(BASE_DIR, "models")
@@ -83,7 +87,9 @@ def _load_transformer(path, lookback, n_features):
         import shutil
         import zipfile
         import tempfile
-        from backtest import _detect_format, _load_weights_keras3, _detect_lookback_from_h5
+        from core.model_io import (
+            _detect_format, _load_weights_keras3, detect_lookback_from_h5 as _detect_lookback_from_h5,
+        )
 
         fmt = _detect_format(path)
         if fmt == 'zip':

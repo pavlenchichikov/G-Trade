@@ -31,7 +31,7 @@ streamlit run app.py          # dashboard
 An optional SOCKS5 proxy (`SOCKS5_PROXY` in `.env`) can be used for outbound fetches; `net.py` probes it and falls back to a direct connection. Control with:
 
 - `GTRADE_PROXY_MODE=auto|on|off` - proxy usage (default `auto`).
-- `GTRADE_SSL_VERIFY=1` - enforce TLS verification (default off, since a proxy may intercept TLS).
+- `GTRADE_SSL_VERIFY=0` - disable TLS verification (default on; needed only when a TLS-intercepting proxy breaks fetches).
 
 ## GPU
 

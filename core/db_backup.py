@@ -48,6 +48,7 @@ def _prune_old_backups(backup_dir: str, max_keep: int = MAX_BACKUPS) -> None:
     """Delete oldest backups if more than max_keep exist."""
     backups = sorted(
         [f for f in os.listdir(backup_dir) if f.startswith("market_") and f.endswith(".db")],
+        key=lambda f: os.path.getmtime(os.path.join(backup_dir, f)),
     )
     while len(backups) > max_keep:
         old = backups.pop(0)

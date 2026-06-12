@@ -30,7 +30,7 @@ import requests
 try:
     from config import SOCKS5_PROXY
 except Exception:
-    SOCKS5_PROXY = os.getenv("SOCKS5_PROXY", "socks5h://127.0.0.1:12334")
+    SOCKS5_PROXY = os.getenv("SOCKS5_PROXY", "")
 
 _PROXY_MODE = (os.getenv("GTRADE_PROXY_MODE") or "auto").strip().lower()
 _PROBE_TIMEOUT = float(os.getenv("GTRADE_PROXY_PROBE_TIMEOUT", "1.0"))
@@ -40,11 +40,10 @@ _PROBE_TTL = 60.0
 def ssl_verify() -> bool:
     """Whether outbound HTTPS requests should verify TLS certificates.
 
-    Defaults to False to preserve working data fetches behind the AmneziaVPN
-    SOCKS5 proxy / RU firewall, which can intercept TLS. In a trusted-network
-    deployment set GTRADE_SSL_VERIFY=1 (or true/yes/on) to enforce verification.
+    Defaults to True (secure). Set GTRADE_SSL_VERIFY=0 (or false/no/off) only
+    when a TLS-intercepting proxy breaks verification.
     """
-    return (os.getenv("GTRADE_SSL_VERIFY") or "").strip().lower() in ("1", "true", "yes", "on")
+    return (os.getenv("GTRADE_SSL_VERIFY") or "1").strip().lower() not in ("0", "false", "no", "off")
 
 _alive_cache: bool | None = None
 _cache_ts: float = 0.0
