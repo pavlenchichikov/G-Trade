@@ -1,11 +1,5 @@
-"""Regression guard for train/serve scaler parity.
-
-predict.py used to fit a fresh StandardScaler on the recent inference window,
-which gave the models differently-scaled inputs than they saw in training. These
-tests lock in the fix: inference must go through core.scaling.load_or_fit_scaler
-(which reuses the saved train-fold scaler) and must not refit a scaler on the
-prediction window.
-"""
+"""predict.py должен брать сохранённый train-скейлер, а не фитить новый
+на окне инференса (train/serve skew)."""
 
 import os
 import re

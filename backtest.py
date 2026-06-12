@@ -1,8 +1,7 @@
-"""Backtest: evaluate champions on held-out data.
+"""Бэктест чемпионов на отложенных данных.
 
-Loads each asset's champion ensemble, scales features fit-on-train (no leak),
-and reports PnL, win rate, Sharpe, directional accuracy, Brier, and buy & hold
-alpha. The LSTM loader handles the older and newer saved model formats.
+Скейлер фитится только на трейне. Метрики: PnL, винрейт, Шарп, точность
+направления, Brier, альфа к buy & hold.
 """
 
 import os

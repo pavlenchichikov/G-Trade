@@ -1,33 +1,144 @@
 {% extends "base.html" %}
 {% block title %}Радар — G-Trade{% endblock %}
+{% block topright %}{{ now }}{% endblock %}
 {% block content %}
-<h1>Радар сигналов <small>{{ total }} активов</small></h1>
 
-{% if not groups %}
-<p class="empty">Сигналов пока нет — запусти <code>python predict.py</code>, чтобы наполнить журнал.</p>
+<div class="statgrid">
+  <div class="stat fade">
+    <span class="stat-label">Активов в журнале</span>
+    <span class="stat-value">{{ summary.total }}</span>
+    <span class="stat-sub">{% if summary.last_date %}срез {{ summary.last_date }}{% else %}журнал пуст{% endif %}</span>
+  </div>
+  <div class="stat fade">
+    <span class="stat-label">Сигналы</span>
+    <span class="stat-value">
+      <em class="t-buy">{{ summary.counts.BUY }}</em><span class="stat-sep">/</span><em class="t-sell">{{ summary.counts.SELL }}</em><span class="stat-sep">/</span><em class="t-wait">{{ summary.counts.WAIT }}</em>
+    </span>
+    <span class="stat-sub">buy / sell / wait</span>
+  </div>
+  <div class="stat fade">
+    <span class="stat-label">Точность (проверено)</span>
+    <span class="stat-value">{% if summary.accuracy is not none %}{{ "%.1f"|format(summary.accuracy * 100) }}<small>%</small>{% else %}—{% endif %}</span>
+    <span class="stat-sub">{{ summary.verified }} сигналов сверено с фактом</span>
+  </div>
+  <div class="stat fade {% if summary.stale %}stat-warn{% endif %}">
+    <span class="stat-label">Протухшие данные</span>
+    <span class="stat-value">{{ summary.stale }}</span>
+    <span class="stat-sub">{% if summary.stale %}активов старше 7 дней{% else %}все данные свежие{% endif %}</span>
+  </div>
+</div>
+
+{% if top %}
+<section class="panel fade">
+  <div class="panel-head">
+    <h2>Сильнейшие сигналы</h2>
+  </div>
+  <div class="topstrip">
+    {% for s in top %}
+    <a class="topcard" href="/asset/{{ s.asset }}">
+      <span class="topcard-head">
+        <b>{{ s.asset }}</b>
+        <span class="chip chip-{{ s.signal }}">{{ s.signal }}</span>
+      </span>
+      <span class="topcard-prob mono">p = {{ "%.2f"|format(s.probability) }}</span>
+      <span class="probbar"><i class="probbar-fill {{ 'pb-buy' if s.signal == 'BUY' else 'pb-sell' }}" style="width: {{ ((s.probability - 0.5) * 200) | abs | round(0) }}%"></i></span>
+      <span class="topcard-acc">{% if s.acc.n %}точность {{ "%.0f"|format(s.acc.acc * 100) }}% ({{ s.acc.correct }}/{{ s.acc.n }}){% else %}без статистики{% endif %}</span>
+    </a>
+    {% endfor %}
+  </div>
+</section>
 {% endif %}
 
+{% if stale %}
+<section class="warnstrip fade">
+  <b>Деградация данных:</b>
+  {% for s in stale %}<span class="warn-item">{{ s.asset }}{% if s.last_date %} · {{ s.age_days }} дн.{% else %} · нет данных{% endif %}</span>{% endfor %}
+</section>
+{% endif %}
+
+{% if groups %}
+<div class="toolbar fade">
+  <input id="q" class="search mono" type="text" placeholder="поиск тикера...">
+  <div class="filters">
+    <button class="fbtn active" data-f="">Все</button>
+    <button class="fbtn" data-f="BUY">BUY</button>
+    <button class="fbtn" data-f="SELL">SELL</button>
+    <button class="fbtn" data-f="WAIT">WAIT</button>
+  </div>
+</div>
+
 {% for g in groups %}
-<section>
-  <h2>{{ g.name }}</h2>
-  <table>
-    <tr><th>Актив</th><th>Сигнал</th><th>p</th><th>Точность</th><th>Дата</th></tr>
-    {% for s in g.rows %}
-    <tr>
-      <td><a href="/asset/{{ s.asset }}">{{ s.asset }}</a></td>
-      <td class="sig-{{ s.signal }}">{{ s.signal }}</td>
-      <td>{{ "%.2f"|format(s.probability) }}</td>
-      <td>
-        {% if s.acc.n %}
-          <span class="acc {% if s.acc.acc >= 0.55 %}good{% elif s.acc.acc < 0.45 %}bad{% endif %}">
-            {{ "%.0f"|format(s.acc.acc * 100) }}% ({{ s.acc.correct }}/{{ s.acc.n }})
-          </span>
-        {% else %}—{% endif %}
-      </td>
-      <td class="dim">{{ s.date }}</td>
-    </tr>
-    {% endfor %}
+<section class="panel group fade">
+  <div class="panel-head">
+    <h2>{{ g.name }}</h2>
+    <span class="count mono">{{ g.rows | length }}</span>
+  </div>
+  <table class="grid">
+    <thead>
+      <tr><th>Актив</th><th>Сигнал</th><th class="num">p</th><th>Уверенность</th><th>Точность</th><th>30 дней</th><th class="num">Дата</th></tr>
+    </thead>
+    <tbody>
+      {% for s in g.rows %}
+      <tr data-asset="{{ s.asset }}" data-signal="{{ s.signal }}">
+        <td><a class="asset-link" href="/asset/{{ s.asset }}">{{ s.asset }}</a></td>
+        <td><span class="chip chip-{{ s.signal }}">{{ s.signal }}</span></td>
+        <td class="num mono">{{ "%.2f"|format(s.probability) }}</td>
+        <td class="cell-prob">
+          <span class="probbar"><i class="probbar-fill {{ 'pb-buy' if s.signal == 'BUY' else ('pb-sell' if s.signal == 'SELL' else 'pb-wait') }}" style="width: {{ ((s.probability - 0.5) * 200) | abs | round(0) }}%"></i></span>
+        </td>
+        <td>
+          {% if s.acc.n %}
+          <span class="acc {% if s.acc.acc >= 0.55 %}good{% elif s.acc.acc < 0.45 %}bad{% endif %} mono">{{ "%.0f"|format(s.acc.acc * 100) }}%</span>
+          <span class="acc-n mono">{{ s.acc.correct }}/{{ s.acc.n }}</span>
+          {% else %}<span class="dim">—</span>{% endif %}
+        </td>
+        <td class="cell-spark">
+          {% if s.spark %}
+          <svg viewBox="0 0 {{ s.spark.w }} {{ s.spark.h }}" width="{{ s.spark.w }}" height="{{ s.spark.h }}" class="spark">
+            <polyline points="{{ s.spark.points }}" class="{{ 'sp-up' if s.spark.up else 'sp-down' }}"/>
+          </svg>
+          <span class="spark-chg mono {{ 't-buy' if s.spark.chg >= 0 else 't-sell' }}">{{ "%+.1f"|format(s.spark.chg * 100) }}%</span>
+          {% else %}<span class="dim">—</span>{% endif %}
+        </td>
+        <td class="num dim mono">{{ s.date }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
   </table>
 </section>
 {% endfor %}
+
+<script>
+const q = document.getElementById('q');
+const btns = document.querySelectorAll('.fbtn');
+let sig = '';
+function apply() {
+  const text = q.value.trim().toUpperCase();
+  document.querySelectorAll('tr[data-asset]').forEach(tr => {
+    const okText = !text || tr.dataset.asset.includes(text);
+    const okSig = !sig || tr.dataset.signal === sig;
+    tr.style.display = (okText && okSig) ? '' : 'none';
+  });
+  document.querySelectorAll('section.group').forEach(sec => {
+    const visible = sec.querySelectorAll('tr[data-asset]:not([style*="none"])').length;
+    sec.style.display = visible ? '' : 'none';
+  });
+}
+q.addEventListener('input', apply);
+btns.forEach(b => b.addEventListener('click', () => {
+  btns.forEach(x => x.classList.remove('active'));
+  b.classList.add('active');
+  sig = b.dataset.f;
+  apply();
+}));
+</script>
+
+{% else %}
+<section class="panel empty-state fade">
+  <h2>Журнал сигналов пуст</h2>
+  <p>Запусти <code>python predict.py</code> — прогнозы запишутся в журнал и появятся здесь.
+     Точность наполнится через пару дней, когда сигналы сверятся с фактическим движением цены.</p>
+</section>
+{% endif %}
+
 {% endblock %}

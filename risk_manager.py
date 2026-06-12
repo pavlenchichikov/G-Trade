@@ -1,9 +1,4 @@
-"""
-Risk Manager V1 - G-Trade
-============================================
-Full risk management: Kelly Criterion, position sizing, drawdown protection,
-daily loss limits, Taleb risk gating, and persistent state tracking.
-"""
+"""Риск-менеджмент: Келли, лимиты позиций и убытков, стопы по просадке."""
 
 import json
 import logging

@@ -1,7 +1,4 @@
-"""Ensemble methods: gating, stacking, weight tuning.
-
-Extracted from train_hybrid.py for reusability and testability.
-"""
+"""Ансамбль: гейтинг, стэкинг, подбор весов."""
 
 import numpy as np
 

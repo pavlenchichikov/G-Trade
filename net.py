@@ -1,22 +1,10 @@
-"""
-net.py - proxy-aware network helpers for G-Trade.
+"""Сетевые хелперы с учётом SOCKS5-прокси.
 
-Why:
-  data_engine.py historically tried the SOCKS5 proxy FIRST on every Yahoo
-  request, then fell back to direct. When the local SOCKS5 endpoint isn't
-  running (system VPN, or no VPN), every request still wasted its full
-  timeout waiting on the dead proxy - ~10s x 150 assets = minutes lost.
+Прокси проверяется один раз на процесс (TCP-проба с кэшем), чтобы при
+мёртвом прокси не терять таймаут на каждом из ~150 запросов.
+Режим: GTRADE_PROXY_MODE = auto | on | off.
 
-  This module probes the SOCKS5 endpoint ONCE per process (cached) so callers
-  can skip the proxy attempt entirely when it's not alive.
-
-  BETEDGE_PROXY_MODE-style override:
-      GTRADE_PROXY_MODE = auto | on | off   (default: auto)
-
-Public API:
-  is_proxy_alive()      -> bool (cached TCP probe)
-  proxies_for(route)    -> dict | None
-  http_get(url, ...)    -> requests.Response   (proxy-aware, with failover)
+API: is_proxy_alive(), proxies_for(route), http_get(url, ...).
 """
 from __future__ import annotations
 

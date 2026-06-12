@@ -1,8 +1,4 @@
-"""Feature engineering for market data.
-
-Extracted from train_hybrid.py for reusability and testability.
-Used by: train_hybrid.py, predict.py, backtest.py, signal_dashboard.py
-"""
+"""Фичи по OHLCV: индикаторы, недельные и кросс-активные."""
 
 import pandas as pd
 

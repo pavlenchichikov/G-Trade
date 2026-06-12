@@ -4,16 +4,29 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}G-Trade{% endblock %}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
-  <nav>
-    <span class="brand">G-TRADE</span>
-    <a href="/">Радар</a>
-    <a href="/risk">Риск</a>
-  </nav>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a class="brand" href="/">G-TRADE<span class="brand-dot"></span></a>
+      <nav>
+        <a href="/" {% if request.url.path == '/' %}class="active"{% endif %}>Радар</a>
+        <a href="/risk" {% if request.url.path == '/risk' %}class="active"{% endif %}>Риск</a>
+      </nav>
+      <div class="topbar-right">
+        <span class="live"><span class="live-dot"></span>{% block topright %}терминал{% endblock %}</span>
+      </div>
+    </div>
+  </header>
   <main>
     {% block content %}{% endblock %}
   </main>
+  <footer>
+    <span>G-Trade · сигналы не являются инвестиционной рекомендацией</span>
+  </footer>
 </body>
 </html>

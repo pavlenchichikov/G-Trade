@@ -1,10 +1,7 @@
-"""Probability calibration for ensemble outputs.
+"""Изотоническая калибровка вероятностей ансамбля.
 
-Raw ensemble probabilities (after soft gating and meta-stacking) are not
-calibrated: a 0.57 from one asset's model does not mean the same realized
-frequency of an up move as a 0.57 from another. An isotonic calibrator fitted on
-validation probabilities maps raw scores back to honest frequencies, which makes
-per-asset thresholds comparable and meaningful.
+Сырые вероятности у разных активов несравнимы, калибровка по валидационным
+прогнозам приводит их к честным частотам.
 
 Fit on validation, save next to the champion, apply at inference. When no
 calibrator is available the functions degrade to identity, so the pipeline keeps

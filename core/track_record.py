@@ -85,6 +85,21 @@ def asset_track(asset: str, limit: int = 30, db_path=None) -> list:
         ]
 
 
+def price_series(asset: str, days: int = 60, db_path=None) -> list:
+    """Последние closes актива по возрастанию даты: [{'date','close'}, ...]."""
+    table = _table_name(asset)
+    with _connect(db_path) as con:
+        try:
+            rows = con.execute(
+                f'SELECT Date, Close FROM "{table}" ORDER BY Date DESC LIMIT ?',
+                (days,),
+            ).fetchall()
+        except sqlite3.OperationalError:
+            return []
+    rows.reverse()
+    return [{"date": str(d)[:10], "close": c} for d, c in rows if c is not None]
+
+
 def stale_assets(max_age_days: int = 7, assets=None, db_path=None, today=None) -> list:
     """Активы, у которых данные в market.db старше порога (или отсутствуют)."""
     if assets is None:

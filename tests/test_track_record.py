@@ -79,6 +79,15 @@ def test_stale_assets_flags_old_data(db):
     assert "BTC" not in names
 
 
+def test_price_series_ascending(db):
+    series = track_record.price_series("BTC", days=10, db_path=db)
+    assert series == [{"date": "2026-06-10", "close": 100.0}]
+
+
+def test_price_series_missing_table(db):
+    assert track_record.price_series("GOLD", db_path=db) == []
+
+
 def test_stale_assets_missing_table_reported(db):
     stale = track_record.stale_assets(
         max_age_days=7, assets=["GOLD"], db_path=db, today="2026-06-12",

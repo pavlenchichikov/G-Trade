@@ -1,7 +1,4 @@
-"""Backtesting utilities: walk-forward splits, PnL simulation, scoring.
-
-Extracted from train_hybrid.py for reusability and testability.
-"""
+"""Walk-forward сплиты, симуляция PnL, скоринг фолдов."""
 
 import numpy as np
 

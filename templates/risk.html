@@ -1,24 +1,83 @@
 {% extends "base.html" %}
 {% block title %}Риск — G-Trade{% endblock %}
 {% block content %}
-<h1>Риск</h1>
 
-{% if state %}
-<table>
-  <tr><td>Капитал</td><td>${{ "%.2f"|format(state.current_capital) }}</td></tr>
-  <tr><td>Пик</td><td>${{ "%.2f"|format(state.peak_capital) }}</td></tr>
-  <tr><td>Открытых позиций</td><td>{{ state.open_positions | length }}</td></tr>
-</table>
-{% else %}
-<p class="empty">Состояние не сохранено (models/risk_state.json нет) — показаны лимиты по умолчанию.</p>
-{% endif %}
+<h1 class="fade">Риск</h1>
 
-<h2>Лимиты</h2>
-<table>
-  <tr><td>Макс. экспозиция портфеля</td><td>{{ "%.0f"|format(config.max_portfolio_exposure * 100) }}%</td></tr>
-  <tr><td>Макс. размер позиции</td><td>{{ "%.0f"|format(config.max_single_position * 100) }}%</td></tr>
-  <tr><td>Лимит дневного убытка</td><td>{{ "%.0f"|format(config.max_daily_loss * 100) }}%</td></tr>
-  <tr><td>Стоп по просадке</td><td>{{ "%.0f"|format(config.max_drawdown_halt * 100) }}%</td></tr>
-  <tr><td>Доля Келли</td><td>{{ config.kelly_fraction }}</td></tr>
-</table>
+<div class="risk-layout">
+  <section class="panel fade">
+    <div class="panel-head"><h2>Состояние</h2></div>
+    {% if state %}
+    <div class="risk-state">
+      <div class="gauge-wrap">
+        {% set pct = (dd / config.max_drawdown_halt) if config.max_drawdown_halt else 0 %}
+        {% set pct = 1.0 if pct > 1 else pct %}
+        <svg viewBox="0 0 120 70" class="gauge">
+          <path d="M 10 65 A 50 50 0 0 1 110 65" class="gauge-track"/>
+          <path d="M 10 65 A 50 50 0 0 1 110 65" class="gauge-fill {% if pct > 0.66 %}g-bad{% elif pct > 0.33 %}g-warn{% endif %}"
+                style="stroke-dasharray: {{ (pct * 157) | round(1) }} 157"/>
+        </svg>
+        <div class="gauge-text">
+          <b class="mono">{{ "%.1f"|format(dd * 100) }}%</b>
+          <span>просадка от пика<br>(стоп при {{ "%.0f"|format(config.max_drawdown_halt * 100) }}%)</span>
+        </div>
+      </div>
+      <table class="kv">
+        <tr><td>Капитал</td><td class="mono">${{ "{:,.2f}".format(state.current_capital) }}</td></tr>
+        <tr><td>Пик</td><td class="mono">${{ "{:,.2f}".format(state.peak_capital) }}</td></tr>
+        <tr><td>Стартовый</td><td class="mono">${{ "{:,.2f}".format(state.initial_capital) }}</td></tr>
+        <tr><td>Открытых позиций</td><td class="mono">{{ state.open_positions | length }}</td></tr>
+      </table>
+    </div>
+    {% if state.open_positions %}
+    <table class="grid">
+      <thead><tr><th>Актив</th><th class="num">Размер</th><th class="num">Вход</th><th>Направление</th></tr></thead>
+      <tbody>
+        {% for name, p in state.open_positions.items() %}
+        <tr>
+          <td><a class="asset-link" href="/asset/{{ name }}">{{ name }}</a></td>
+          <td class="num mono">${{ "{:,.2f}".format(p.get('size_usd', 0)) }}</td>
+          <td class="num mono">{{ p.get('entry_price', '—') }}</td>
+          <td>{{ p.get('direction', '—') }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% endif %}
+    {% else %}
+    <p class="empty">Состояние не сохранено — risk_manager ещё не открывал позиций.
+       Ниже лимиты, с которыми он будет работать.</p>
+    {% endif %}
+  </section>
+
+  <section class="panel fade">
+    <div class="panel-head"><h2>Лимиты</h2></div>
+    <div class="limits">
+      <div class="limit">
+        <div class="limit-head"><span>Экспозиция портфеля</span><b class="mono">{{ "%.0f"|format(config.max_portfolio_exposure * 100) }}%</b></div>
+        <div class="limit-bar"><i style="width: {{ config.max_portfolio_exposure * 100 }}%"></i></div>
+      </div>
+      <div class="limit">
+        <div class="limit-head"><span>Одна позиция</span><b class="mono">{{ "%.0f"|format(config.max_single_position * 100) }}%</b></div>
+        <div class="limit-bar"><i style="width: {{ config.max_single_position * 100 }}%"></i></div>
+      </div>
+      <div class="limit">
+        <div class="limit-head"><span>Дневной убыток (стоп)</span><b class="mono">{{ "%.0f"|format(config.max_daily_loss * 100) }}%</b></div>
+        <div class="limit-bar"><i class="lb-red" style="width: {{ config.max_daily_loss * 100 }}%"></i></div>
+      </div>
+      <div class="limit">
+        <div class="limit-head"><span>Просадка (стоп)</span><b class="mono">{{ "%.0f"|format(config.max_drawdown_halt * 100) }}%</b></div>
+        <div class="limit-bar"><i class="lb-red" style="width: {{ config.max_drawdown_halt * 100 }}%"></i></div>
+      </div>
+    </div>
+    <table class="kv">
+      <tr><td>Доля Келли</td><td class="mono">{{ config.kelly_fraction }}</td></tr>
+      <tr><td>Мин. порог Келли</td><td class="mono">{{ "%.1f"|format(config.min_kelly_threshold * 100) }}%</td></tr>
+      <tr><td>Жёсткий потолок Taleb-риска</td><td class="mono">{{ config.taleb_risk_cap }}</td></tr>
+      <tr><td>Мягкий потолок Taleb-риска</td><td class="mono">{{ config.taleb_soft_cap }}</td></tr>
+      <tr><td>Штраф за корреляцию</td><td class="mono">{{ "%.0f"|format(config.correlation_penalty * 100) }}%</td></tr>
+    </table>
+  </section>
+</div>
+
 {% endblock %}

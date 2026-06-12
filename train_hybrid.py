@@ -30,9 +30,7 @@ import joblib
 import time
 
 # --- GPU CONFIG ---
-# Auto-detect VRAM and configure memory pool accordingly.
-# Supports any NVIDIA GPU (RTX 2050, 3060, 3090, 4090, A100, etc.)
-# Falls back to CPU gracefully if no GPU is available.
+# Определяем VRAM и под неё настраиваем пул памяти TF. Нет GPU — работаем на CPU.
 gpus = tf.config.list_physical_devices('GPU')
 if gpus:
     try:
@@ -112,8 +110,7 @@ _print_lock = threading.Lock()
 _progress_state = {'label': '-', 'epoch': 0, 'total_ep': 0, 'loss': float('nan')}
 _state_lock = threading.Lock()
 
-# -- Mixed precision: fp16 compute -> faster on GPUs with Tensor Cores --
-# (RTX 20xx+, A100, etc.) Falls back gracefully on older GPUs.
+# fp16 ускоряет на картах с Tensor Cores, на старых остаётся fp32
 if _HAS_GPU:
     try:
         tf.keras.mixed_precision.set_global_policy('mixed_float16')
@@ -763,7 +760,7 @@ def _train_one_asset(asset, candidate_features, prev_registry_entry):
                    or best_fold['score'] > (prev_registry_entry.get('score', -1e9) + 0.2))
 
         # If final best_fold differs from running best (edge case: adv_weight divergence),
-        # its Keras models may have been freed. Fall back to FROZEN_CHAMPION gracefully.
+        # его Keras-модели могли быть освобождены - откатываемся на FROZEN_CHAMPION.
         _bm = best_fold.get('models', {})
         if not _bm.get('lstm') or not _bm.get('tf_enc') or not _bm.get('tcn'):
             promote = False  # models unavailable - keep existing champion

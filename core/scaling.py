@@ -1,10 +1,8 @@
-"""Shared feature scaling for training and inference.
+"""Скейлер общий для трейна и инференса.
 
-The training pipeline fits a StandardScaler on the train fold only and saves it
-next to the champion model. Inference must reuse that exact scaler, otherwise the
-model receives features on a different scale than it was trained on (train/serve
-skew). This helper loads the saved scaler when present and falls back to fitting a
-fresh one only when no saved scaler exists yet.
+Тренировка сохраняет StandardScaler train-фолда рядом с чемпионом, инференс
+обязан брать его же — иначе train/serve skew. Если сохранённого нет
+(старые модели), фитимся на текущем окне.
 """
 
 import os

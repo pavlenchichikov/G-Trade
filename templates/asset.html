@@ -1,33 +1,106 @@
 {% extends "base.html" %}
 {% block title %}{{ asset }} — G-Trade{% endblock %}
+{% block topright %}{{ ticker }}{% endblock %}
 {% block content %}
-<h1>{{ asset }}</h1>
 
-{% if acc.n %}
-<p>Точность последних {{ acc.n }} проверенных:
-  <strong>{{ "%.0f"|format(acc.acc * 100) }}%</strong> ({{ acc.correct }}/{{ acc.n }})</p>
-{% else %}
-<p class="empty">Проверенных сигналов ещё нет.</p>
+<div class="asset-head fade">
+  <div>
+    <h1>{{ asset }}</h1>
+    <span class="asset-meta mono">{{ ticker }}{% if group %} · {{ group }}{% endif %}</span>
+  </div>
+  {% if current %}
+  <div class="asset-signal">
+    <span class="chip chip-{{ current.signal }} chip-lg">{{ current.signal }}</span>
+    <span class="mono asset-prob">p = {{ "%.2f"|format(current.probability) }}</span>
+    <span class="dim mono">{{ current.date }}</span>
+  </div>
+  {% endif %}
+</div>
+
+<div class="statgrid">
+  <div class="stat fade">
+    <span class="stat-label">Точность (посл. {{ acc.n if acc.n else 0 }})</span>
+    <span class="stat-value">{% if acc.n %}{{ "%.0f"|format(acc.acc * 100) }}<small>%</small>{% else %}—{% endif %}</span>
+    <span class="stat-sub">{% if acc.n %}{{ acc.correct }} верных из {{ acc.n }}{% else %}проверенных сигналов нет{% endif %}</span>
+  </div>
+  <div class="stat fade">
+    <span class="stat-label">Верно / мимо</span>
+    <span class="stat-value"><em class="t-buy">{{ stats.wins }}</em><span class="stat-sep">/</span><em class="t-sell">{{ stats.losses }}</em></span>
+    <span class="stat-sub">за {{ track | length }} записей журнала</span>
+  </div>
+  <div class="stat fade">
+    <span class="stat-label">Средний факт. ход</span>
+    <span class="stat-value">{% if stats.avg_ret is not none %}{{ "%+.2f"|format(stats.avg_ret * 100) }}<small>%</small>{% else %}—{% endif %}</span>
+    <span class="stat-sub">следующий бар после сигнала</span>
+  </div>
+  <div class="stat fade">
+    <span class="stat-label">Серия исходов</span>
+    <span class="outcome-dots">
+      {% for o in stats.outcomes %}
+        <i class="dot {% if o == 1 %}dot-win{% elif o == 0 %}dot-loss{% else %}dot-na{% endif %}"></i>
+      {% else %}<span class="dim">—</span>{% endfor %}
+    </span>
+    <span class="stat-sub">старые → новые</span>
+  </div>
+</div>
+
+{% if chart %}
+<section class="panel fade">
+  <div class="panel-head">
+    <h2>Цена · {{ chart.first_date }} — {{ chart.last_date }}</h2>
+    <span class="mono chart-chg {{ 't-buy' if chart.chg >= 0 else 't-sell' }}">{{ "%+.1f"|format(chart.chg * 100) }}%</span>
+  </div>
+  <div class="chart-wrap">
+    <svg viewBox="0 0 {{ chart.w }} {{ chart.h }}" class="chart" preserveAspectRatio="none">
+      <polygon points="{{ chart.area }}" class="chart-area {{ 'ca-up' if chart.up else 'ca-down' }}"/>
+      <polyline points="{{ chart.points }}" class="chart-line {{ 'cl-up' if chart.up else 'cl-down' }}"/>
+      {% for m in chart.markers %}
+      <circle cx="{{ m.x }}" cy="{{ m.y }}" r="4" class="marker m-{{ m.signal }}">
+        <title>{{ m.signal }} · {{ m.date }}</title>
+      </circle>
+      {% endfor %}
+    </svg>
+    <div class="chart-scale mono">
+      <span>{{ "%.4g"|format(chart.hi) }}</span>
+      <span>{{ "%.4g"|format(chart.lo) }}</span>
+    </div>
+  </div>
+  <div class="legend">
+    <span><i class="dot m-BUY"></i> BUY</span>
+    <span><i class="dot m-SELL"></i> SELL</span>
+    <span class="dim">последняя цена: <b class="mono">{{ "%.4g"|format(chart.last) }}</b></span>
+  </div>
+</section>
 {% endif %}
 
-{% if track %}
-<table>
-  <tr><th>Дата</th><th>Сигнал</th><th>p</th><th>Факт (след. бар)</th><th>Итог</th></tr>
-  {% for t in track %}
-  <tr>
-    <td class="dim">{{ t.date }}</td>
-    <td class="sig-{{ t.signal }}">{{ t.signal }}</td>
-    <td>{{ "%.2f"|format(t.probability) }}</td>
-    <td>{% if t.actual_next_ret is not none %}{{ "%+.2f"|format(t.actual_next_ret * 100) }}%{% else %}—{% endif %}</td>
-    <td>
-      {% if t.correct is none %}—
-      {% elif t.correct %}<span class="acc good">верно</span>
-      {% else %}<span class="acc bad">мимо</span>{% endif %}
-    </td>
-  </tr>
-  {% endfor %}
-</table>
-{% else %}
-<p class="empty">Истории сигналов нет — запусти <code>python predict.py</code>.</p>
-{% endif %}
+<section class="panel fade">
+  <div class="panel-head"><h2>Журнал сигналов</h2></div>
+  {% if track %}
+  <table class="grid">
+    <thead>
+      <tr><th>Дата</th><th>Сигнал</th><th class="num">p</th><th class="num">Факт (след. бар)</th><th>Итог</th></tr>
+    </thead>
+    <tbody>
+      {% for t in track %}
+      <tr>
+        <td class="dim mono">{{ t.date }}</td>
+        <td><span class="chip chip-{{ t.signal }}">{{ t.signal }}</span></td>
+        <td class="num mono">{{ "%.2f"|format(t.probability) }}</td>
+        <td class="num mono {% if t.actual_next_ret is not none %}{{ 't-buy' if t.actual_next_ret > 0 else 't-sell' }}{% endif %}">
+          {% if t.actual_next_ret is not none %}{{ "%+.2f"|format(t.actual_next_ret * 100) }}%{% else %}—{% endif %}
+        </td>
+        <td>
+          {% if t.correct is none %}<span class="dim">ждёт сверки</span>
+          {% elif t.correct %}<span class="acc good">верно</span>
+          {% else %}<span class="acc bad">мимо</span>{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="empty">Истории нет — запусти <code>python predict.py</code>.</p>
+  {% endif %}
+</section>
+
 {% endblock %}

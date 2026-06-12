@@ -1,15 +1,7 @@
-"""
-Telegram Alert Bot - G-Trade
-===================================================
-Capabilities:
-  * Features from champion_registry.json
-  * engineer_features() from core.features
-  * Multi-arch LSTM loader
-  * Ensemble with soft gating
-  * Tuned thresholds per asset
-  * Auto proxy/VPN detection
-  * Risk Manager + Portfolio context
-  * Logging to gtrade.log
+"""Telegram-бот: часовой скан сигналов, команды, дайджест, алерты деградации.
+
+Скан считает сигналы той же связкой, что predict.py. Команды и дайджест
+читают журнал через core.track_record.
 """
 
 import json

@@ -1,12 +1,6 @@
-"""Signal radar.
+"""Консольный радар: грузит чемпионов и печатает BUY/SELL/WAIT по всем активам.
 
-Loads each asset's champion ensemble, reuses the saved scaler and calibrator,
-and prints BUY/SELL/WAIT per asset.
-  * Features from champion_registry.json
-  * engineer_features() from core.features
-  * Multi-arch LSTM loader
-  * Tuned thresholds per asset
-  * Ensemble with soft gating
+Скейлер и калибратор берутся сохранённые, фичи и пороги — из реестра чемпионов.
 """
 
 import json
@@ -120,9 +114,7 @@ def _predict_asset(name, registry, thresholds):
         curr_price = float(df['close'].iloc[-1])
         n_bars = min(500, len(df))
         x_fit = df[features].iloc[-n_bars:].values
-        # Reuse the scaler saved at training time (train/serve parity). Falls back
-        # to fitting on the recent window only for legacy models without a saved
-        # scaler, logging so the skew is visible until the asset is retrained.
+        # скейлер с тренировки; фит на окне — только для старых моделей без него
         scaler, _src = load_or_fit_scaler(MODEL_DIR, table, x_fit)
         if _src == "fit":
             logger.debug("No saved scaler for %s; fitting on recent window (retrain to fix)", table)
