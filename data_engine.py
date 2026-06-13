@@ -80,6 +80,42 @@ def _drop_existing_dates(df, table_name):
     except Exception:
         return df  # при ошибке - пишем как есть
 
+HTTP_CONNECT_TIMEOUT = 10   # connect timeout, сек
+HTTP_READ_TIMEOUT = 30      # read timeout, сек
+HTTP_MAX_ATTEMPTS = 4
+HTTP_BACKOFF_BASE = 2       # пауза 2s, 4s, 8s
+
+
+def http_get_retry(url, *, label="", **kwargs):
+    """GET с повтором при таймауте, обрыве и 5xx (раздельный connect/read timeout)."""
+    kwargs.setdefault("timeout", (HTTP_CONNECT_TIMEOUT, HTTP_READ_TIMEOUT))
+    last_exc = None
+    for attempt in range(HTTP_MAX_ATTEMPTS):
+        try:
+            r = requests.get(url, **kwargs)
+            if r.status_code >= 500 and attempt < HTTP_MAX_ATTEMPTS - 1:
+                wait = HTTP_BACKOFF_BASE ** (attempt + 1)
+                logging.warning("%s HTTP %s, retry %d/%d in %ds", label or url,
+                                r.status_code, attempt + 1,
+                                HTTP_MAX_ATTEMPTS - 1, wait)
+                time.sleep(wait)
+                continue
+            return r
+        except requests.exceptions.RequestException as exc:
+            last_exc = exc
+            if attempt < HTTP_MAX_ATTEMPTS - 1:
+                wait = HTTP_BACKOFF_BASE ** (attempt + 1)
+                logging.warning("%s network error (%s), retry %d/%d in %ds",
+                                label or url, type(exc).__name__, attempt + 1,
+                                HTTP_MAX_ATTEMPTS - 1, wait)
+                time.sleep(wait)
+                continue
+            raise
+    if last_exc:
+        raise last_exc
+    raise requests.exceptions.RequestException("max retries exceeded")
+
+
 def fetch_yahoo_smart(symbol, last_date):
     y_sym = FULL_ASSET_MAP.get(symbol, symbol)
     if symbol in ['SOL', 'BNB', 'DOGE', 'XRP', 'TON', 'BTC', 'ETH'] and '-USD' not in y_sym:
@@ -169,7 +205,9 @@ def fetch_yahoo_smart(symbol, last_date):
     if _use_proxy:
         r, exc = _get_with_retry(
             dict(url=url, headers={'User-Agent': 'Mozilla/5.0'},
-                 proxies={'https': PROXY_URL}, timeout=10, verify=ssl_verify()),
+                 proxies={'https': PROXY_URL},
+                 timeout=(HTTP_CONNECT_TIMEOUT, HTTP_READ_TIMEOUT),
+                 verify=ssl_verify()),
             "proxy"
         )
         if r is not None:
@@ -189,7 +227,8 @@ def fetch_yahoo_smart(symbol, last_date):
 
     # 2) Fallback direct (no proxy)
     r, exc = _get_with_retry(
-        dict(url=url, headers={'User-Agent': 'Mozilla/5.0'}, timeout=10, verify=ssl_verify()),
+        dict(url=url, headers={'User-Agent': 'Mozilla/5.0'},
+             timeout=(HTTP_CONNECT_TIMEOUT, HTTP_READ_TIMEOUT), verify=ssl_verify()),
         "direct"
     )
     if r is not None:
@@ -228,7 +267,7 @@ def fetch_moex_smart(symbol, last_date):
              url = f"https://iss.moex.com/iss/engines/stock/markets/index/boards/SNDX/securities/IMOEX/candles.json?interval=24&from={start_str}&start={offset}"
 
         try:
-            r = requests.get(url, timeout=10)
+            r = http_get_retry(url, label=f"MOEX {clean}")
             data = r.json()['candles']['data']
             if not data: break
             all_data.extend(data)
@@ -280,7 +319,7 @@ def fetch_moex_weekly(symbol, last_date):
                    f"boards/TQBR/securities/{clean}/candles.json"
                    f"?interval=7&from={start_str}&start={offset}")
         try:
-            r = requests.get(url, timeout=10)
+            r = http_get_retry(url, label=f"WEEKLY RU {clean}")
             payload = r.json()['candles']
             data = payload['data']
             if not data:
@@ -339,8 +378,9 @@ def fetch_yahoo_weekly(symbol, last_date):
 
     def _try(proxies):
         try:
-            r = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'},
-                             proxies=proxies, timeout=10, verify=ssl_verify())
+            r = http_get_retry(url, label=f"WEEKLY {y_sym}",
+                               headers={'User-Agent': 'Mozilla/5.0'},
+                               proxies=proxies, verify=ssl_verify())
             if r.status_code != 200:
                 return None
             chart = r.json().get('chart', {})
