@@ -241,7 +241,7 @@ def check_alerts() -> list:
             current_value = current_trend
             if current_trend != prev_trend and current_trend != "UNKNOWN" and prev_trend != "UNKNOWN":
                 alert_triggered = True
-                message = f"{asset} trend changed: {prev_trend} -> {current_trend}"
+                message = f"{asset} trend changed: {prev_trend} - {current_trend}"
 
         if alert_triggered:
             rule["last_triggered"] = today_str
@@ -334,4 +334,4 @@ if __name__ == "__main__":
         print(format_alerts(alerts))
         if alerts:
             for a in alerts:
-                print(f"  -> {a}")
+                print(f"  - {a}")

@@ -31,7 +31,7 @@ class TestKellyFraction:
         assert size <= RISK_CONFIG["max_single_position"]
 
     def test_no_edge_returns_zero(self, rm):
-        # win_rate=0.3 with equal win/loss -> negative Kelly
+        # win_rate=0.3 with equal win/loss - negative Kelly
         size = rm.kelly_fraction(win_rate=0.30, avg_win=0.01, avg_loss=0.01)
         assert size == 0.0
 
@@ -50,7 +50,7 @@ class TestKellyFraction:
         assert size <= RISK_CONFIG["max_single_position"]
 
     def test_below_min_threshold_returns_zero(self, rm):
-        # Very small edge -> Kelly below min threshold
+        # Very small edge - Kelly below min threshold
         size = rm.kelly_fraction(win_rate=0.505, avg_win=0.005, avg_loss=0.005)
         assert size == 0.0
 
@@ -112,7 +112,7 @@ class TestCheckSignal:
 
     def test_sell_signal_processed(self, rm):
         result = rm.check_signal("BTC", "SELL", confidence=0.35)
-        # SELL with confidence 0.35 -> effective win_rate = 1-0.35 = 0.65
+        # SELL with confidence 0.35 - effective win_rate = 1-0.35 = 0.65
         assert result["approved"] is True
 
 

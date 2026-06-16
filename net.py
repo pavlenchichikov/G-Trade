@@ -36,6 +36,10 @@ _PROBE_TTL = 60.0
 # connect budget and we fail over instead of waiting out the read timeout.
 CONNECT_TIMEOUT = float(os.getenv("GTRADE_CONNECT_TIMEOUT", "5"))
 READ_TIMEOUT = float(os.getenv("GTRADE_READ_TIMEOUT", "25"))
+# When only one route is available there is nothing to fail over to, so the
+# tight CONNECT_TIMEOUT (meant to race to the next route) only kills a slow but
+# usable path. Give the lone route a longer connect budget instead.
+SOLO_CONNECT_TIMEOUT = float(os.getenv("GTRADE_SOLO_CONNECT_TIMEOUT", "15"))
 _ROUTE_TTL = float(os.getenv("GTRADE_ROUTE_TTL", "300"))
 _DEFAULT_RETRIES = int(os.getenv("GTRADE_HTTP_RETRIES", "3"))
 
@@ -182,6 +186,7 @@ def http_get(url, *, route="auto", headers=None, timeout=None,
         verify = ssl_verify()
     if headers is None:
         headers = {"User-Agent": "Mozilla/5.0"}
+    explicit_timeout = timeout is not None
     if timeout is None:
         timeout = (CONNECT_TIMEOUT, READ_TIMEOUT)
     if retries is None:
@@ -189,6 +194,13 @@ def http_get(url, *, route="auto", headers=None, timeout=None,
 
     host = _host(url)
     routes = _candidate_routes(route)
+
+    # Single route means no failover to race toward, so widen the connect budget
+    # (unless the caller pinned its own timeout). A blackholed path still dies,
+    # just after more patience; a slow-but-usable one now gets through.
+    if (not explicit_timeout and len(routes) == 1
+            and isinstance(timeout, tuple)):
+        timeout = (max(timeout[0], SOLO_CONNECT_TIMEOUT), timeout[1])
 
     # Put the previously-winning route first.
     if route == "auto" and len(routes) > 1:

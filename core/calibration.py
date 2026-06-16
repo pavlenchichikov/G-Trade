@@ -21,7 +21,7 @@ def calibrator_path(model_dir: str, table: str) -> str:
 
 
 def fit_calibrator(probs, targets):
-    """Fit an isotonic calibrator mapping raw prob -> P(target=1).
+    """Fit an isotonic calibrator mapping raw prob - P(target=1).
 
     Returns the fitted IsotonicRegression, or None when there is not enough data
     or only one class is present (calibration would be undefined).

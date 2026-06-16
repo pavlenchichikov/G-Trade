@@ -60,7 +60,7 @@ def _asset_to_table(asset: str) -> str:
         ticker = FULL_ASSET_MAP.get(asset, asset)
     except ImportError:
         ticker = asset
-    # data_engine uses: lower + strip ^ . -  (NOT "=")  - e.g. DX=F -> "dx=f"
+    # data_engine uses: lower + strip ^ . -  (NOT "=")  - e.g. DX=F - "dx=f"
     return ticker.lower().replace("^", "").replace(".", "").replace("-", "")
 
 
@@ -168,9 +168,9 @@ def _predict_cb(asset: str, df_full: pd.DataFrame, days_back: int, engine) -> pd
 def _run_strategy(prices_probs: pd.DataFrame, capital: float) -> dict:
     """
     Simple long-only strategy:
-      prob > 0.55 -> buy next day
-      prob < 0.45 -> sell (flat)
-      else        -> hold
+      prob > 0.55: buy next day
+      prob < 0.45: sell (flat)
+      else:        hold
 
     Tracks equity, counts trades, computes Sharpe + max drawdown.
     Returns per-asset result dict.
@@ -283,7 +283,7 @@ def simulate(
     alloc = _get_allocation(assets, capital, strategy)
 
     per_asset: dict[str, dict] = {}
-    portfolio_curves: dict[str, list[float]] = {}  # date -> equity contributions
+    portfolio_curves: dict[str, list[float]] = {}  # date - equity contributions
 
     for asset in assets:
         asset_capital = alloc.get(asset, capital / len(assets))

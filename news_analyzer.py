@@ -233,7 +233,7 @@ AUTHORITY_FEEDS = [
     ("Prime TASS",      "https://1prime.ru/rss/main.rss",                           "ru", 1.3, "markets"),
 ]
 
-# Source name -> credibility weight (quick lookup)
+# Source name - credibility weight (quick lookup)
 SOURCE_WEIGHTS = {name: weight for name, _, _, weight, _ in AUTHORITY_FEEDS}
 SOURCE_WEIGHTS["Google News"] = 1.0
 

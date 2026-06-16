@@ -1,12 +1,12 @@
 {% extends "base.html" %}
-{% block title %}{{ asset }} — G-Trade{% endblock %}
+{% block title %}{{ asset }} - G-Trade{% endblock %}
 {% block topright %}{{ ticker }}{% endblock %}
 {% block content %}
 
 <div class="asset-head fade">
   <div>
     <h1>{{ asset }}</h1>
-    <span class="asset-meta mono">{{ ticker }}{% if group %} · {{ group }}{% endif %}</span>
+    <span class="asset-meta mono">{{ ticker }}{% if group %} | {{ group }}{% endif %}</span>
   </div>
   {% if current %}
   <div class="asset-signal">
@@ -20,7 +20,7 @@
 <div class="statgrid">
   <div class="stat fade">
     <span class="stat-label">Точность (посл. {{ acc.n if acc.n else 0 }})</span>
-    <span class="stat-value">{% if acc.n %}{{ "%.0f"|format(acc.acc * 100) }}<small>%</small>{% else %}—{% endif %}</span>
+    <span class="stat-value">{% if acc.n %}{{ "%.0f"|format(acc.acc * 100) }}<small>%</small>{% else %}-{% endif %}</span>
     <span class="stat-sub">{% if acc.n %}{{ acc.correct }} верных из {{ acc.n }}{% else %}проверенных сигналов нет{% endif %}</span>
   </div>
   <div class="stat fade">
@@ -30,7 +30,7 @@
   </div>
   <div class="stat fade">
     <span class="stat-label">Средний факт. ход</span>
-    <span class="stat-value">{% if stats.avg_ret is not none %}{{ "%+.2f"|format(stats.avg_ret * 100) }}<small>%</small>{% else %}—{% endif %}</span>
+    <span class="stat-value">{% if stats.avg_ret is not none %}{{ "%+.2f"|format(stats.avg_ret * 100) }}<small>%</small>{% else %}-{% endif %}</span>
     <span class="stat-sub">следующий бар после сигнала</span>
   </div>
   <div class="stat fade">
@@ -38,9 +38,9 @@
     <span class="outcome-dots">
       {% for o in stats.outcomes %}
         <i class="dot {% if o == 1 %}dot-win{% elif o == 0 %}dot-loss{% else %}dot-na{% endif %}"></i>
-      {% else %}<span class="dim">—</span>{% endfor %}
+      {% else %}<span class="dim">-</span>{% endfor %}
     </span>
-    <span class="stat-sub">старые → новые</span>
+    <span class="stat-sub">старые - новые</span>
   </div>
 </div>
 
@@ -139,10 +139,10 @@
         <td class="dim mono">{{ t.date }}</td>
         <td><span class="chip chip-{{ t.signal }}">{{ t.signal }}</span></td>
         <td class="num mono">{{ "%.2f"|format(t.probability) }}</td>
-        <td class="num mono dim">{% if t.cb_prob is not none %}{{ "%.2f"|format(t.cb_prob) }}{% else %}—{% endif %}</td>
-        <td class="num mono dim">{% if t.lstm_prob is not none %}{{ "%.2f"|format(t.lstm_prob) }}{% else %}—{% endif %}</td>
+        <td class="num mono dim">{% if t.cb_prob is not none %}{{ "%.2f"|format(t.cb_prob) }}{% else %}-{% endif %}</td>
+        <td class="num mono dim">{% if t.lstm_prob is not none %}{{ "%.2f"|format(t.lstm_prob) }}{% else %}-{% endif %}</td>
         <td class="num mono {% if t.actual_next_ret is not none %}{{ 't-buy' if t.actual_next_ret > 0 else 't-sell' }}{% endif %}">
-          {% if t.actual_next_ret is not none %}{{ "%+.2f"|format(t.actual_next_ret * 100) }}%{% else %}—{% endif %}
+          {% if t.actual_next_ret is not none %}{{ "%+.2f"|format(t.actual_next_ret * 100) }}%{% else %}-{% endif %}
         </td>
         <td>
           {% if t.correct is none %}<span class="dim">ждёт сверки</span>
@@ -154,7 +154,7 @@
     </tbody>
   </table>
   {% else %}
-  <p class="empty">Истории нет — запусти <code>python predict.py</code>.</p>
+  <p class="empty">Истории нет - запусти <code>python predict.py</code>.</p>
   {% endif %}
 </section>
 
@@ -219,7 +219,7 @@ function render() {
     if (i === undefined) continue;
     const c = el('circle', {cx: x(i).toFixed(1), cy: y(series[i].close).toFixed(1), r: 4, class: 'marker m-' + m.signal});
     const t = el('title', {});
-    t.textContent = `${m.signal} · ${m.date}`;
+    t.textContent = `${m.signal} | ${m.date}`;
     c.appendChild(t);
     svg.appendChild(c);
   }
@@ -255,7 +255,7 @@ function render() {
   host.appendChild(svg);
 
   const chg = (closes[closes.length - 1] - closes[0]) / closes[0] * 100;
-  chgEl.textContent = `${chg >= 0 ? '+' : ''}${chg.toFixed(1)}%  ·  ${series[0].date} — ${series[series.length - 1].date}`;
+  chgEl.textContent = `${chg >= 0 ? '+' : ''}${chg.toFixed(1)}%  |  ${series[0].date} - ${series[series.length - 1].date}`;
   chgEl.className = 'mono chart-chg ' + (chg >= 0 ? 't-buy' : 't-sell');
   lastEl.innerHTML = `последняя цена: <b class="mono">${fmt(closes[closes.length - 1])}</b>`;
 }

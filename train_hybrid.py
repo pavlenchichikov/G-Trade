@@ -30,7 +30,7 @@ import joblib
 import time
 
 # --- GPU CONFIG ---
-# Определяем VRAM и под неё настраиваем пул памяти TF. Нет GPU — работаем на CPU.
+# Определяем VRAM и под неё настраиваем пул памяти TF. Нет GPU - работаем на CPU.
 gpus = tf.config.list_physical_devices('GPU')
 if gpus:
     try:
@@ -85,7 +85,7 @@ def _env_int(name: str, default: int) -> int:
 # --- PARALLEL LOCKS ---
 # Neural block (LSTM+TF+TCN) is gated by a semaphore. GPU: 1 slot (concurrent
 # cuDNN fits OOM outside the TF pool). CPU: small batches don't saturate 12 cores,
-# so run several models at once, each capped to a few intra-op threads -> total
+# so run several models at once, each capped to a few intra-op threads - total
 # threads ~= cores. Same models/epochs, scheduling only. Env-tunable below.
 _cores = os.cpu_count() or 8
 if _HAS_GPU:
@@ -106,7 +106,7 @@ else:
 _gpu_lock = threading.Semaphore(_GPU_SLOTS)
 _print_lock = threading.Lock()
 
-# --- SHARED EPOCH STATE (callback -> ticker thread) ---
+# --- SHARED EPOCH STATE (callback - ticker thread) ---
 _progress_state = {'label': '-', 'epoch': 0, 'total_ep': 0, 'loss': float('nan')}
 _state_lock = threading.Lock()
 
@@ -234,11 +234,11 @@ def adversarial_fold_weight(X_train, X_test):
 
 
 # -- Functions moved to core/ modules (imported above) ------------------------
-# build_stacking_features -> core.ensemble
-# get_profile -> core.profiles
-# engineer_features, add_weekly_features, add_crossasset_features -> core.features
-# adaptive_split_params, make_walk_forward_splits -> core.backtesting
-# pnl_from_signals, max_drawdown_from_returns, score_strategy -> core.backtesting
+# build_stacking_features - core.ensemble
+# get_profile - core.profiles
+# engineer_features, add_weekly_features, add_crossasset_features - core.features
+# adaptive_split_params, make_walk_forward_splits - core.backtesting
+# pnl_from_signals, max_drawdown_from_returns, score_strategy - core.backtesting
 
 def build_sequences(X, y, lookback):
     Xs, ys = [], []
@@ -272,8 +272,8 @@ def derive_feature_set(df, train_idx, candidate_features, top_k):
     ranked = [f for _, f in sorted(zip(imps, candidate_features), reverse=True)]
     return ranked[:min(top_k, len(ranked))]
 
-# ensemble_with_gating, tune_ensemble_weights -> core.ensemble (imported above)
-# make_signals, apply_regime_filter -> core.backtesting (imported above)
+# ensemble_with_gating, tune_ensemble_weights - core.ensemble (imported above)
+# make_signals, apply_regime_filter - core.backtesting (imported above)
 
 def ensure_dirs():
     os.makedirs(MODEL_DIR, exist_ok=True)
@@ -388,7 +388,7 @@ def _train_one_asset(asset, candidate_features, prev_registry_entry):
         if _max_folds and len(splits) > _max_folds:
             _dropped = len(splits) - _max_folds
             splits = splits[-_max_folds:]
-            _safe_print(f"  [FOLDS] {asset:<12} {_max_folds + _dropped} -> {_max_folds} (recent)")
+            _safe_print(f"  [FOLDS] {asset:<12} {_max_folds + _dropped} - {_max_folds} (recent)")
 
         # Filter candidate_features to those present in df
         available_features = [f for f in candidate_features if f in df.columns]
@@ -496,7 +496,7 @@ def _train_one_asset(asset, candidate_features, prev_registry_entry):
             y_mag_val_d  = np.clip(fold_data['y_mag_seq_val']   / 0.05, -1.0, 1.0).astype('float32')
 
             # GPU models use ALL training data - noise filter discards ~70% of samples,
-            # leaving 150 samples -> batch shrinks to 64-75 -> GPU busy 5ms/step, idle 50ms -> 0% util.
+            # leaving 150 samples - batch shrinks to 64-75 - GPU busy 5ms/step, idle 50ms - 0% util.
             # LSTM/TF/TCN have Dropout(0.15-0.20) which handles noise natively.
             # CatBoost uses X_train (flat, non-sequential) - unaffected by this change.
             _batch = min(BATCH, max(64, len(X_seq_train) // 4))
@@ -512,7 +512,7 @@ def _train_one_asset(asset, candidate_features, prev_registry_entry):
                         except Exception:
                             _vram = ""
                         _safe_print(
-                            f"  [Device] {asset:<10} -> {_placed}"
+                            f"  [Device] {asset:<10} - {_placed}"
                             f"  train={len(X_seq_train)} seq  batch={_batch}{_vram}"
                         )
                     # -- Multi-task LSTM --------------------------------------------
@@ -927,7 +927,7 @@ def train_system():
                     tf.matmul(_w, _w).numpy()
                 _dt_ms = (_btime.perf_counter() - _t0) / 10 * 1000
             _verdict = "GPU ACTIVE" if _dt_ms < 5.0 else "SLOW - may be CPU !"
-            print(f"  fp16 matmul 1024x1024 x10 : {_dt_ms:.2f} ms/call  -> {_verdict}")
+            print(f"  fp16 matmul 1024x1024 x10 : {_dt_ms:.2f} ms/call  - {_verdict}")
         except Exception as _be:
             print(f"  Benchmark error            : {_be}")
 

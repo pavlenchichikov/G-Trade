@@ -489,7 +489,7 @@ def _fetch_yf_fundamentals(symbol):
 def _get_fundamentals(symbol, cl, smart_data):
     """
     Unified fundamental data loader with fallback chain:
-    Smart-Lab -> yfinance live -> GLOBAL_BACKUP -> None
+    Smart-Lab - yfinance live - GLOBAL_BACKUP - None
     """
     TICKER_MAP = {'YNDX': 'YDEX', 'TCSG': 'T'}
     search_ticker = TICKER_MAP.get(cl, cl)

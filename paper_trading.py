@@ -363,7 +363,7 @@ def equity_snapshot():
     )
     conn.commit()
     conn.close()
-    print(f"[OK] Equity snapshot saved: {today} -> ${s['equity']:,.2f}")
+    print(f"[OK] Equity snapshot saved: {today} - ${s['equity']:,.2f}")
 
 
 def reset_portfolio():

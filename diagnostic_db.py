@@ -3,12 +3,12 @@ import sqlite3
 import os
 import sys
 
-# Ïðèíóäèòåëüíî ñòàâèì êîäèðîâêó äëÿ âûâîäà â êîíñîëü Windows
+# Принудительно ставим кодировку для вывода в консоль Windows
 if sys.platform == "win32":
     import io
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
 
-# Ïóòü ê áàçå äàííûõ
+# Путь к базе данных
 current_dir = os.path.dirname(os.path.abspath(__file__))
 db_path = os.path.join(current_dir, "market.db")
 
@@ -21,7 +21,7 @@ def run_audit():
         conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
 
-        # Ïîëó÷àåì ñïèñîê òàáëèö
+        # Получаем список таблиц
         cursor.execute("SELECT name FROM sqlite_master WHERE type='table';")
         tables = cursor.fetchall()
 
@@ -33,16 +33,16 @@ def run_audit():
 
         for table in tables:
             name = table[0]
-            # Ñ÷èòàåì êîëè÷åñòâî ñòðîê
+            # Считаем количество строк
             cursor.execute(f"SELECT COUNT(*) FROM {name}")
             row_count = cursor.fetchone()[0]
 
-            # Ïðîâåðÿåì ñòðóêòóðó (êîëîíêè)
+            # Проверяем структуру (колонки)
             cursor.execute(f"PRAGMA table_info({name})")
             [col[1] for col in cursor.fetchall()]
 
-            # Îïðåäåëÿåì ñòàòóñ
-            # Äëÿ îáó÷åíèÿ íóæíî ìèíèìóì 100 ñòðîê
+            # Определяем статус
+            # Для обучения нужно минимум 100 строк
             if row_count >= 100:
                 status = "OK (Ready)"
             elif row_count > 0:

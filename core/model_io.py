@@ -30,13 +30,13 @@ def load_json(path):
 
 
 def build_lstm_legacy(input_shape):
-    """V49 architecture: LSTM(128)+Dropout+LSTM(64), Bahdanau-style attention, Lambda->ReduceSum."""
+    """V49 architecture: LSTM(128)+Dropout+LSTM(64), Bahdanau-style attention, Lambda-ReduceSum."""
     timesteps = input_shape[0]
     inputs = Input(shape=input_shape)
     x = LSTM(128, return_sequences=True)(inputs)
     x = Dropout(0.2)(x)
     x = LSTM(64, return_sequences=True)(x)
-    # V49 attention: Dense(1,tanh)->Flatten->Dense(ts,softmax)->RepeatVector->Permute->Multiply
+    # V49 attention: Dense(1,tanh)->Flatten-Dense(ts,softmax)->RepeatVector-Permute-Multiply
     a = Dense(1, activation='tanh')(x)
     a = Flatten()(a)
     a = Dense(timesteps, activation='softmax')(a)
@@ -79,7 +79,7 @@ def _load_weights_keras3(model, h5_path):
 
 
 def get_lookback(reg_entry, asset_name):
-    """Resolve actual lookback: registry.lookback -> optuna_params -> profile fallback."""
+    """Resolve actual lookback: registry.lookback - optuna_params - profile fallback."""
     if reg_entry and 'lookback' in reg_entry:
         return int(reg_entry['lookback'])
     optuna = load_json(OPTUNA_PARAMS_PATH)
@@ -136,7 +136,7 @@ def load_lstm_model(lstm_path, lookback, n_features):
         # Auto-detect lookback from saved weights (handles frozen champions with outdated optuna params)
         detected_lb = detect_lookback_from_h5(weights_path if fmt == 'hdf5' else lstm_path)
         if detected_lb is not None and detected_lb != lookback:
-            logger.debug("Lookback override for %s: %d -> %d (from weights)", lstm_path, lookback, detected_lb)
+            logger.debug("Lookback override for %s: %d - %d (from weights)", lstm_path, lookback, detected_lb)
             lookback = detected_lb
         input_shape = (lookback, n_features)
 

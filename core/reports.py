@@ -1,6 +1,6 @@
 """Сборка текстов для Telegram: дайджест и ответы на команды.
 
-Только чистые функции: данные приходят аргументами, наружу — готовый текст.
+Только чистые функции: данные приходят аргументами, наружу - готовый текст.
 """
 
 
@@ -11,7 +11,7 @@ def _fmt_acc(acc: dict) -> str:
 
 
 def _sorted_actionable(signals: list) -> list:
-    """BUY/SELL, отсортированные по уверенности (дальше от 0.5 — выше)."""
+    """BUY/SELL, отсортированные по уверенности (дальше от 0.5 - выше)."""
     actionable = [s for s in signals if s.get("signal") in ("BUY", "SELL")]
     return sorted(actionable, key=lambda s: abs((s.get("probability") or 0.5) - 0.5),
                   reverse=True)
@@ -20,7 +20,7 @@ def _sorted_actionable(signals: list) -> list:
 def build_top_message(signals: list, n: int = 5) -> str:
     top = _sorted_actionable(signals)[:n]
     if not top:
-        return "Активных сигналов нет — везде WAIT."
+        return "Активных сигналов нет - везде WAIT."
     lines = [f"Топ-{len(top)} сигналов:"]
     for s in top:
         lines.append(
@@ -42,7 +42,7 @@ def build_signal_message(asset: str, track: list, acc: dict) -> str:
     ]
     for t in track[:10]:
         if t["correct"] is None:
-            outcome = "—"
+            outcome = "-"
         else:
             outcome = "+" if t["correct"] else "x"
         ret = f" {t['actual_next_ret']:+.2%}" if t["actual_next_ret"] is not None else ""
@@ -64,7 +64,7 @@ def build_risk_message(risk_state, config: dict) -> str:
             + (f" ({', '.join(positions)})" if positions else ""),
         ]
     else:
-        lines.append("Состояние не сохранено (risk_state.json нет) — лимиты по умолчанию:")
+        lines.append("Состояние не сохранено (risk_state.json нет) - лимиты по умолчанию:")
     lines += [
         f"Лимит дневного убытка: {config.get('max_daily_loss', 0):.0%}",
         f"Стоп по просадке: {config.get('max_drawdown_halt', 0):.0%}",

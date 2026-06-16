@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Модели — G-Trade{% endblock %}
+{% block title %}Модели - G-Trade{% endblock %}
 {% block content %}
 
 <div class="statgrid">
@@ -15,7 +15,7 @@
   </div>
   <div class="stat fade">
     <span class="stat-label">Средний скор</span>
-    <span class="stat-value">{% if summary.avg_score is not none %}{{ "%.2f"|format(summary.avg_score) }}{% else %}—{% endif %}</span>
+    <span class="stat-value">{% if summary.avg_score is not none %}{{ "%.2f"|format(summary.avg_score) }}{% else %}-{% endif %}</span>
     <span class="stat-sub">Sharpe-взвешенная оценка обучения</span>
   </div>
 </div>
@@ -24,7 +24,7 @@
 <section class="panel fade">
   <div class="panel-head">
     <h2>Чемпионы по активам</h2>
-    <span class="count mono">клик по колонке — сортировка</span>
+    <span class="count mono">клик по колонке - сортировка</span>
   </div>
   <table class="grid" id="mtable">
     <thead>
@@ -49,19 +49,19 @@
           data-signal="{{ r.signal or 'ZZZ' }}"
           data-live="{{ r.live_acc.acc if r.live_acc and r.live_acc.acc is not none else -1 }}">
         <td><a class="asset-link" href="/asset/{{ r.asset }}">{{ r.asset }}</a></td>
-        <td>{% if r.signal %}<span class="chip chip-{{ r.signal }}">{{ r.signal }}</span>{% else %}<span class="dim">—</span>{% endif %}</td>
-        <td class="num mono">{{ "%.2f"|format(r.score) if r.score is not none else "—" }}</td>
-        <td class="num mono">{{ "%.1f"|format(r.cb_acc * 100) if r.cb_acc is not none else "—" }}%</td>
-        <td class="num mono">{{ "%.1f"|format(r.lstm_acc * 100) if r.lstm_acc is not none else "—" }}%</td>
+        <td>{% if r.signal %}<span class="chip chip-{{ r.signal }}">{{ r.signal }}</span>{% else %}<span class="dim">-</span>{% endif %}</td>
+        <td class="num mono">{{ "%.2f"|format(r.score) if r.score is not none else "-" }}</td>
+        <td class="num mono">{{ "%.1f"|format(r.cb_acc * 100) if r.cb_acc is not none else "-" }}%</td>
+        <td class="num mono">{{ "%.1f"|format(r.lstm_acc * 100) if r.lstm_acc is not none else "-" }}%</td>
         <td class="num mono {{ 't-buy' if r.profit and r.profit > 0 else ('t-sell' if r.profit and r.profit < 0 else '') }}">
-          {{ "%+.1f"|format(r.profit * 100) if r.profit is not none else "—" }}%</td>
+          {{ "%+.1f"|format(r.profit * 100) if r.profit is not none else "-" }}%</td>
         <td><span class="chip chip-{{ 'BUY' if r.status == 'STABLE' else 'SELL' }}">{{ r.status }}</span></td>
         <td class="dim mono">{{ r.mode }}</td>
         <td class="num">
           {% if r.live_acc and r.live_acc.n %}
           <span class="acc {% if r.live_acc.acc >= 0.55 %}good{% elif r.live_acc.acc < 0.45 %}bad{% endif %} mono">{{ "%.0f"|format(r.live_acc.acc * 100) }}%</span>
           <span class="acc-n mono">{{ r.live_acc.correct }}/{{ r.live_acc.n }}</span>
-          {% else %}<span class="dim">—</span>{% endif %}
+          {% else %}<span class="dim">-</span>{% endif %}
         </td>
       </tr>
       {% endfor %}

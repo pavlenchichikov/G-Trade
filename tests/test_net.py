@@ -89,6 +89,23 @@ def test_fast_fail_timeout_tuple_passed(monkeypatch):
     assert calls[0]["timeout"] == (net.CONNECT_TIMEOUT, net.READ_TIMEOUT)
 
 
+def test_solo_route_widens_connect_timeout(monkeypatch):
+    # Proxy dead - only the direct route. With nothing to fail over to, the
+    # fast-failover connect budget should give way to the longer solo budget so
+    # a slow-but-usable path isn't killed prematurely. Read budget unchanged.
+    monkeypatch.setattr(net, "is_proxy_alive", lambda *a, **k: False)
+    calls = _record_get(monkeypatch, lambda proxies: FakeResp(200))
+    net.http_get("https://query1.finance.yahoo.com/x", retries=1)
+    assert calls[0]["timeout"] == (net.SOLO_CONNECT_TIMEOUT, net.READ_TIMEOUT)
+
+
+def test_explicit_timeout_not_overridden_on_solo_route(monkeypatch):
+    monkeypatch.setattr(net, "is_proxy_alive", lambda *a, **k: False)
+    calls = _record_get(monkeypatch, lambda proxies: FakeResp(200))
+    net.http_get("https://query1.finance.yahoo.com/x", retries=1, timeout=(3, 7))
+    assert calls[0]["timeout"] == (3, 7)
+
+
 def test_validate_failure_triggers_failover(monkeypatch):
     # Both routes return HTTP 200, but direct's body is an "error" payload.
     def behavior(proxies):

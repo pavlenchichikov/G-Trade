@@ -291,14 +291,14 @@ class GTradeLauncher(tk.Tk):
         def toggle():
             if expanded[0]:
                 sub_frame.pack_forget()
-                btn.configure(text=f"▶{text}")
+                btn.configure(text=f">{text}")
             else:
                 sub_frame.pack(fill=tk.X, padx=(16, 0))
-                btn.configure(text=f"▼{text}")
+                btn.configure(text=f"v{text}")
             expanded[0] = not expanded[0]
 
         btn = tk.Button(
-            outer, text=f"▶{text}", font=("Consolas", 11),
+            outer, text=f">{text}", font=("Consolas", 11),
             fg=FG_YELLOW, bg=BG_BUTTON,
             activeforeground=FG, activebackground=BG_BUTTON_ACTIVE,
             relief="flat", cursor="hand2", anchor="w", padx=12, pady=6,
@@ -455,15 +455,15 @@ class GTradeLauncher(tk.Tk):
         self._log.configure(state="disabled")
 
     def _log_line(self, text, tag="stdout", is_cr=False):
-        """Вставить строку в лог. is_cr=True -> заменить предыдущую \r строку."""
+        """Вставить строку в лог. is_cr=True - заменить предыдущую \r строку."""
         if not text:
             return
         self._log.configure(state="normal")
         if self._cr_line and is_cr:
-            # CR->CR: заменяем предыдущий прогресс-бар
+            # CR-CR: заменяем предыдущий прогресс-бар
             self._log.delete("end-1c linestart", "end-1c")
         elif self._cr_line and not is_cr:
-            # CR->non-CR: бар остаётся, новая строка ниже
+            # CR-non-CR: бар остаётся, новая строка ниже
             self._log.insert(tk.END, "\n")
         self._log.insert(tk.END, text, tag)
         self._cr_line = is_cr
@@ -592,7 +592,7 @@ class GTradeLauncher(tk.Tk):
     # -- Команды кнопок ----------------------------------------------------
 
     def _run_full(self):
-        # Запускаем цепочку: data -> train -> dashboard
+        # Запускаем цепочку: data - train - dashboard
         self._run_chain([
             ([PY, os.path.join(BASE_DIR, "data_engine.py")], "Data Update"),
             ([PY, os.path.join(BASE_DIR, "train_hybrid.py")], "Train Models"),
@@ -606,7 +606,7 @@ class GTradeLauncher(tk.Tk):
             return
 
         self._clear_log()
-        chain_name = " -> ".join(s[1] for s in steps)
+        chain_name = " - ".join(s[1] for s in steps)
         self._log_msg(f"[CHAIN] {chain_name}\n\n", "info")
         self._task_label.configure(text="Running: Full Cycle", fg=FG_ACCENT)
         self._btn_stop.configure(state="normal")

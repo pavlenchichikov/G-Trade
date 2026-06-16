@@ -151,7 +151,7 @@ class RiskManager:
         """
         Compute the recommended position size as a fraction of current capital.
 
-        Formula: Kelly = (p·b - q) / b   where b = avg_win / avg_loss
+        Formula: Kelly = (p*b - q) / b   where b = avg_win / avg_loss
         Then applies:
           - Fractional Kelly  (x kelly_fraction)
           - Taleb risk penalty (exponential decay above soft cap)
@@ -382,5 +382,5 @@ if __name__ == "__main__":
     for asset, conf, taleb in [("BTC", 0.62, 1.5), ("ETH", 0.58, 6.0), ("GOLD", 0.54, 0.8)]:
         res = rm.check_signal(asset, "BUY", confidence=conf, taleb_risk=taleb)
         status = "[OK]" if res["approved"] else "[NO]"
-        print(f"{status} {asset:<6} conf={conf:.0%} taleb={taleb:.1f} -> "
+        print(f"{status} {asset:<6} conf={conf:.0%} taleb={taleb:.1f} - "
               f"size={res['position_size_pct']:.1%} (${res['position_size_usd']:,.0f}) | {res['reason']}")

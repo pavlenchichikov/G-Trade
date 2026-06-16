@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Риск — G-Trade{% endblock %}
+{% block title %}Риск - G-Trade{% endblock %}
 {% block content %}
 
 <h1 class="fade">Риск</h1>
@@ -37,15 +37,15 @@
         <tr>
           <td><a class="asset-link" href="/asset/{{ name }}">{{ name }}</a></td>
           <td class="num mono">${{ "{:,.2f}".format(p.get('size_usd', 0)) }}</td>
-          <td class="num mono">{{ p.get('entry_price', '—') }}</td>
-          <td>{{ p.get('direction', '—') }}</td>
+          <td class="num mono">{{ p.get('entry_price', '-') }}</td>
+          <td>{{ p.get('direction', '-') }}</td>
         </tr>
         {% endfor %}
       </tbody>
     </table>
     {% endif %}
     {% else %}
-    <p class="empty">Состояние не сохранено — risk_manager ещё не открывал позиций.
+    <p class="empty">Состояние не сохранено - risk_manager ещё не открывал позиций.
        Ниже лимиты, с которыми он будет работать.</p>
     {% endif %}
   </section>

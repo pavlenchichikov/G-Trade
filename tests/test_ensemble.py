@@ -58,7 +58,7 @@ class TestEnsembleWithGating:
         trend_high = np.array([0.05])
         res_low = ensemble_with_gating(cb, lstm, trend_low)
         res_high = ensemble_with_gating(cb, lstm, trend_high)
-        # Higher trend -> more LSTM weight -> result closer to 0.7
+        # Higher trend - more LSTM weight - result closer to 0.7
         assert res_high[0] > res_low[0]
 
 
@@ -117,7 +117,7 @@ class TestBuildStackingFeatures:
         np.testing.assert_allclose(result[0, :4], [0.6, 0.7, 0.5, 0.8])
 
     def test_disagreement_column(self):
-        # All models agree -> disagreement = 0
+        # All models agree - disagreement = 0
         cb = np.array([0.6])
         result = build_stacking_features(cb, cb, cb, cb, np.array([0.01]))
         assert result[0, 4] == 0.0  # std of [0.6, 0.6, 0.6, 0.6] = 0

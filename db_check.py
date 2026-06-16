@@ -111,7 +111,7 @@ def check_empty_tables(cur, tables):
 # -- Исправления --------------------------------------------------------------
 
 def fix_date_formats(cur, tables):
-    """Нормализует даты > 10 символов -> YYYY-MM-DD."""
+    """Нормализует даты > 10 символов - YYYY-MM-DD."""
     total = 0
     for t in tables:
         before = cur.execute(
@@ -173,7 +173,7 @@ def fix_vacuum(conn):
     after = os.path.getsize(DB_PATH)
     saved = before - after
     if saved > 0:
-        print(f"    VACUUM: {before/1024/1024:.1f} MB -> {after/1024/1024:.1f} MB (-{saved/1024:.0f} KB)")
+        print(f"    VACUUM: {before/1024/1024:.1f} MB - {after/1024/1024:.1f} MB (-{saved/1024:.0f} KB)")
     else:
         print(f"    VACUUM: {after/1024/1024:.1f} MB (без изменений)")
     return saved

@@ -47,7 +47,7 @@ def attention_block(lstm_output, time_steps):
 # -- Architecture 1: LSTM + Attention -----------------------------------------
 
 def build_lstm_attention(input_shape):
-    """Two-layer LSTM (192->96 units) with attention pooling."""
+    """Two-layer LSTM (192-96 units) with attention pooling."""
     inputs = Input(shape=input_shape)
     x = LSTM(192, return_sequences=True)(inputs)
     x = LSTM(96, return_sequences=True)(x)

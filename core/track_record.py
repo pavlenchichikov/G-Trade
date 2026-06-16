@@ -1,7 +1,7 @@
 """Чтение сигналов и их истории из market.db для веба, бота и дайджеста.
 
 Интерфейсы ничего не считают: predict.py пишет в prediction_log
-(performance_tracker), здесь — только выборки.
+(performance_tracker), здесь - только выборки.
 """
 
 import os

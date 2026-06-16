@@ -2,6 +2,7 @@
 import threading
 
 import data_engine as de
+import net
 
 
 def _counting_fetch(behavior):
@@ -67,3 +68,62 @@ def test_bars_updated_on_recovery():
     fetch = _counting_fetch(lambda n, k: ("NEW", 7))
     de._retry_failed(fetch, {"B": "B"}, results, sweeps=1, workers=1, label="t")
     assert results[0] == ("B", "NEW", 7)
+
+
+# --- startup route-status banner (probes real reachability) ------------------
+
+def _patch_reach(monkeypatch, ok):
+    """Make net.http_get (used by the banner probe) succeed or fail."""
+    def fake(url, *a, **k):
+        if ok:
+            return type("R", (), {"status_code": 200})()
+        raise Exception("unreachable")
+    monkeypatch.setattr(net, "http_get", fake)
+
+
+def test_route_status_yahoo_reachable(monkeypatch):
+    # full-tunnel VPN: no SOCKS5 proxy, but Yahoo reachable on the direct route
+    monkeypatch.setattr(net, "is_proxy_alive", lambda *a, **k: False)
+    _patch_reach(monkeypatch, True)
+    line = de.route_status_line()
+    assert "OK" in line and "reachable" in line.lower()
+    assert "fail" not in line.lower()  # must NOT cry wolf when it works
+
+
+def test_route_status_yahoo_unreachable(monkeypatch):
+    monkeypatch.setattr(net, "is_proxy_alive", lambda *a, **k: False)
+    _patch_reach(monkeypatch, False)
+    line = de.route_status_line()
+    assert "UNREACHABLE" in line
+
+
+def test_route_status_reports_proxy_state(monkeypatch):
+    monkeypatch.setattr(net, "SOCKS5_PROXY", "socks5h://127.0.0.1:12334")
+    monkeypatch.setattr(net, "is_proxy_alive", lambda *a, **k: True)
+    _patch_reach(monkeypatch, True)
+    assert "proxy up" in de.route_status_line().lower()
+
+
+# --- MOEX skips the network call when already current ------------------------
+
+def test_moex_skips_fetch_when_already_current(monkeypatch):
+    import datetime as _dt
+    called = []
+    monkeypatch.setattr(net, "http_get", lambda *a, **k: called.append(1))
+    # last bar is today -> next bar starts in the future -> must not hit network
+    assert de.fetch_moex_smart("SBER", _dt.datetime.now()) is None
+    assert called == []
+    # weekly fetcher has the same guard
+    assert de.fetch_moex_weekly("SBER", _dt.datetime.now()) is None
+    assert called == []
+
+
+def test_moex_fetches_when_stale(monkeypatch):
+    import datetime as _dt
+    called = []
+    def fake(*a, **k):
+        called.append(1)
+        raise Exception("net hit")
+    monkeypatch.setattr(net, "http_get", fake)
+    de.fetch_moex_smart("SBER", _dt.datetime.now() - _dt.timedelta(days=7))
+    assert called  # stale data -> network attempted

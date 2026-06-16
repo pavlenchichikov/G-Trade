@@ -114,7 +114,7 @@ def fetch_yahoo_smart(symbol, last_date):
     if last_date is not None:
         start_ts = int(last_date.timestamp()) + 86400
         if start_ts >= now_ts:
-            print(f"   -> [YAHOO] {y_sym:<12} [OK] (UP_TO_DATE)")
+            print(f"   - [YAHOO] {y_sym:<12} [OK] (UP_TO_DATE)")
             return None
     else:
         # Start from ~5 years ago (1825 days) instead of range=max
@@ -125,7 +125,7 @@ def fetch_yahoo_smart(symbol, last_date):
     end_ts = max(now_ts - 300, start_ts + 1)
     url = f"{base_url}&period1={start_ts}&period2={end_ts}"
 
-    print(f"   -> [YAHOO] {y_sym:<12}", end=" ", flush=True)
+    print(f"   - [YAHOO] {y_sym:<12}", end=" ", flush=True)
 
     def _parse_response(r, route_label):
         if r.status_code != 200:
@@ -188,7 +188,14 @@ def fetch_yahoo_smart(symbol, last_date):
 
 def fetch_moex_smart(symbol, last_date):
     clean = symbol.split('.')[0]
-    print(f"   -> [MOEX] {clean:<12}", end=" ", flush=True)
+    print(f"   - [MOEX] {clean:<12}", end=" ", flush=True)
+
+    # Уже актуально: следующий бар начался бы в будущем, MOEX вернёт пусто.
+    # Пропускаем запрос (как и Yahoo по start_ts >= now), чтобы не долбить
+    # нестабильный прямой маршрут и не плодить транзиентные таймауты в логе.
+    if last_date is not None and last_date.date() >= datetime.now().date():
+        print("[OK] (Up to date)")
+        return None
 
     # MOEX позволяет указать дату старта 'YYYY-MM-DD'
     start_str = (last_date + timedelta(days=1)).strftime('%Y-%m-%d') if last_date else "2015-01-01"
@@ -238,7 +245,12 @@ def fetch_moex_smart(symbol, last_date):
 def fetch_moex_weekly(symbol, last_date):
     """Fetch weekly (interval=7) OHLCV bars from MOEX ISS API."""
     clean = symbol.split('.')[0]
-    print(f"   -> [WEEKLY RU] {clean:<12}", end=" ", flush=True)
+    print(f"   - [WEEKLY RU] {clean:<12}", end=" ", flush=True)
+
+    # Уже актуально: пропускаем запрос вместо обращения к нестабильному маршруту.
+    if last_date is not None and last_date.date() >= datetime.now().date():
+        print("[OK] (Up to date)")
+        return None
 
     start_str = (last_date + timedelta(days=1)).strftime('%Y-%m-%d') if last_date else "2015-01-01"
 
@@ -301,7 +313,7 @@ def fetch_yahoo_weekly(symbol, last_date):
         start_ts = int(last_date.timestamp()) + 86400
         if start_ts >= now_ts:
             # Данные уже актуальны
-            print(f"   -> [WEEKLY] {y_sym:<12} [OK] (UP_TO_DATE)")
+            print(f"   - [WEEKLY] {y_sym:<12} [OK] (UP_TO_DATE)")
             return None
     else:
         start_ts = now_ts - 1825 * 86400  # 5 years
@@ -309,7 +321,7 @@ def fetch_yahoo_weekly(symbol, last_date):
     base_url = f"https://query1.finance.yahoo.com/v8/finance/chart/{y_sym}?interval=1wk"
     url = f"{base_url}&period1={start_ts}&period2={now_ts}"
 
-    print(f"   -> [WEEKLY] {y_sym:<12}", end=" ", flush=True)
+    print(f"   - [WEEKLY] {y_sym:<12}", end=" ", flush=True)
 
     try:
         r = net.http_get(url, route="auto", validate=_yahoo_chart_ok)
@@ -353,6 +365,34 @@ def _save_df(df, table_name):
     if not df.empty:
         df.to_sql(table_name, engine, if_exists='append', index=True)
     return len(df)
+
+
+def _route_reachable(url):
+    """Best-effort reachability probe for the startup banner (one quick try)."""
+    try:
+        net.http_get(url, route="auto", retries=2, timeout=(5, 8))
+        return True
+    except Exception:
+        return False
+
+
+def route_status_line():
+    """Startup banner: report which data routes actually work right now.
+
+    Yahoo is geo-blocked from a bare RU IP and becomes reachable either via the
+    SOCKS5 proxy or a full-tunnel VPN (where the direct route already exits
+    abroad). So probe real reachability instead of guessing from the proxy
+    state alone, which would falsely warn "Yahoo will fail" while a full-tunnel
+    VPN is up and working.
+    """
+    proxy = ("SOCKS5 proxy up" if (net.SOCKS5_PROXY and net.is_proxy_alive(force=True))
+             else "no SOCKS5 proxy")
+    yahoo_ok = _route_reachable(
+        "https://query1.finance.yahoo.com/v8/finance/chart/AAPL?interval=1d&range=5d")
+    if yahoo_ok:
+        return f"  Routes OK: Yahoo reachable, MOEX direct ({proxy})."
+    return (f"  Yahoo UNREACHABLE ({proxy}): start your VPN or SOCKS5 proxy, "
+            "otherwise Yahoo fetches will fail. MOEX still uses the direct route.")
 
 
 def _progress_bar(current, total, width=20):
@@ -484,6 +524,7 @@ def main():
     print('  G-TRADE DATA ENGINE')
     print(f'  {datetime.now().strftime("%Y-%m-%d  %H:%M:%S")}')
     print('=' * W)
+    print(route_status_line())
 
     assets = list(FULL_ASSET_MAP.items())
     total = len(assets)

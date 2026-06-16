@@ -366,7 +366,7 @@ def send_telegram(messages, use_proxy):
 
 DIGEST_HOUR = int(os.getenv("GTRADE_DIGEST_HOUR", "9"))
 STALE_MAX_DAYS = int(os.getenv("GTRADE_STALE_MAX_DAYS", "7"))
-ACC_ALERT_FLOOR = 0.40   # точность ниже — предупреждение
+ACC_ALERT_FLOOR = 0.40   # точность ниже - предупреждение
 ACC_ALERT_MIN_N = 10     # минимум проверенных сигналов для вывода
 ALERT_STATE_PATH = os.path.join(MODEL_DIR, "alert_state.json")
 RISK_STATE_PATH = os.path.join(MODEL_DIR, "risk_state.json")
@@ -464,7 +464,7 @@ def check_degradation(use_proxy):
                 continue
             lines.append(
                 f"{sig['asset']}: точность {acc['acc']:.0%} "
-                f"({acc['correct']}/{acc['n']}) — модель деградировала"
+                f"({acc['correct']}/{acc['n']}) - модель деградировала"
             )
             sent[key] = today
 
@@ -526,8 +526,8 @@ def start_command_listener(use_proxy):
     def _help(message):
         if not _own(message):
             return
-        bot.reply_to(message, "Команды:\n/top — лучшие сигналы\n/signal BTC — история актива\n"
-                              "/risk — риск-статус\n/digest — дайджест сейчас")
+        bot.reply_to(message, "Команды:\n/top - лучшие сигналы\n/signal BTC - история актива\n"
+                              "/risk - риск-статус\n/digest - дайджест сейчас")
 
     def _poll():
         while True:
@@ -593,7 +593,7 @@ def run_cycle():
             print(f"   WAIT {name}")
 
     # Send to Telegram
-    print(f"\n[->] {len(all_signals)} signal(s) found.")
+    print(f"\n[-] {len(all_signals)} signal(s) found.")
     if all_signals:
         ok = send_telegram(all_signals, use_proxy=tg_needs_proxy)
         if ok:

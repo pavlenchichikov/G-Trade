@@ -103,7 +103,7 @@ def lynch_analysis(fund: dict | None, tech: dict | None) -> tuple[str, str, int]
 
     if tech:
         score = int(tech['above_50']) + int(tech['above_200'])
-        sma_txt = f"SMA50: {'▲' if tech['above_50'] else '▼'}  SMA200: {'▲' if tech['above_200'] else '▼'}"
+        sma_txt = f"SMA50: {'^' if tech['above_50'] else 'v'}  SMA200: {'^' if tech['above_200'] else 'v'}"
         if score == 2:
             return "[OK] MOMENTUM", sma_txt, 2
         elif score == 1:

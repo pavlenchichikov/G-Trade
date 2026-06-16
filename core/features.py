@@ -121,7 +121,7 @@ def add_weekly_features(df: pd.DataFrame, table: str, engine) -> pd.DataFrame:
     return df
 
 
-# Reference tables are named after the ASSET KEY (config.py), e.g. SP500 -> "sp500",
+# Reference tables are named after the ASSET KEY (config.py), e.g. SP500 - "sp500",
 # not after the Yahoo ticker. Using ticker-derived names here (btcusd/gspc/dxynyd)
 # meant every read missed its table and corr_* silently fell back to 0.0.
 _CROSS_REFS = [

@@ -89,7 +89,7 @@ class PortfolioManager:
         return asset.lower().replace("^", "").replace(".", "").replace("-", "")
 
     def _get_returns(self) -> pd.DataFrame:
-        """Load daily close prices -> compute returns for all assets."""
+        """Load daily close prices - compute returns for all assets."""
         if self._returns_cache is not None:
             return self._returns_cache
 

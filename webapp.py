@@ -1,7 +1,7 @@
 """Веб-интерфейс: радар сигналов, track record, модели, риск.
 
 Читает готовые предсказания из market.db (их пишет predict.py),
-модели не загружает — стартует мгновенно.
+модели не загружает - стартует мгновенно.
 
 Запуск:
     uvicorn webapp:app --host 0.0.0.0 --port 8000
@@ -176,7 +176,7 @@ def models_page(request: Request):
             "trades": q.get("Trades"),
             "status": q.get("Status"),
             "policy": q.get("Policy"),
-            "mode": reg.get("ensemble_mode", "—"),
+            "mode": reg.get("ensemble_mode", "-"),
             "lookback": reg.get("lookback"),
             "updated": str(reg.get("updated_at", ""))[:10],
             "signal": sig["signal"] if sig else None,
