@@ -1127,7 +1127,8 @@ class GTradeLauncher(tk.Tk):
              "apimoex", "requests", "yfinance", "pandas", "numpy<2",
              "tensorflow==2.10.0", "protobuf>=3.20,<4", "plotly", "streamlit",
              "sqlalchemy", "catboost", "scikit-learn", "pyTelegramBotAPI",
-             "pysocks", "python-dotenv", "tabulate", "tqdm",
+             "pysocks", "python-dotenv", "tabulate", "tqdm", "optuna",
+             "fastapi", "uvicorn", "jinja2",
              "--no-cache-dir"],
             "Install/Repair"
         )

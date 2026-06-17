@@ -28,7 +28,7 @@ echo  CORE                     ANALYTICS
 echo    [1] Full Cycle           [N] News Analyzer
 echo    [2] Dashboard            [D] News Digest
 echo    [3] Predict (Radar)      [R] Regime Detector
-echo                             [C] Correlation Alert
+echo    [WU] Web UI (FastAPI)    [C] Correlation Alert
 echo                             [WL] Watchlist
 echo                             [T] Optuna Tune
 echo  DATA / TRAINING           [P] Paper Trading
@@ -43,13 +43,14 @@ echo    [W3] Top-5 180d equal  OTHER
 echo    [W4] Top-5  90d Kelly    [B] DB Backup
 echo    [W5] Custom assets       [I] Install/Repair
 echo  SERVICES
-echo    [7] Telegram Bot  [8] Scheduler  [9] DB Check  [F] DB Fix  [G] GUI  [0] EXIT
+echo    [7] Telegram Bot  [8] Scheduler  [9] DB Audit  [F] DB Fix  [G] GUI  [0] EXIT
 echo.
 echo =======================================================
 set /p choice="Select: "
 
 if "%choice%"=="1" goto full_run
 if "%choice%"=="2" goto dashboard
+if /i "%choice%"=="WU" goto webui
 if "%choice%"=="3" goto predict
 if "%choice%"=="4" goto data_only
 if "%choice%"=="5" goto train_only
@@ -92,6 +93,14 @@ goto menu
 :dashboard
 cls
 python -m streamlit run app.py
+pause
+goto menu
+
+:webui
+cls
+echo [Web UI] FastAPI on http://127.0.0.1:8000  (Ctrl+C to stop)
+start "" http://127.0.0.1:8000
+python -m uvicorn webapp:app --port 8000
 pause
 goto menu
 
@@ -220,7 +229,7 @@ goto menu
 
 :install_fix
 cls
-python -m pip install apimoex requests yfinance pandas "numpy<2" plotly streamlit sqlalchemy catboost scikit-learn pyTelegramBotAPI pysocks python-dotenv tabulate tqdm optuna --no-cache-dir
+python -m pip install apimoex requests yfinance pandas "numpy<2" plotly streamlit sqlalchemy catboost scikit-learn pyTelegramBotAPI pysocks python-dotenv tabulate tqdm optuna fastapi uvicorn jinja2 --no-cache-dir
 pause
 goto menu
 
