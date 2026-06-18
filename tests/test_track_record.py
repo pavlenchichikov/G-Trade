@@ -49,6 +49,28 @@ def test_latest_signals_empty_table(tmp_path):
     assert track_record.latest_signals(db_path=path) == []
 
 
+def test_accuracy_scoped_to_current_version_when_column_present(tmp_path):
+    """With a model_version column, accuracy must ignore legacy-generation rows."""
+    from core.features import feature_version
+    path = str(tmp_path / "market.db")
+    con = sqlite3.connect(path)
+    con.execute(
+        "CREATE TABLE prediction_log (date TEXT, asset TEXT, signal TEXT, "
+        "probability REAL, actual_next_ret REAL, correct INTEGER, cb_prob REAL, "
+        "lstm_prob REAL, model_version TEXT)"
+    )
+    cur_v = feature_version()
+    con.executemany("INSERT INTO prediction_log VALUES (?,?,?,?,?,?,?,?,?)", [
+        ("2026-06-01", "BTC", "BUY", 0.6, 0.01, 1, None, None, "legacy"),
+        ("2026-06-02", "BTC", "BUY", 0.6, 0.01, 1, None, None, "legacy"),
+        ("2026-06-03", "BTC", "BUY", 0.6, -0.01, 0, None, None, cur_v),
+    ])
+    con.commit(); con.close()
+    acc = track_record.asset_accuracy("BTC", db_path=path)
+    assert acc["n"] == 1        # only the current-generation row counts
+    assert acc["acc"] == 0.0
+
+
 def test_asset_accuracy_counts_only_verified(db):
     acc = track_record.asset_accuracy("BTC", db_path=db)
     assert acc["n"] == 2          # строка с correct=NULL не считается

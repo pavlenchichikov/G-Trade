@@ -42,6 +42,14 @@ class TestEngineerFeatures:
         for col in required:
             assert col in df.columns, f"Missing column: {col}"
 
+    def test_tail_risk_columns_present(self, sample_ohlcv):
+        """Taleb block now exposes asymmetry (skew) and downside tail (VaR)."""
+        df = engineer_features(sample_ohlcv)
+        for col in ('taleb_risk', 'ret_skew', 'var_5'):
+            assert col in df.columns, f"Missing tail-risk column: {col}"
+        # var_5 is a 5% left-tail return: should be non-positive on average
+        assert df['var_5'].mean() <= 0
+
     def test_no_nan_values(self, sample_ohlcv):
         df = engineer_features(sample_ohlcv)
         # After dropna(), no NaN should remain in feature columns

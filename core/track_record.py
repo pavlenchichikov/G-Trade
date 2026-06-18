@@ -23,11 +23,27 @@ def _connect(db_path=None):
     return sqlite3.connect(db_path or DB_PATH)
 
 
+def _has_model_version(con) -> bool:
+    try:
+        cols = [r[1] for r in con.execute("PRAGMA table_info(prediction_log)").fetchall()]
+    except sqlite3.OperationalError:
+        return False
+    return "model_version" in cols
+
+
 def _accuracy(con, asset: str, last_n: int) -> dict:
+    """Hit-rate over the last verified signals. When prediction_log carries a
+    model_version, scope to the current feature generation so an old model's
+    forward record never blends into the active model's accuracy."""
+    where = "asset=? AND correct IS NOT NULL"
+    params = [asset]
+    if _has_model_version(con):
+        from core.features import feature_version
+        where += " AND model_version=?"
+        params.append(feature_version())
     rows = con.execute(
-        "SELECT correct FROM prediction_log "
-        "WHERE asset=? AND correct IS NOT NULL ORDER BY date DESC LIMIT ?",
-        (asset, last_n),
+        f"SELECT correct FROM prediction_log WHERE {where} ORDER BY date DESC LIMIT ?",
+        (*params, last_n),
     ).fetchall()
     n = len(rows)
     correct = sum(r[0] for r in rows)

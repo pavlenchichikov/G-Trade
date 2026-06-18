@@ -5,14 +5,35 @@ Each guru returns (status, description, score 0-2):
   - Buffett - Quality moats: ROE, FCF, low debt, margins
   - Graham  - Deep value: NCAV, Graham Number, P/E, balance sheet
   - Munger  - Inversion: what can go wrong? Risk detection
+
+Council aggregation adds three corrections over a plain equal-weight sum:
+  - Munger veto: a DANGER from the risk guru blocks a BUY (down to HOLD). The
+    inversion voice must not be outvoted by the three bullish value screens.
+  - Track-record weighting: per-guru weights can be calibrated from guru_log
+    forward hit-rate (council_weights_from_log); equal weights by default.
+  - Technical discount: a verdict built only on price/momentum (no fundamentals)
+    is less reliable than one built on PEG/ROE/Graham#, so its score is shaved.
+  - Sector awareness: financials carry leverage by design, so debt/liquidity
+    gates are relaxed for them instead of always firing WEAK/DANGER.
 """
 
 from __future__ import annotations
 
 import math
+import os
 from typing import Any
 
 import pandas as pd
+
+# Verdict built on price-only signals (no fundamentals) is shaved by this factor.
+TECH_CONFIDENCE_DISCOUNT = 0.85
+
+# Sectors where high debt / low current ratio is structural, not distress.
+_FINANCIAL_SECTORS = {"US FINANCE", "RUS FINANCE"}
+
+
+def _is_financial(sector: str | None) -> bool:
+    return bool(sector) and sector in _FINANCIAL_SECTORS
 
 
 def calc_peg(pe: float, growth: float) -> float | None:
@@ -114,7 +135,8 @@ def lynch_analysis(fund: dict | None, tech: dict | None) -> tuple[str, str, int]
     return "[--] N/A", "Нет данных", 0
 
 
-def buffett_analysis(fund: dict | None, tech: dict | None) -> tuple[str, str, int]:
+def buffett_analysis(fund: dict | None, tech: dict | None,
+                     *, sector: str | None = None) -> tuple[str, str, int]:
     """Warren Buffett - Quality moats, ROE, FCF, low debt, retained earnings."""
     if fund:
         roe = fund.get('roe', 0)
@@ -134,7 +156,11 @@ def buffett_analysis(fund: dict | None, tech: dict | None) -> tuple[str, str, in
         else:
             details.append(f"ROE: {roe:.0%} (слабо)")
 
-        if debt < 0.5:
+        if _is_financial(sector):
+            # Financials carry high debt/equity by the nature of the business -
+            # not distress. Award a neutral point instead of a "high debt" penalty.
+            score += 1; details.append("Долг: N/A для финсектора")
+        elif debt < 0.5:
             score += 2; details.append(f"Долг: {debt:.1f}x (минимальный)")
         elif debt < 1.5:
             score += 1; details.append(f"Долг: {debt:.1f}x (умеренный)")
@@ -194,7 +220,8 @@ def buffett_analysis(fund: dict | None, tech: dict | None) -> tuple[str, str, in
     return "[--] N/A", "Нет данных", 0
 
 
-def graham_analysis(fund: dict | None, tech: dict | None) -> tuple[str, str, int]:
+def graham_analysis(fund: dict | None, tech: dict | None,
+                    *, sector: str | None = None) -> tuple[str, str, int]:
     """Benjamin Graham - Deep value, margin of safety, Graham Number, NCAV."""
     if fund:
         pe = fund.get('pe', 0)
@@ -239,12 +266,17 @@ def graham_analysis(fund: dict | None, tech: dict | None) -> tuple[str, str, int
             else:
                 details.append(f"P/E: {pe:.1f} (дорого)")
 
-        if current_ratio > 2:
-            score += 1; details.append(f"Ликвидность: {current_ratio:.1f}x")
-        elif fund.get('quick_ratio', 0) > 1.5:
-            score += 1; details.append(f"Quick: {fund['quick_ratio']:.1f}x")
-        if debt < 0.5:
-            score += 1
+        if _is_financial(sector):
+            # current ratio / debt<0.5 do not apply to banks (no working capital
+            # in the usual sense, leverage is regulatory). Neutral point.
+            score += 1; details.append("Ликвидность: N/A (финсектор, регуляторная)")
+        else:
+            if current_ratio > 2:
+                score += 1; details.append(f"Ликвидность: {current_ratio:.1f}x")
+            elif fund.get('quick_ratio', 0) > 1.5:
+                score += 1; details.append(f"Quick: {fund['quick_ratio']:.1f}x")
+            if debt < 0.5:
+                score += 1
 
         wc = fund.get('working_capital', 0)
         if wc and wc > 0:
@@ -272,10 +304,12 @@ def graham_analysis(fund: dict | None, tech: dict | None) -> tuple[str, str, int
     return "[--] N/A", "Нет данных", 0
 
 
-def munger_analysis(fund: dict | None, tech: dict | None) -> tuple[str, str, int]:
+def munger_analysis(fund: dict | None, tech: dict | None,
+                    *, sector: str | None = None) -> tuple[str, str, int]:
     """Charlie Munger - Inversion: what can go wrong? Deep risk detection."""
     risks = []
     score = 0
+    financial = _is_financial(sector)
 
     if fund:
         pe = fund.get('pe', 0)
@@ -283,10 +317,12 @@ def munger_analysis(fund: dict | None, tech: dict | None) -> tuple[str, str, int
         roe = fund.get('roe', 0)
         margin = fund.get('profit_margin', 0)
 
-        if debt > 3:
-            score += 2; risks.append(f"Долг: {debt:.1f}x (опасно)")
-        elif debt > 1.5:
-            score += 1; risks.append(f"Долг: {debt:.1f}x (повышенный)")
+        # For banks high debt/leverage is normal (deposits), not a risk flag.
+        if not financial:
+            if debt > 3:
+                score += 2; risks.append(f"Долг: {debt:.1f}x (опасно)")
+            elif debt > 1.5:
+                score += 1; risks.append(f"Долг: {debt:.1f}x (повышенный)")
 
         if roe < 0:
             score += 2; risks.append(f"ROE: {roe:.0%} (убыточность)")
@@ -320,7 +356,8 @@ def munger_analysis(fund: dict | None, tech: dict | None) -> tuple[str, str, int
 
         total_assets = fund.get('total_assets', 0)
         total_liab = fund.get('total_liabilities', 0)
-        if total_assets > 0 and total_liab > 0:
+        if not financial and total_assets > 0 and total_liab > 0:
+            # A bank's liabilities are ~90% of assets (deposits) - normal, not risk.
             liab_ratio = total_liab / total_assets
             if liab_ratio > 0.85:
                 score += 1; risks.append(f"Обязательства: {liab_ratio:.0%} активов")
@@ -363,36 +400,105 @@ def munger_analysis(fund: dict | None, tech: dict | None) -> tuple[str, str, int
         return "[OK] MINOR", desc, 2
 
 
+_EQUAL_WEIGHTS = {"lynch": 1.0, "buffett": 1.0, "graham": 1.0, "munger": 1.0}
+
+
+def council_weights_from_log(db_path: str | None = None, *,
+                             horizon: str = "5d", min_rows: int = 40) -> dict[str, float]:
+    """Per-guru weights calibrated from guru_log forward returns.
+
+    For each guru, measure the spread in forward ret_{horizon} between its
+    high-conviction calls (score 2) and the rest (score <= 1). A guru whose '2'
+    reliably precedes higher returns earns more weight; one with no edge is
+    down-weighted. Weights are normalised so the mean is 1.0 (sum 4), preserving
+    the 0-8 council scale. Falls back to equal weights if guru_log is missing or
+    too thin - so the council degrades gracefully before any track record exists.
+    """
+    try:
+        path = db_path or os.path.join(os.path.dirname(__file__), os.pardir, "market.db")
+        if not os.path.exists(path):
+            return dict(_EQUAL_WEIGHTS)
+        import sqlite3
+        col = f"ret_{horizon}"
+        con = sqlite3.connect(path)
+        try:
+            df = pd.read_sql(
+                f"SELECT lynch_score, buffett_score, graham_score, munger_score, {col} "
+                f"FROM guru_log WHERE {col} IS NOT NULL", con)
+        finally:
+            con.close()
+        if len(df) < min_rows:
+            return dict(_EQUAL_WEIGHTS)
+        edges = {}
+        for g in ("lynch", "buffett", "graham", "munger"):
+            s = df[f"{g}_score"]
+            hi = df.loc[s >= 2, col].mean()
+            lo = df.loc[s <= 1, col].mean()
+            edges[g] = max(0.0, hi - lo) if pd.notna(hi) and pd.notna(lo) else 0.0
+        total = sum(edges.values())
+        if total <= 0:
+            return dict(_EQUAL_WEIGHTS)
+        return {g: 4.0 * e / total for g, e in edges.items()}
+    except Exception:
+        return dict(_EQUAL_WEIGHTS)
+
+
 def get_guru_analysis(
     fund: dict | None,
     tech: dict | None,
+    *,
+    sector: str | None = None,
+    weights: dict[str, float] | None = None,
 ) -> dict:
-    """Run all 4 gurus and aggregate council vote.
+    """Run all 4 gurus and aggregate the council vote.
 
     Args:
-        fund: Fundamental data dict (from any source)
-        tech: Technical context dict (from technical_context())
+        fund: Fundamental data dict (from any source); None means technical-only.
+        tech: Technical context dict (from technical_context()).
+        sector: ASSET_TYPES group (e.g. "US FINANCE") - relaxes debt/liquidity
+                gates for financials.
+        weights: Per-guru weights (see council_weights_from_log); equal if None.
 
-    Returns dict with lynch/buffett/graham/munger + council_vote.
+    Aggregation adds, over a plain sum: weighted consensus, a Munger DANGER veto
+    on BUY, and a confidence discount when the verdict rests on price alone.
+
+    Returns dict with lynch/buffett/graham/munger + council + data_source.
     """
     lynch_status, lynch_desc, lynch_score = lynch_analysis(fund, tech)
-    buffett_status, buffett_desc, buffett_score = buffett_analysis(fund, tech)
-    graham_status, graham_desc, graham_score = graham_analysis(fund, tech)
-    munger_status, munger_desc, munger_score = munger_analysis(fund, tech)
+    buffett_status, buffett_desc, buffett_score = buffett_analysis(fund, tech, sector=sector)
+    graham_status, graham_desc, graham_score = graham_analysis(fund, tech, sector=sector)
+    munger_status, munger_desc, munger_score = munger_analysis(fund, tech, sector=sector)
 
-    total_score = lynch_score + buffett_score + graham_score + munger_score
-    max_score = 8
-    consensus_pct = total_score / max_score * 100
+    w = weights or _EQUAL_WEIGHTS
+    scores = {"lynch": lynch_score, "buffett": buffett_score,
+              "graham": graham_score, "munger": munger_score}
+    weighted = sum(scores[g] * w.get(g, 1.0) for g in scores)
+    max_score = 2.0 * sum(w.get(g, 1.0) for g in scores)
+    consensus_pct = (weighted / max_score * 100) if max_score > 0 else 0.0
+
+    # Technical-only verdict (no fundamentals) is less reliable than one built on
+    # PEG/ROE/Graham#, so its confidence is shaved before the thresholds.
+    is_technical = not fund
+    if is_technical:
+        consensus_pct *= TECH_CONFIDENCE_DISCOUNT
 
     if consensus_pct >= 75:
-        council = {"verdict": "BUY", "pct": consensus_pct, "color": "green",
-                   "text": f"STRONG BUY ({consensus_pct:.0f}% - {total_score}/{max_score})"}
+        verdict, color, label = "BUY", "green", "STRONG BUY"
     elif consensus_pct >= 50:
-        council = {"verdict": "HOLD", "pct": consensus_pct, "color": "orange",
-                   "text": f"HOLD ({consensus_pct:.0f}% - {total_score}/{max_score})"}
+        verdict, color, label = "HOLD", "orange", "HOLD"
     else:
-        council = {"verdict": "AVOID", "pct": consensus_pct, "color": "red",
-                   "text": f"AVOID ({consensus_pct:.0f}% - {total_score}/{max_score})"}
+        verdict, color, label = "AVOID", "red", "AVOID"
+
+    # Munger veto: the inversion (risk) guru must not be outvoted by the three
+    # bullish value screens. A DANGER call blocks a BUY (caps it at HOLD).
+    vetoed = munger_status.startswith("[!!]")
+    if vetoed and verdict == "BUY":
+        verdict, color, label = "HOLD", "orange", "HOLD (Munger veto: DANGER)"
+
+    note = " | tech-only" if is_technical else ""
+    council = {"verdict": verdict, "pct": consensus_pct, "color": color,
+               "vetoed": vetoed,
+               "text": f"{label} ({consensus_pct:.0f}%){note}"}
 
     data_source = fund.get('source', 'technical') if fund else 'technical'
 

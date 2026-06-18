@@ -2,6 +2,7 @@
 
 import pytest
 
+import core.guru as guru
 from core.guru import (
     calc_peg,
     calc_graham_number,
@@ -10,6 +11,7 @@ from core.guru import (
     graham_analysis,
     munger_analysis,
     get_guru_analysis,
+    council_weights_from_log,
 )
 
 
@@ -134,3 +136,74 @@ class TestGetGuruAnalysis:
     def test_no_data(self):
         result = get_guru_analysis(None, None)
         assert result['council']['verdict'] == 'AVOID'
+
+
+class TestMungerVeto:
+    def test_danger_blocks_buy(self, monkeypatch):
+        """3 bullish gurus (6/8 = BUY) must be vetoed to HOLD by a Munger DANGER."""
+        monkeypatch.setattr(guru, "lynch_analysis", lambda f, t: ("[OK] BUY", "", 2))
+        monkeypatch.setattr(guru, "buffett_analysis", lambda f, t, **k: ("[TOP] GEM", "", 2))
+        monkeypatch.setattr(guru, "graham_analysis", lambda f, t, **k: ("[OK] BUY", "", 2))
+        monkeypatch.setattr(guru, "munger_analysis", lambda f, t, **k: ("[!!] DANGER", "", 0))
+        res = get_guru_analysis({'source': 'x'}, {})
+        assert res['council']['verdict'] != 'BUY'
+        assert res['council']['vetoed'] is True
+
+    def test_clean_munger_does_not_veto(self, monkeypatch):
+        monkeypatch.setattr(guru, "lynch_analysis", lambda f, t: ("[OK] BUY", "", 2))
+        monkeypatch.setattr(guru, "buffett_analysis", lambda f, t, **k: ("[TOP] GEM", "", 2))
+        monkeypatch.setattr(guru, "graham_analysis", lambda f, t, **k: ("[OK] BUY", "", 2))
+        monkeypatch.setattr(guru, "munger_analysis", lambda f, t, **k: ("[OK] CLEAN", "", 2))
+        res = get_guru_analysis({'source': 'x'}, {})
+        assert res['council']['verdict'] == 'BUY'
+        assert res['council']['vetoed'] is False
+
+
+class TestSectorAware:
+    def test_financial_relaxes_buffett_debt(self):
+        """High debt should not sink a bank under Buffett once sector is known."""
+        fund = {'roe': 0.16, 'debt_equity': 5.0, 'profit_margin': 0.10, 'fcf': 1e8}
+        base = buffett_analysis(fund, None)[2]
+        fin = buffett_analysis(fund, None, sector="US FINANCE")[2]
+        assert fin > base
+
+    def test_financial_relaxes_munger_leverage(self):
+        """A bank's high debt + high liabilities must not read as Munger DANGER."""
+        fund = {'pe': 12, 'debt_equity': 6.0, 'roe': 0.14, 'profit_margin': 0.20,
+                'total_assets': 100, 'total_liabilities': 92}
+        generic = munger_analysis(fund, None)[2]
+        fin = munger_analysis(fund, None, sector="RUS FINANCE")[2]
+        assert fin >= generic
+
+
+class TestTechnicalDiscount:
+    def test_technical_only_flagged_and_shaved(self):
+        tech = {'above_50': True, 'above_200': True, 'rsi': 55, 'pct_52w': 60,
+                'vol_30d': 0.2, 'macd_bull': True, 'sma_rising': True}
+        res = get_guru_analysis(None, tech)
+        assert res['data_source'] == 'technical'
+        assert 'tech-only' in res['council']['text']
+
+
+class TestCouncilWeights:
+    def test_fallback_equal_when_no_db(self, tmp_path):
+        w = council_weights_from_log(str(tmp_path / "missing.db"))
+        assert w == {'lynch': 1.0, 'buffett': 1.0, 'graham': 1.0, 'munger': 1.0}
+
+    def test_weights_keep_council_scale(self, tmp_path):
+        """Calibrated weights normalise to sum 4 (mean 1), preserving the 0-8 scale."""
+        import sqlite3
+        db = str(tmp_path / "market.db")
+        con = sqlite3.connect(db)
+        con.execute("""CREATE TABLE guru_log (lynch_score INT, buffett_score INT,
+                       graham_score INT, munger_score INT, ret_5d REAL)""")
+        # buffett's '2' precedes strong returns; others flat, so buffett gets weight.
+        rows = []
+        for i in range(60):
+            rows.append((2 if i % 2 else 0, 2 if i % 2 else 0,
+                         1, 1, 0.05 if i % 2 else -0.01))
+        con.executemany("INSERT INTO guru_log VALUES (?,?,?,?,?)", rows)
+        con.commit(); con.close()
+        w = council_weights_from_log(db)
+        assert abs(sum(w.values()) - 4.0) < 1e-6
+        assert all(v >= 0 for v in w.values())

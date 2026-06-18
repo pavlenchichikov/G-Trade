@@ -5,6 +5,8 @@ from datetime import datetime, timedelta
 import pandas as pd
 from sqlalchemy import create_engine
 
+from core.features import feature_version
+
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(BASE_DIR, "market.db")
 
@@ -22,6 +24,20 @@ def _conn():
     return sqlite3.connect(DB_PATH)
 
 
+def current_model_version() -> str:
+    """Feature-space id of the model writing predictions now (see feature_version)."""
+    return feature_version()
+
+
+def _migrate(cur):
+    """Add model_version to an old prediction_log in place (rows before the
+    migration keep NULL = legacy generation, so they never blend with the new
+    model's track record)."""
+    cols = [r[1] for r in cur.execute("PRAGMA table_info(prediction_log)").fetchall()]
+    if cols and "model_version" not in cols:
+        cur.execute("ALTER TABLE prediction_log ADD COLUMN model_version TEXT")
+
+
 def _ensure_table(cur):
     cur.execute("""
         CREATE TABLE IF NOT EXISTS prediction_log (
@@ -32,13 +48,25 @@ def _ensure_table(cur):
             actual_next_ret REAL,
             correct INTEGER,
             cb_prob REAL,
-            lstm_prob REAL
+            lstm_prob REAL,
+            model_version TEXT
         )
     """)
+    _migrate(cur)
 
 
-def log_prediction(asset, signal, probability, cb_prob=None, lstm_prob=None):
+def _prepare():
+    """Ensure the table exists and is migrated before an aggregate read."""
+    with _conn() as con:
+        _ensure_table(con.cursor())
+        con.commit()
+
+
+def log_prediction(asset, signal, probability, cb_prob=None, lstm_prob=None,
+                   model_version=None):
     today = datetime.utcnow().strftime("%Y-%m-%d")
+    if model_version is None:
+        model_version = feature_version()
     with _conn() as con:
         cur = con.cursor()
         _ensure_table(cur)
@@ -51,9 +79,10 @@ def log_prediction(asset, signal, probability, cb_prob=None, lstm_prob=None):
             return
         cur.execute(
             """INSERT INTO prediction_log
-               (date, asset, signal, probability, actual_next_ret, correct, cb_prob, lstm_prob)
-               VALUES (?, ?, ?, ?, NULL, NULL, ?, ?)""",
-            (today, asset, signal, probability, cb_prob, lstm_prob),
+               (date, asset, signal, probability, actual_next_ret, correct,
+                cb_prob, lstm_prob, model_version)
+               VALUES (?, ?, ?, ?, NULL, NULL, ?, ?, ?)""",
+            (today, asset, signal, probability, cb_prob, lstm_prob, model_version),
         )
         con.commit()
 
@@ -112,13 +141,17 @@ def _date_filter(days):
     return cutoff
 
 
-def get_accuracy(asset=None, days=30):
+def get_accuracy(asset=None, days=30, model_version=None):
+    _prepare()
     cutoff = _date_filter(days)
     params = [cutoff]
     where = "WHERE date >= ? AND signal != 'WAIT' AND correct IS NOT NULL"
     if asset:
         where += " AND asset = ?"
         params.append(asset)
+    if model_version:
+        where += " AND model_version = ?"
+        params.append(model_version)
 
     df = pd.read_sql(
         f"SELECT signal, correct FROM prediction_log {where}",
@@ -148,12 +181,16 @@ def get_accuracy(asset=None, days=30):
     }
 
 
-def get_accuracy_history(asset=None, window=7):
+def get_accuracy_history(asset=None, window=7, model_version=None):
+    _prepare()
     params = []
     where = "WHERE signal != 'WAIT' AND correct IS NOT NULL"
     if asset:
         where += " AND asset = ?"
         params.append(asset)
+    if model_version:
+        where += " AND model_version = ?"
+        params.append(model_version)
 
     df = pd.read_sql(
         f"SELECT date, correct FROM prediction_log {where} ORDER BY date",
@@ -173,13 +210,18 @@ def get_accuracy_history(asset=None, window=7):
     return daily[["date", "rolling_acc", "predictions_count"]]
 
 
-def get_leaderboard(days=30):
+def get_leaderboard(days=30, model_version=None):
+    _prepare()
     cutoff = _date_filter(days)
+    params = [cutoff]
+    where = "WHERE date >= ? AND signal != 'WAIT' AND correct IS NOT NULL"
+    if model_version:
+        where += " AND model_version = ?"
+        params.append(model_version)
     df = pd.read_sql(
-        """SELECT asset, correct FROM prediction_log
-           WHERE date >= ? AND signal != 'WAIT' AND correct IS NOT NULL""",
+        f"SELECT asset, correct FROM prediction_log {where}",
         _engine(),
-        params=(cutoff,),
+        params=tuple(params),
     )
 
     if df.empty:
@@ -196,13 +238,18 @@ def get_leaderboard(days=30):
     return grp[["Asset", "Accuracy", "Predictions", "Correct"]]
 
 
-def get_daily_stats(days=30):
+def get_daily_stats(days=30, model_version=None):
+    _prepare()
     cutoff = _date_filter(days)
+    params = [cutoff]
+    where = "WHERE date >= ? AND signal != 'WAIT' AND correct IS NOT NULL"
+    if model_version:
+        where += " AND model_version = ?"
+        params.append(model_version)
     df = pd.read_sql(
-        """SELECT date, correct FROM prediction_log
-           WHERE date >= ? AND signal != 'WAIT' AND correct IS NOT NULL""",
+        f"SELECT date, correct FROM prediction_log {where}",
         _engine(),
-        params=(cutoff,),
+        params=tuple(params),
     )
 
     if df.empty:
@@ -230,14 +277,16 @@ if __name__ == "__main__":
         print("\n=== LEADERBOARD (last 30 days) ===")
         print(lb_display.to_string(index=False))
 
-    overall = get_accuracy(days=30)
-    print("\n=== OVERALL ACCURACY (last 30 days) ===")
-    if overall["accuracy"] is None:
-        print("No data yet.")
-    else:
-        print(f"Accuracy : {overall['accuracy']:.1%}")
-        print(f"Total    : {overall['total_predictions']}")
-        print(f"Correct  : {overall['correct_count']}")
-        for sig, stats in overall["by_signal"].items():
-            acc_str = f"{stats['acc']:.1%}" if stats["acc"] is not None else "N/A"
-            print(f"  {sig}: {acc_str} ({stats['count']} predictions)")
+    ver = current_model_version()
+    for label, mv in (("ALL GENERATIONS", None), (f"CURRENT MODEL [{ver}]", ver)):
+        overall = get_accuracy(days=30, model_version=mv)
+        print(f"\n=== OVERALL ACCURACY (last 30 days) - {label} ===")
+        if overall["accuracy"] is None:
+            print("No data yet.")
+        else:
+            print(f"Accuracy : {overall['accuracy']:.1%}")
+            print(f"Total    : {overall['total_predictions']}")
+            print(f"Correct  : {overall['correct_count']}")
+            for sig, stats in overall["by_signal"].items():
+                acc_str = f"{stats['acc']:.1%}" if stats["acc"] is not None else "N/A"
+                print(f"  {sig}: {acc_str} ({stats['count']} predictions)")

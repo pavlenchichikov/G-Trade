@@ -1,5 +1,8 @@
 """Фичи по OHLCV: индикаторы, недельные и кросс-активные."""
 
+import hashlib
+
+import numpy as np
 import pandas as pd
 
 
@@ -19,8 +22,23 @@ def engineer_features(df: pd.DataFrame) -> pd.DataFrame:
     df['ret_10'] = df['close'].pct_change(10)
     df['ret_20'] = df['close'].pct_change(20)
 
-    # Volatility & risk
-    df['taleb_risk'] = returns.rolling(window=30).kurt().fillna(0)
+    # Volatility & tail risk (Taleb)
+    # Kurtosis is a 4th moment: a 30-bar window is too small to estimate it
+    # stably - one outlier dominates, then mechanically drops out 30 bars later,
+    # making the index spike and cliff for no real reason. Use 60 bars on
+    # log-returns. Kurtosis is also symmetric, so on its own it cannot tell an
+    # upside spike from a crash; for a long-biased model the left tail is what
+    # hurts, so we add skew (asymmetry) and var_5 (5% left-tail return, VaR).
+    log_ret = np.log(df['close'] / df['close'].shift(1))
+    tail = log_ret.rolling(window=60, min_periods=30)
+    df['taleb_risk'] = tail.kurt()
+    df['ret_skew'] = tail.skew()
+    df['var_5'] = tail.quantile(0.05)
+    # Warm-up rows: fill with the column median, NOT 0. A zero kurtosis/skew/VaR
+    # reads as "perfectly calm" (the safest value), which would feed the model
+    # fake calm at the start of every short-history asset.
+    for _c in ('taleb_risk', 'ret_skew', 'var_5'):
+        df[_c] = df[_c].fillna(df[_c].median())
     vol = (df['high'] - df['low']) / (df['close'] + 1e-9)
     df['vol_z'] = (vol - vol.rolling(30).mean()) / (vol.rolling(30).std() + 1e-9)
 
@@ -166,9 +184,21 @@ def add_crossasset_features(df: pd.DataFrame, table: str, engine) -> pd.DataFram
 # Feature columns used for training (order matters for model compatibility)
 CANDIDATE_FEATURES = [
     'ret_1', 'ret_5', 'ret_10', 'ret_20',
-    'taleb_risk', 'vol_z', 'atr',
+    'taleb_risk', 'ret_skew', 'var_5', 'vol_z', 'atr',
     'sma_20', 'sma_50', 'sma_200', 'trend_strength',
     'rsi', 'macd_hist', 'bb_pos', 'vol_ratio',
     'w_ret', 'w_rsi', 'w_trend',
     'corr_btc', 'corr_sp500', 'corr_dxy',
 ]
+
+
+def feature_version() -> str:
+    """Short stable id of the current feature space.
+
+    Changes whenever CANDIDATE_FEATURES changes (e.g. the 21 to 23 jump when
+    skew/var_5 were added), so prediction_log can tag each forward prediction
+    with the model generation that made it and never blend the live track record
+    of an old feature set with a new one.
+    """
+    digest = hashlib.sha1(",".join(CANDIDATE_FEATURES).encode()).hexdigest()
+    return digest[:8]

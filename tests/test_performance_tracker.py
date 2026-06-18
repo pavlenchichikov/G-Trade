@@ -5,6 +5,9 @@ lowercase (data_engine lowercases them), so df["Close"] raised and every row was
 skipped, leaving accuracy "0 verified" forever.
 """
 import sqlite3
+from datetime import datetime
+
+import pytest
 
 
 def _seed(db):
@@ -41,3 +44,58 @@ def test_update_actuals_reconciles_against_next_close(tmp_path, monkeypatch):
     con.close()
     assert ret is not None and abs(ret - 0.10) < 1e-9   # 100 to 110
     assert correct == 1                                  # BUY and price rose
+
+
+def test_log_prediction_tags_current_version(tmp_path, monkeypatch):
+    import performance_tracker as pt
+    from core.features import feature_version
+    db = str(tmp_path / "m.db")
+    monkeypatch.setattr(pt, "DB_PATH", db)
+    monkeypatch.setattr(pt, "_ENGINE", None)
+    pt.log_prediction("BTC", "BUY", 0.7)
+    con = sqlite3.connect(db)
+    mv = con.execute("SELECT model_version FROM prediction_log").fetchone()[0]
+    con.close()
+    assert mv == feature_version()
+
+
+def test_migrate_adds_column_and_keeps_old_rows_legacy(tmp_path, monkeypatch):
+    import performance_tracker as pt
+    db = str(tmp_path / "legacy.db")
+    con = sqlite3.connect(db)
+    con.execute("CREATE TABLE prediction_log (date TEXT, asset TEXT, signal TEXT, "
+                "probability REAL, actual_next_ret REAL, correct INTEGER, "
+                "cb_prob REAL, lstm_prob REAL)")
+    con.execute("INSERT INTO prediction_log VALUES "
+                "('2026-06-01','BTC','BUY',0.7,0.01,1,0.7,NULL)")
+    con.commit(); con.close()
+    monkeypatch.setattr(pt, "DB_PATH", db)
+    monkeypatch.setattr(pt, "_ENGINE", None)
+    pt._prepare()
+    con = sqlite3.connect(db)
+    cols = [r[1] for r in con.execute("PRAGMA table_info(prediction_log)")]
+    legacy = con.execute("SELECT model_version FROM prediction_log").fetchone()[0]
+    con.close()
+    assert "model_version" in cols
+    assert legacy is None   # pre-migration row stays a distinct legacy generation
+
+
+def test_get_accuracy_scopes_by_version(tmp_path, monkeypatch):
+    import performance_tracker as pt
+    db = str(tmp_path / "scoped.db")
+    monkeypatch.setattr(pt, "DB_PATH", db)
+    monkeypatch.setattr(pt, "_ENGINE", None)
+    pt._prepare()
+    today = datetime.utcnow().strftime("%Y-%m-%d")
+    con = sqlite3.connect(db)
+    con.executemany(
+        "INSERT INTO prediction_log (date,asset,signal,probability,actual_next_ret,"
+        "correct,cb_prob,lstm_prob,model_version) VALUES (?,?,?,?,?,?,?,?,?)",
+        [(today, "BTC", "BUY", 0.6, 0.01, 1, None, None, "oldv"),
+         (today, "ETH", "BUY", 0.6, 0.01, 1, None, None, "oldv"),
+         (today, "SOL", "BUY", 0.6, -0.01, 0, None, None, "newv")],
+    )
+    con.commit(); con.close()
+    assert pt.get_accuracy(days=30)["accuracy"] == pytest.approx(2 / 3)   # all
+    assert pt.get_accuracy(days=30, model_version="newv")["accuracy"] == 0.0
+    assert pt.get_accuracy(days=30, model_version="oldv")["accuracy"] == 1.0

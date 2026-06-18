@@ -1,4 +1,5 @@
 import streamlit as st
+import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
@@ -269,9 +270,11 @@ def get_technical_data(asset, weekly=False):
         tr = pd.concat([high_low, high_close, low_close], axis=1).max(axis=1)
         df['ATR'] = tr.rolling(14).mean()
 
-        # Taleb Risk (kurtosis of returns)
-        rets = df['close'].pct_change()
-        df['taleb_index'] = rets.rolling(30).kurt().fillna(0)
+        # Tail Risk (Taleb): 60-bar kurtosis of log-returns. A 30-bar window is
+        # too small for a 4th moment - one outlier dominates and then cliffs.
+        log_ret = np.log(df['close'] / df['close'].shift(1))
+        df['taleb_index'] = log_ret.rolling(60, min_periods=30).kurt()
+        df['taleb_index'] = df['taleb_index'].fillna(df['taleb_index'].median())
 
         # Volume SMA for volume analysis
         df['vol_sma20'] = df['volume'].rolling(20).mean()
@@ -527,16 +530,31 @@ def _get_fundamentals(symbol, cl, smart_data):
     return None  # no fundamentals available
 
 
-from core.guru import technical_context as _technical_context, get_guru_analysis as _guru_analysis
+from core.guru import (
+    technical_context as _technical_context,
+    get_guru_analysis as _guru_analysis,
+    council_weights_from_log as _council_weights_from_log,
+)
 
 
-def get_guru_analysis(symbol, df, smart_data_tuple):
+@st.cache_data(ttl=3600)
+def _council_weights():
+    """Per-guru weights from guru_log track record (cached 1h)."""
+    return _council_weights_from_log()
+
+
+def _sector_of(asset_key):
+    """ASSET_TYPES group an asset belongs to (for sector-aware guru gates)."""
+    return next((k for k, v in ASSET_TYPES.items() if asset_key in v), None)
+
+
+def get_guru_analysis(symbol, df, smart_data_tuple, sector=None):
     """Thin wrapper: fetches fundamentals then delegates to core.guru."""
     smart_data, _ = smart_data_tuple
     cl = symbol.split('.')[0]
     fund = _get_fundamentals(symbol, cl, smart_data)
     tech = _technical_context(df)
-    return _guru_analysis(fund, tech)
+    return _guru_analysis(fund, tech, sector=sector, weights=_council_weights())
 
 # --- 6. ИНТЕРФЕЙС (STREAMLIT UI) ---
 st.title("G-TRADE")
@@ -685,7 +703,7 @@ with tab2:
 
     # Получаем анализ
     current_price = df['close'].iloc[-1] if df is not None else 0
-    curs = get_guru_analysis(symbol, df, s_data)
+    curs = get_guru_analysis(symbol, df, s_data, sector=_sector_of(selected_asset))
 
     if curs:
         # Council Vote banner
