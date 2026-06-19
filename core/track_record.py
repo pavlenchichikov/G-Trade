@@ -1,7 +1,7 @@
-"""Чтение сигналов и их истории из market.db для веба, бота и дайджеста.
+"""Read signals and their history from market.db for the web, bot and digest.
 
-Интерфейсы ничего не считают: predict.py пишет в prediction_log
-(performance_tracker), здесь - только выборки.
+These interfaces compute nothing: predict.py writes to prediction_log
+(performance_tracker); here we only run queries.
 """
 
 import os
@@ -11,11 +11,11 @@ from datetime import datetime
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DB_PATH = os.path.join(BASE_DIR, "market.db")
 
-ACC_LAST_N = 20  # сколько последних проверенных сигналов идёт в точность
+ACC_LAST_N = 20  # how many of the most recent verified signals feed accuracy
 
 
 def _table_name(asset: str) -> str:
-    # та же нормализация, что в predict.py
+    # same normalization as in predict.py
     return asset.lower().replace("^", "").replace(".", "").replace("-", "")
 
 
@@ -59,7 +59,7 @@ def asset_accuracy(asset: str, last_n: int = ACC_LAST_N, db_path=None) -> dict:
 
 
 def latest_signals(db_path=None, acc_last_n: int = ACC_LAST_N) -> list:
-    """Последний сигнал по каждому активу + точность последних проверенных."""
+    """Latest signal per asset plus accuracy over the most recent verified ones."""
     with _connect(db_path) as con:
         try:
             rows = con.execute(
@@ -84,7 +84,7 @@ def latest_signals(db_path=None, acc_last_n: int = ACC_LAST_N) -> list:
 
 
 def asset_track(asset: str, limit: int = 30, db_path=None) -> list:
-    """История сигналов актива, свежие первыми."""
+    """Signal history for an asset, newest first."""
     with _connect(db_path) as con:
         try:
             rows = con.execute(
@@ -104,7 +104,7 @@ def asset_track(asset: str, limit: int = 30, db_path=None) -> list:
 
 
 def price_series(asset: str, days: int = 60, db_path=None) -> list:
-    """Последние closes актива по возрастанию даты: [{'date','close'}, ...]."""
+    """An asset's last closes ascending by date: [{'date','close'}, ...]."""
     table = _table_name(asset)
     with _connect(db_path) as con:
         try:
@@ -140,7 +140,7 @@ def ohlc_series(asset: str, days: int = 120, db_path=None) -> list:
 
 
 def stale_assets(max_age_days: int = 7, assets=None, db_path=None, today=None) -> list:
-    """Активы, у которых данные в market.db старше порога (или отсутствуют)."""
+    """Assets whose market.db data is older than the threshold (or missing)."""
     if assets is None:
         from config import FULL_ASSET_MAP
         assets = list(FULL_ASSET_MAP.keys())

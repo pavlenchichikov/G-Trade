@@ -1,12 +1,12 @@
 {% extends "base.html" %}
-{% block title %}Риск - G-Trade{% endblock %}
+{% block title %}Risk - G-Trade{% endblock %}
 {% block content %}
 
-<h1 class="fade">Риск</h1>
+<h1 class="fade">Risk</h1>
 
 <div class="risk-layout">
   <section class="panel fade">
-    <div class="panel-head"><h2>Состояние</h2></div>
+    <div class="panel-head"><h2>State</h2></div>
     {% if state %}
     <div class="risk-state">
       <div class="gauge-wrap">
@@ -19,19 +19,19 @@
         </svg>
         <div class="gauge-text">
           <b class="mono">{{ "%.1f"|format(dd * 100) }}%</b>
-          <span>просадка от пика<br>(стоп при {{ "%.0f"|format(config.max_drawdown_halt * 100) }}%)</span>
+          <span>drawdown from peak<br>(halt at {{ "%.0f"|format(config.max_drawdown_halt * 100) }}%)</span>
         </div>
       </div>
       <table class="kv">
-        <tr><td>Капитал</td><td class="mono">${{ "{:,.2f}".format(state.current_capital) }}</td></tr>
-        <tr><td>Пик</td><td class="mono">${{ "{:,.2f}".format(state.peak_capital) }}</td></tr>
-        <tr><td>Стартовый</td><td class="mono">${{ "{:,.2f}".format(state.initial_capital) }}</td></tr>
-        <tr><td>Открытых позиций</td><td class="mono">{{ state.open_positions | length }}</td></tr>
+        <tr><td>Capital</td><td class="mono">${{ "{:,.2f}".format(state.current_capital) }}</td></tr>
+        <tr><td>Peak</td><td class="mono">${{ "{:,.2f}".format(state.peak_capital) }}</td></tr>
+        <tr><td>Initial</td><td class="mono">${{ "{:,.2f}".format(state.initial_capital) }}</td></tr>
+        <tr><td>Open positions</td><td class="mono">{{ state.open_positions | length }}</td></tr>
       </table>
     </div>
     {% if state.open_positions %}
     <table class="grid">
-      <thead><tr><th>Актив</th><th class="num">Размер</th><th class="num">Вход</th><th>Направление</th></tr></thead>
+      <thead><tr><th>Asset</th><th class="num">Size</th><th class="num">Entry</th><th>Direction</th></tr></thead>
       <tbody>
         {% for name, p in state.open_positions.items() %}
         <tr>
@@ -45,37 +45,37 @@
     </table>
     {% endif %}
     {% else %}
-    <p class="empty">Состояние не сохранено - risk_manager ещё не открывал позиций.
-       Ниже лимиты, с которыми он будет работать.</p>
+    <p class="empty">No state saved - risk_manager has not opened positions yet.
+       The limits it will operate with are below.</p>
     {% endif %}
   </section>
 
   <section class="panel fade">
-    <div class="panel-head"><h2>Лимиты</h2></div>
+    <div class="panel-head"><h2>Limits</h2></div>
     <div class="limits">
       <div class="limit">
-        <div class="limit-head"><span>Экспозиция портфеля</span><b class="mono">{{ "%.0f"|format(config.max_portfolio_exposure * 100) }}%</b></div>
+        <div class="limit-head"><span>Portfolio exposure</span><b class="mono">{{ "%.0f"|format(config.max_portfolio_exposure * 100) }}%</b></div>
         <div class="limit-bar"><i style="width: {{ config.max_portfolio_exposure * 100 }}%"></i></div>
       </div>
       <div class="limit">
-        <div class="limit-head"><span>Одна позиция</span><b class="mono">{{ "%.0f"|format(config.max_single_position * 100) }}%</b></div>
+        <div class="limit-head"><span>Single position</span><b class="mono">{{ "%.0f"|format(config.max_single_position * 100) }}%</b></div>
         <div class="limit-bar"><i style="width: {{ config.max_single_position * 100 }}%"></i></div>
       </div>
       <div class="limit">
-        <div class="limit-head"><span>Дневной убыток (стоп)</span><b class="mono">{{ "%.0f"|format(config.max_daily_loss * 100) }}%</b></div>
+        <div class="limit-head"><span>Daily loss (halt)</span><b class="mono">{{ "%.0f"|format(config.max_daily_loss * 100) }}%</b></div>
         <div class="limit-bar"><i class="lb-red" style="width: {{ config.max_daily_loss * 100 }}%"></i></div>
       </div>
       <div class="limit">
-        <div class="limit-head"><span>Просадка (стоп)</span><b class="mono">{{ "%.0f"|format(config.max_drawdown_halt * 100) }}%</b></div>
+        <div class="limit-head"><span>Drawdown (halt)</span><b class="mono">{{ "%.0f"|format(config.max_drawdown_halt * 100) }}%</b></div>
         <div class="limit-bar"><i class="lb-red" style="width: {{ config.max_drawdown_halt * 100 }}%"></i></div>
       </div>
     </div>
     <table class="kv">
-      <tr><td>Доля Келли</td><td class="mono">{{ config.kelly_fraction }}</td></tr>
-      <tr><td>Мин. порог Келли</td><td class="mono">{{ "%.1f"|format(config.min_kelly_threshold * 100) }}%</td></tr>
-      <tr><td>Жёсткий потолок Taleb-риска</td><td class="mono">{{ config.taleb_risk_cap }}</td></tr>
-      <tr><td>Мягкий потолок Taleb-риска</td><td class="mono">{{ config.taleb_soft_cap }}</td></tr>
-      <tr><td>Штраф за корреляцию</td><td class="mono">{{ "%.0f"|format(config.correlation_penalty * 100) }}%</td></tr>
+      <tr><td>Kelly fraction</td><td class="mono">{{ config.kelly_fraction }}</td></tr>
+      <tr><td>Min Kelly threshold</td><td class="mono">{{ "%.1f"|format(config.min_kelly_threshold * 100) }}%</td></tr>
+      <tr><td>Taleb risk hard cap</td><td class="mono">{{ config.taleb_risk_cap }}</td></tr>
+      <tr><td>Taleb risk soft cap</td><td class="mono">{{ config.taleb_soft_cap }}</td></tr>
+      <tr><td>Correlation penalty</td><td class="mono">{{ "%.0f"|format(config.correlation_penalty * 100) }}%</td></tr>
     </table>
   </section>
 </div>

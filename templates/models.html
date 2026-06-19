@@ -1,39 +1,39 @@
 {% extends "base.html" %}
-{% block title %}Модели - G-Trade{% endblock %}
+{% block title %}Models - G-Trade{% endblock %}
 {% block content %}
 
 <div class="statgrid">
   <div class="stat fade">
-    <span class="stat-label">Чемпионов</span>
+    <span class="stat-label">Champions</span>
     <span class="stat-value">{{ summary.total }}</span>
-    <span class="stat-sub">{% if summary.last_train %}обучение {{ summary.last_train }}{% else %}отчёта нет{% endif %}</span>
+    <span class="stat-sub">{% if summary.last_train %}trained {{ summary.last_train }}{% else %}no report{% endif %}</span>
   </div>
   <div class="stat fade">
     <span class="stat-label">Stable / Unstable</span>
     <span class="stat-value"><em class="t-buy">{{ summary.stable }}</em><span class="stat-sep">/</span><em class="t-sell">{{ summary.unstable }}</em></span>
-    <span class="stat-sub">статус walk-forward оценки</span>
+    <span class="stat-sub">walk-forward eval status</span>
   </div>
   <div class="stat fade">
-    <span class="stat-label">Средний скор</span>
+    <span class="stat-label">Average score</span>
     <span class="stat-value">{% if summary.avg_score is not none %}{{ "%.2f"|format(summary.avg_score) }}{% else %}-{% endif %}</span>
-    <span class="stat-sub">Sharpe-взвешенная оценка обучения</span>
+    <span class="stat-sub">Sharpe-weighted training score</span>
   </div>
   <div class="stat fade">
-    <span class="stat-label">Средний возраст моделей</span>
-    <span class="stat-value">{% if health.avg_age_days is defined %}{{ "%.0f"|format(health.avg_age_days) }}<small> дн</small>{% else %}-{% endif %}</span>
-    <span class="stat-sub">{% if health.oldest_asset is defined %}старейшая {{ health.oldest_asset }} ({{ "%.0f"|format(health.oldest_age_days) }} дн){% else %}нет данных{% endif %}</span>
+    <span class="stat-label">Average model age</span>
+    <span class="stat-value">{% if health.avg_age_days is defined %}{{ "%.0f"|format(health.avg_age_days) }}<small> d</small>{% else %}-{% endif %}</span>
+    <span class="stat-sub">{% if health.oldest_asset is defined %}oldest {{ health.oldest_asset }} ({{ "%.0f"|format(health.oldest_age_days) }} d){% else %}no data{% endif %}</span>
   </div>
 </div>
 
 {% if stale %}
 <section class="panel fade">
   <div class="panel-head">
-    <h2>Требуют переобучения</h2>
-    <span class="count mono">{{ stale | length }} активов старше порога</span>
+    <h2>Retrain due</h2>
+    <span class="count mono">{{ stale | length }} assets over threshold</span>
   </div>
   <table class="grid">
     <thead>
-      <tr><th>Актив</th><th class="num">Возраст (дн)</th><th class="num">Скор</th><th>Статус</th></tr>
+      <tr><th>Asset</th><th class="num">Age (d)</th><th class="num">Score</th><th>Status</th></tr>
     </thead>
     <tbody>
       {% for s in stale %}
@@ -52,20 +52,20 @@
 {% if rows %}
 <section class="panel fade">
   <div class="panel-head">
-    <h2>Чемпионы по активам</h2>
-    <span class="count mono">клик по колонке - сортировка</span>
+    <h2>Champions by asset</h2>
+    <span class="count mono">click a column to sort</span>
   </div>
   <table class="grid" id="mtable">
     <thead>
       <tr>
-        <th data-k="asset">Актив</th>
-        <th data-k="signal">Сигнал</th>
-        <th class="num" data-k="score">Скор</th>
+        <th data-k="asset">Asset</th>
+        <th data-k="signal">Signal</th>
+        <th class="num" data-k="score">Score</th>
         <th class="num" data-k="cb_acc">CB acc</th>
         <th class="num" data-k="lstm_acc">LSTM acc</th>
         <th class="num" data-k="profit">Profit (train)</th>
-        <th data-k="status">Статус</th>
-        <th data-k="mode">Ансамбль</th>
+        <th data-k="status">Status</th>
+        <th data-k="mode">Ensemble</th>
         <th class="num" data-k="live">Live acc</th>
       </tr>
     </thead>
@@ -121,8 +121,8 @@ table.querySelectorAll('th[data-k]').forEach(th => th.addEventListener('click', 
 
 {% else %}
 <section class="panel empty-state fade">
-  <h2>Отчёта о качестве нет</h2>
-  <p>Файл <code>models/quality_report.json</code> появится после <code>python train_hybrid.py</code>.</p>
+  <h2>No quality report</h2>
+  <p>The file <code>models/quality_report.json</code> appears after <code>python train_hybrid.py</code>.</p>
 </section>
 {% endif %}
 

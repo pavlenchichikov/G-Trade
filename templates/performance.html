@@ -1,23 +1,23 @@
 {% extends "base.html" %}
-{% block title %}Точность | G-Trade{% endblock %}
+{% block title %}Accuracy | G-Trade{% endblock %}
 {% block content %}
 
-<h1 class="fade">Точность</h1>
-<p class="lead fade">Скользящая точность сигналов во времени: текущее поколение модели
-  (<span class="mono">{{ version }}</span>) отдельно от всех поколений, чтобы старый
-  трек-рекорд не смешивался с новой моделью. Ниже - лидеры по точности.</p>
+<h1 class="fade">Accuracy</h1>
+<p class="lead fade">Rolling signal accuracy over time: the current model generation
+  (<span class="mono">{{ version }}</span>) is kept separate from all generations so an
+  old track record does not blend with the new model. Accuracy leaders below.</p>
 
 <section class="panel fade">
-  <div class="panel-head"><h2>Точность во времени</h2></div>
+  <div class="panel-head"><h2>Accuracy over time</h2></div>
   <div id="perf-chart" style="width:100%;height:320px"></div>
 </section>
 
 <section class="panel fade">
-  <div class="panel-head"><h2>Лидеры (текущая модель)</h2></div>
+  <div class="panel-head"><h2>Leaders (current model)</h2></div>
   {% if leaderboard %}
   <table class="grid">
     <thead>
-      <tr><th class="num">#</th><th>Актив</th><th class="num">Точность</th><th class="num">Прогнозов</th><th class="num">Верных</th></tr>
+      <tr><th class="num">#</th><th>Asset</th><th class="num">Accuracy</th><th class="num">Predictions</th><th class="num">Correct</th></tr>
     </thead>
     <tbody>
       {% for r in leaderboard %}
@@ -32,7 +32,7 @@
     </tbody>
   </table>
   {% else %}
-  <p class="empty">Точность текущей модели накопится после прогонов predict.py.</p>
+  <p class="empty">Current-model accuracy will accrue after predict.py runs.</p>
   {% endif %}
 </section>
 
@@ -47,12 +47,12 @@
   var chart = echarts.init(el);
   chart.setOption({
     tooltip: { trigger: "axis" },
-    legend: { data: ["Текущая модель", "Все поколения"], textStyle: { color: "#9aa0a6" } },
+    legend: { data: ["Current model", "All generations"], textStyle: { color: "#9aa0a6" } },
     xAxis: { type: "time" },
     yAxis: { type: "value", min: 0, max: 100, axisLabel: { formatter: "{value}%" } },
     series: [
-      { name: "Текущая модель", type: "line", smooth: true, showSymbol: false, data: pts(d.current) },
-      { name: "Все поколения", type: "line", smooth: true, showSymbol: false, data: pts(d.all) },
+      { name: "Current model", type: "line", smooth: true, showSymbol: false, data: pts(d.current) },
+      { name: "All generations", type: "line", smooth: true, showSymbol: false, data: pts(d.all) },
     ],
   });
   window.addEventListener("resize", function () { chart.resize(); });

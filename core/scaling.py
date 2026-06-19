@@ -1,8 +1,8 @@
-"""Скейлер общий для трейна и инференса.
+"""Scaler shared between training and inference.
 
-Тренировка сохраняет StandardScaler train-фолда рядом с чемпионом, инференс
-обязан брать его же - иначе train/serve skew. Если сохранённого нет
-(старые модели), фитимся на текущем окне.
+Training saves the train-fold StandardScaler next to the champion, and inference
+must reuse the same one - otherwise there is train/serve skew. If none is saved
+(old models), we fit on the current window.
 """
 
 import os

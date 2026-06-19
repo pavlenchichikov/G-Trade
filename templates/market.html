@@ -1,15 +1,15 @@
 {% extends "base.html" %}
-{% block title %}Рынок | G-Trade{% endblock %}
+{% block title %}Market | G-Trade{% endblock %}
 {% block content %}
 
-<h1 class="fade">Рынок</h1>
-<p class="lead fade">Глобальный режим и настроение рынка. Режим (бычий/медвежий) строится
-  по VIX, тренду S&amp;P 500 и доллару (DXY). Настроение - композитный индекс страха
-  и жадности из волатильности, импульса рынка и ширины сигналов.</p>
+<h1 class="fade">Market</h1>
+<p class="lead fade">Global market regime and sentiment. The regime (bullish/bearish)
+  is built from VIX, the S&amp;P 500 trend and the dollar (DXY). Sentiment is a
+  composite fear and greed index from volatility, market momentum and signal breadth.</p>
 
 <div class="risk-layout">
   <section class="panel fade">
-    <div class="panel-head"><h2>Режим: бычий / медвежий</h2></div>
+    <div class="panel-head"><h2>Regime: bullish / bearish</h2></div>
     <div class="risk-state">
       <div class="gauge-wrap">
         <svg viewBox="0 0 120 70" class="gauge">
@@ -19,7 +19,7 @@
         </svg>
         <div class="gauge-text">
           <b class="mono">{{ score }}</b>
-          <span>0 медвежий - 100 бычий</span>
+          <span>0 bearish - 100 bullish</span>
         </div>
       </div>
       <div class="ind-desc">
@@ -28,15 +28,15 @@
       </div>
     </div>
     <table class="kv">
-      <tr><td>VIX (волатильность)</td><td class="mono">{{ regime.vix_level }}{% if regime.vix_value is not none %} ({{ "%.1f"|format(regime.vix_value) }}){% endif %}</td></tr>
-      <tr><td>S&amp;P 500 (тренд)</td><td class="mono">{{ regime.sp500_trend }}</td></tr>
-      <tr><td>S&amp;P 500 (детали)</td><td class="mono dim">{{ regime.sp500_detail }}</td></tr>
-      <tr><td>Доллар (DXY)</td><td class="mono">{{ regime.dxy_trend }} - {{ regime.dxy_label }}</td></tr>
+      <tr><td>VIX (volatility)</td><td class="mono">{{ regime.vix_level }}{% if regime.vix_value is not none %} ({{ "%.1f"|format(regime.vix_value) }}){% endif %}</td></tr>
+      <tr><td>S&amp;P 500 (trend)</td><td class="mono">{{ regime.sp500_trend }}</td></tr>
+      <tr><td>S&amp;P 500 (detail)</td><td class="mono dim">{{ regime.sp500_detail }}</td></tr>
+      <tr><td>Dollar (DXY)</td><td class="mono">{{ regime.dxy_trend }} - {{ regime.dxy_label }}</td></tr>
     </table>
   </section>
 
   <section class="panel fade">
-    <div class="panel-head"><h2>Настроение: страх / жадность</h2></div>
+    <div class="panel-head"><h2>Sentiment: fear / greed</h2></div>
     <div class="risk-state">
       <div class="gauge-wrap">
         <svg viewBox="0 0 120 70" class="gauge">
@@ -46,19 +46,19 @@
         </svg>
         <div class="gauge-text">
           <b class="mono">{{ sentiment.score }}</b>
-          <span>0 страх - 100 жадность</span>
+          <span>0 fear - 100 greed</span>
         </div>
       </div>
       <div class="ind-desc">
         <p class="ind-status {{ 't-buy' if sentiment.score >= 60 else 't-sell' if sentiment.score < 35 else 't-wait' }}">{{ sentiment.label }}</p>
-        <p class="dim">Низкая волатильность, восходящий рынок и перевес BUY тянут индекс
-          в жадность; всплеск VIX и перевес SELL - в страх.</p>
+        <p class="dim">Low volatility, a rising market and a BUY skew push the index toward
+          greed; a VIX spike and a SELL skew push it toward fear.</p>
       </div>
     </div>
     <table class="kv">
-      <tr><td>Волатильность</td><td class="mono">{{ sentiment.vix_level }}{% if sentiment.vix is not none %} ({{ "%.1f"|format(sentiment.vix) }}){% endif %}</td></tr>
-      <tr><td>Импульс S&amp;P 500</td><td class="mono">{{ sentiment.sp500_trend }}</td></tr>
-      <tr><td>Ширина сигналов</td><td class="mono"><span class="t-buy">{{ sentiment.buy }} BUY</span> / <span class="t-sell">{{ sentiment.sell }} SELL</span></td></tr>
+      <tr><td>Volatility</td><td class="mono">{{ sentiment.vix_level }}{% if sentiment.vix is not none %} ({{ "%.1f"|format(sentiment.vix) }}){% endif %}</td></tr>
+      <tr><td>S&amp;P 500 momentum</td><td class="mono">{{ sentiment.sp500_trend }}</td></tr>
+      <tr><td>Signal breadth</td><td class="mono"><span class="t-buy">{{ sentiment.buy }} BUY</span> / <span class="t-sell">{{ sentiment.sell }} SELL</span></td></tr>
     </table>
   </section>
 </div>

@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="ru">
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -14,18 +14,18 @@
     <div class="topbar-inner">
       <a class="brand" href="/">G-TRADE<span class="brand-dot"></span></a>
       <nav>
-        <a href="/" {% if request.url.path == '/' %}class="active"{% endif %}>Радар</a>
-        <a href="/market" {% if request.url.path == '/market' %}class="active"{% endif %}>Рынок</a>
-        <a href="/sectors" {% if request.url.path == '/sectors' %}class="active"{% endif %}>Секторы</a>
-        <a href="/correlations" {% if request.url.path == '/correlations' %}class="active"{% endif %}>Корреляции</a>
-        <a href="/performance" {% if request.url.path == '/performance' %}class="active"{% endif %}>Точность</a>
-        <a href="/news" {% if request.url.path == '/news' %}class="active"{% endif %}>Новости</a>
-        <a href="/guru" {% if request.url.path == '/guru' %}class="active"{% endif %}>Гуру</a>
-        <a href="/models" {% if request.url.path == '/models' %}class="active"{% endif %}>Модели</a>
-        <a href="/risk" {% if request.url.path == '/risk' %}class="active"{% endif %}>Риск</a>
+        <a href="/" {% if request.url.path == '/' %}class="active"{% endif %}>Radar</a>
+        <a href="/market" {% if request.url.path == '/market' %}class="active"{% endif %}>Market</a>
+        <a href="/sectors" {% if request.url.path == '/sectors' %}class="active"{% endif %}>Sectors</a>
+        <a href="/correlations" {% if request.url.path == '/correlations' %}class="active"{% endif %}>Correlations</a>
+        <a href="/performance" {% if request.url.path == '/performance' %}class="active"{% endif %}>Accuracy</a>
+        <a href="/news" {% if request.url.path == '/news' %}class="active"{% endif %}>News</a>
+        <a href="/guru" {% if request.url.path == '/guru' %}class="active"{% endif %}>Guru</a>
+        <a href="/models" {% if request.url.path == '/models' %}class="active"{% endif %}>Models</a>
+        <a href="/risk" {% if request.url.path == '/risk' %}class="active"{% endif %}>Risk</a>
       </nav>
       <div class="topbar-right">
-        <span class="live"><span class="live-dot"></span>{% block topright %}терминал{% endblock %}</span>
+        <span class="live"><span class="live-dot"></span>{% block topright %}terminal{% endblock %}</span>
       </div>
     </div>
   </header>
@@ -33,7 +33,7 @@
     {% block content %}{% endblock %}
   </main>
   <footer>
-    <span>G-Trade | сигналы не являются инвестиционной рекомендацией</span>
+    <span>G-Trade | signals are not investment advice</span>
   </footer>
 </body>
 </html>

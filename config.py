@@ -6,12 +6,12 @@ try:
 except ImportError:
     pass  # python-dotenv not installed; rely on environment variables being set externally
 
-# --- 1. ПАРАМЕТРЫ МОДЕЛИ ---
+# --- 1. MODEL PARAMETERS ---
 SEQ_LEN = 10
 
-# Пороги покупки/продажи по активам
+# Buy/sell thresholds per asset
 THRESHOLDS = {
-    "DEFAULT": 0.55,    # Базовый порог
+    "DEFAULT": 0.55,    # Base threshold
 
     # ELITE (lower threshold for high-performing assets)
     "TSLA": 0.53,
@@ -30,23 +30,23 @@ THRESHOLDS = {
     "SBER": 0.54
 }
 
-# Настройки Telegram - loaded from .env (never hardcode credentials)
+# Telegram settings - loaded from .env (never hardcode credentials)
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "")
 TELEGRAM_USER_ID = os.getenv("TELEGRAM_USER_ID", "")
 
-# Proxy: пустая строка = без прокси. Адрес задаётся только через .env.
+# Proxy: empty string = no proxy. The address is set only via .env.
 SOCKS5_PROXY = os.getenv("SOCKS5_PROXY", "")
 
-# --- 2. КАРТА АКТИВОВ ---
+# --- 2. ASSET MAP ---
 FULL_ASSET_MAP = {
-    # МИРОВЫЕ ИНДЕКСЫ
+    # GLOBAL INDICES
     'VIX': '^VIX', 'DXY': 'DX-Y.NYB', 'TNX': '^TNX',
     'SP500': '^GSPC', 'NASDAQ': '^IXIC', 'DOW': '^DJI',
 
-    # СЫРЬЕ
+    # COMMODITIES
     'GOLD': 'GC=F', 'SILVER': 'SI=F', 'OIL': 'CL=F', 'GAS': 'NG=F',
 
-    # ТЕХНОЛОГИИ США
+    # US TECH
     'NVDA': 'NVDA', 'TSLA': 'TSLA', 'AAPL': 'AAPL', 'MSFT': 'MSFT',
     'GOOGL': 'GOOGL', 'AMZN': 'AMZN', 'META': 'META', 'AMD': 'AMD',
     'PLTR': 'PLTR', 'COIN': 'COIN', 'MSTR': 'MSTR',
@@ -72,63 +72,63 @@ FULL_ASSET_MAP = {
     # US SOFTWARE
     'CRM': 'CRM', 'ORCL': 'ORCL', 'ADBE': 'ADBE', 'UBER': 'UBER', 'PYPL': 'PYPL',
 
-    # КРИПТОВАЛЮТА
+    # CRYPTO
     'BTC': 'BTC-USD', 'ETH': 'ETH-USD', 'SOL': 'SOL-USD',
     'XRP': 'XRP-USD', 'TON': 'TON11419-USD', 'DOGE': 'DOGE-USD', 'BNB': 'BNB-USD',
     'ADA': 'ADA-USD', 'AVAX': 'AVAX-USD', 'DOT': 'DOT-USD', 'LINK': 'LINK-USD',
-    'SHIB': 'SHIB-USD', 'ATOM': 'ATOM-USD', 'UNI': 'UNI7083-USD', 'NEAR': 'NEAR-USD',  # UNI-USD на Yahoo пустой, Uniswap идёт под UNI7083-USD
+    'SHIB': 'SHIB-USD', 'ATOM': 'ATOM-USD', 'UNI': 'UNI7083-USD', 'NEAR': 'NEAR-USD',  # UNI-USD is empty on Yahoo, Uniswap trades under UNI7083-USD
 
-    # РЫНОК РФ - Голубые фишки
+    # RU MARKET - Blue chips
     'IMOEX': 'IMOEX', 'SBER': 'SBER', 'GAZP': 'GAZP', 'LKOH': 'LKOH',
     'ROSN': 'ROSN', 'NVTK': 'NVTK', 'TATN': 'TATN', 'SNGS': 'SNGS',
     'PLZL': 'PLZL', 'SIBN': 'SIBN', 'MGNT': 'MGNT',
-    # РФ - Банки и финансы
+    # RU - Banks and finance
     'TCSG': 'T', 'VTBR': 'VTBR', 'BSPB': 'BSPB', 'MOEX_EX': 'MOEX',
-    # РФ - Технологии и рост
+    # RU - Tech and growth
     'YNDX': 'YDEX', 'OZON': 'OZON', 'VKCO': 'VKCO', 'POSI': 'POSI',
     'MTSS': 'MTSS', 'RTKM': 'RTKM',
-    # РФ - Металлы и промышленность
+    # RU - Metals and industry
     'CHMF': 'CHMF', 'NLMK': 'NLMK', 'MAGN': 'MAGN',
     'RUAL': 'RUAL', 'ALRS': 'ALRS',
-    # РФ - Энергетика и транспорт
+    # RU - Energy and transport
     'IRAO': 'IRAO', 'HYDR': 'HYDR', 'FLOT': 'FLOT',
     'AFLT': 'AFLT', 'PIKK': 'PIKK',
-    # РФ - Химия и удобрения
+    # RU - Chemicals and fertilizers
     'PHOR': 'PHOR', 'SGZH': 'SGZH',
-    # РФ - Ритейл
-    'FIVE': 'X5', 'FIXP': 'FIXR', 'LENT': 'LENT', 'MVID': 'MVID',  # FIVE и FIXP переименованы на MOEX в X5 и FIXR
-    # РФ - Строительство и девелопмент
+    # RU - Retail
+    'FIVE': 'X5', 'FIXP': 'FIXR', 'LENT': 'LENT', 'MVID': 'MVID',  # FIVE and FIXP renamed on MOEX to X5 and FIXR
+    # RU - Construction and development
     'SMLT': 'SMLT', 'LSRG': 'LSRG',
-    # РФ - Банки и финансы (доп)
+    # RU - Banks and finance (extra)
     'CBOM': 'CBOM',
-    # РФ - Энергетика (доп)
+    # RU - Energy (extra)
     'FEES': 'FEES', 'UPRO': 'UPRO', 'MSNG': 'MSNG',
-    # РФ - Промышленность (доп)
+    # RU - Industry (extra)
     'TRMK': 'TRMK', 'MTLR': 'MTLR', 'RASP': 'RASP', 'NMTP': 'NMTP',
-    # РФ - IT (доп)
-    'HHRU': 'HEAD', 'SOFL': 'SOFL', 'ASTR': 'ASTR', 'WUSH': 'WUSH',  # HHRU переименован на MOEX в HEAD
+    # RU - IT (extra)
+    'HHRU': 'HEAD', 'SOFL': 'SOFL', 'ASTR': 'ASTR', 'WUSH': 'WUSH',  # HHRU renamed on MOEX to HEAD
 
-    # FOREX - Мажоры
+    # FOREX - Majors
     'EURUSD': 'EURUSD=X', 'GBPUSD': 'GBPUSD=X', 'USDJPY': 'JPY=X',
     'USDCHF': 'CHF=X', 'AUDUSD': 'AUDUSD=X', 'USDCAD': 'CAD=X',
     'NZDUSD': 'NZDUSD=X', 'USDRUB': 'RUB=X',
-    # FOREX - Кроссы EUR
+    # FOREX - EUR crosses
     'EURGBP': 'EURGBP=X', 'EURJPY': 'EURJPY=X', 'EURCHF': 'EURCHF=X',
     'EURAUD': 'EURAUD=X', 'EURCAD': 'EURCAD=X', 'EURNZD': 'EURNZD=X',
-    # FOREX - Кроссы GBP
+    # FOREX - GBP crosses
     'GBPJPY': 'GBPJPY=X', 'GBPAUD': 'GBPAUD=X', 'GBPCAD': 'GBPCAD=X',
     'GBPCHF': 'GBPCHF=X', 'GBPNZD': 'GBPNZD=X',
-    # FOREX - Кроссы AUD/NZD/CAD/CHF
+    # FOREX - AUD/NZD/CAD/CHF crosses
     'AUDCAD': 'AUDCAD=X', 'AUDCHF': 'AUDCHF=X', 'AUDJPY': 'AUDJPY=X',
     'AUDNZD': 'AUDNZD=X', 'CADJPY': 'CADJPY=X', 'CHFJPY': 'CHFJPY=X',
     'NZDJPY': 'NZDJPY=X',
-    # FOREX - Экзотика
+    # FOREX - Exotics
     'USDTRY': 'TRY=X', 'USDMXN': 'MXN=X', 'USDZAR': 'ZAR=X',
     'USDSGD': 'SGD=X', 'USDNOK': 'NOK=X', 'USDSEK': 'SEK=X',
-    'USDPLN': 'PLN=X', 'USDCNH': 'CNY=X',  # CNH=X у Yahoo пустой (1 бар), CNY=X отдаёт полную историю; офшор/оншор юань расходятся на пипсы
+    'USDPLN': 'PLN=X', 'USDCNH': 'CNY=X',  # CNH=X is empty on Yahoo (1 bar), CNY=X returns full history; offshore/onshore yuan differ by pips
 }
 
-# --- 3. ГРУППИРОВКА ---
+# --- 3. GROUPING ---
 ASSET_TYPES = {
     "TOP SIGNALS": ["ETH", "TSLA", "GOLD", "VIX", "PLTR", "IMOEX"],
     "CRYPTO": ["BTC", "ETH", "SOL", "XRP", "TON", "DOGE", "BNB",
@@ -158,9 +158,9 @@ ASSET_TYPES = {
 }
 
 
-# --- 3b. ГРУППЫ КОНСОЛЬНОГО РАДАРА (predict.py) ---
-# Укрупнённые группы для вывода в консоль. Собираются из ASSET_TYPES,
-# чтобы при добавлении актива не было второго списка, который надо не забыть обновить.
+# --- 3b. CONSOLE RADAR GROUPS (predict.py) ---
+# Coarser groups for console output. Assembled from ASSET_TYPES so that adding an
+# asset does not require a second list that you have to remember to update.
 
 def _merge_types(*keys: str) -> list:
     out = []
@@ -180,7 +180,7 @@ RADAR_GROUPS = {
     "US SEMI":         ASSET_TYPES["US SEMI"],
     "US SOFTWARE":     ASSET_TYPES["US SOFTWARE"],
     "CRYPTO":          ASSET_TYPES["CRYPTO"],
-    # IMOEX показываем вместе с российскими бумагами
+    # show IMOEX together with the Russian names
     "MOEX":            ["IMOEX"] + _merge_types(
         "RUS BLUE CHIPS", "RUS FINANCE", "RUS TECH", "RUS METALS",
         "RUS INFRA", "RUS CONSUMER", "RUS PROPERTY"),
@@ -188,29 +188,29 @@ RADAR_GROUPS = {
 }
 
 
-# --- 4. ВАЛИДАЦИЯ ОКРУЖЕНИЯ ---
-# Импорт config.py не должен падать, если секреты не заданы: большинство скриптов
-# (data_engine, train_hybrid, predict, backtest) работают без Telegram. Скрипты,
-# которым реально нужны креды, вызывают require_env(...) на старте и получают
-# понятную ошибку вместо падения где-то в сетевом коде.
+# --- 4. ENVIRONMENT VALIDATION ---
+# Importing config.py must not fail when secrets are unset: most scripts
+# (data_engine, train_hybrid, predict, backtest) work without Telegram. Scripts
+# that really need credentials call require_env(...) at startup and get a clear
+# error instead of failing somewhere deep in network code.
 
 class ConfigError(RuntimeError):
-    """Обязательная переменная окружения не задана."""
+    """A required environment variable is not set."""
 
 
 def require_env(*names: str) -> None:
-    """Падает с понятным сообщением, если какая-то из переменных пустая.
+    """Fail with a clear message if any of the variables is empty.
 
-    Пример: require_env("TELEGRAM_TOKEN", "TELEGRAM_USER_ID") в начале alert_bot.py.
+    Example: require_env("TELEGRAM_TOKEN", "TELEGRAM_USER_ID") at the start of alert_bot.py.
     """
     missing = [n for n in names if not os.getenv(n)]
     if missing:
         raise ConfigError(
-            "Не заданы переменные окружения: " + ", ".join(missing) + ". "
-            "Скопируй .env.example в .env и заполни значения."
+            "Environment variables not set: " + ", ".join(missing) + ". "
+            "Copy .env.example to .env and fill in the values."
         )
 
 
 def validate_telegram_config() -> None:
-    """Проверяет, что Telegram-креды заданы. Зови перед отправкой алертов."""
+    """Check that Telegram credentials are set. Call before sending alerts."""
     require_env("TELEGRAM_TOKEN", "TELEGRAM_USER_ID")

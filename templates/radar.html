@@ -1,11 +1,11 @@
 {% extends "base.html" %}
-{% block title %}Радар - G-Trade{% endblock %}
+{% block title %}Radar - G-Trade{% endblock %}
 {% block topright %}{{ now }}{% endblock %}
 {% block content %}
 
 <section class="command-center">
   <div class="cc-card">
-    <h3>Режим рынка</h3>
+    <h3>Market regime</h3>
     <div class="cc-gaugewrap">
       <svg viewBox="0 0 120 70" class="gauge gauge-sm">
         <path d="M 10 65 A 50 50 0 0 1 110 65" class="gauge-track"/>
@@ -14,14 +14,14 @@
       </svg>
       <div class="cc-gaugeval">
         <b class="{{ 't-buy' if score >= 60 else 't-sell' if score < 35 else 't-wait' }}">{{ regime.status }}</b>
-        <span class="dim">бык / медведь &middot; {{ score }}/100</span>
+        <span class="dim">bull / bear &middot; {{ score }}/100</span>
       </div>
     </div>
-    <a class="cc-more" href="/market">подробнее о рынке</a>
+    <a class="cc-more" href="/market">market detail</a>
   </div>
 
   <div class="cc-card">
-    <h3>Настроение</h3>
+    <h3>Sentiment</h3>
     <div class="cc-gaugewrap">
       <svg viewBox="0 0 120 70" class="gauge gauge-sm">
         <path d="M 10 65 A 50 50 0 0 1 110 65" class="gauge-track"/>
@@ -30,14 +30,14 @@
       </svg>
       <div class="cc-gaugeval">
         <b class="{{ 't-buy' if sentiment.score >= 60 else 't-sell' if sentiment.score < 35 else 't-wait' }}">{{ sentiment.label }}</b>
-        <span class="dim">страх / жадность &middot; {{ sentiment.score }}/100</span>
+        <span class="dim">fear / greed &middot; {{ sentiment.score }}/100</span>
       </div>
     </div>
-    <a class="cc-more" href="/market">страх и жадность</a>
+    <a class="cc-more" href="/market">fear and greed</a>
   </div>
 
   <div class="cc-card">
-    <h3>Ширина рынка</h3>
+    <h3>Market breadth</h3>
     {% set tot = breadth.total or 1 %}
     <div class="breadth">
       <div class="breadth-seg"><span>BUY</span><b class="t-buy">{{ breadth.BUY }}</b></div>
@@ -49,18 +49,18 @@
       <i class="bb-sell" style="width: {{ (breadth.SELL / tot * 100) | round(1) }}%"></i>
       <i class="bb-wait" style="width: {{ (breadth.WAIT / tot * 100) | round(1) }}%"></i>
     </div>
-    <span class="cc-sub dim">{{ breadth.actionable }} активных из {{ breadth.total }}</span>
+    <span class="cc-sub dim">{{ breadth.actionable }} actionable of {{ breadth.total }}</span>
   </div>
 
   <div class="cc-card">
-    <h3>Лидеры точности</h3>
+    <h3>Accuracy leaders</h3>
     <ol class="cc-leaders">
       {% for r in leaderboard %}
       <li><span class="rank">{{ loop.index }}</span>
         <a href="/asset/{{ r.Asset }}">{{ r.Asset }}</a>
         <span class="mono lead-acc">{{ "%.0f%%"|format((r.Accuracy or 0) * 100) }}</span></li>
       {% else %}
-      <li class="dim">точность накопится после запуска модели</li>
+      <li class="dim">accuracy will accrue after the model runs</li>
       {% endfor %}
     </ol>
   </div>
@@ -68,33 +68,33 @@
 
 <div class="statgrid">
   <div class="stat fade">
-    <span class="stat-label">Активов в журнале</span>
+    <span class="stat-label">Assets in journal</span>
     <span class="stat-value">{{ summary.total }}</span>
-    <span class="stat-sub">{% if summary.last_date %}срез {{ summary.last_date }}{% else %}журнал пуст{% endif %}</span>
+    <span class="stat-sub">{% if summary.last_date %}snapshot {{ summary.last_date }}{% else %}journal empty{% endif %}</span>
   </div>
   <div class="stat fade">
-    <span class="stat-label">Сигналы</span>
+    <span class="stat-label">Signals</span>
     <span class="stat-value">
       <em class="t-buy">{{ summary.counts.BUY }}</em><span class="stat-sep">/</span><em class="t-sell">{{ summary.counts.SELL }}</em><span class="stat-sep">/</span><em class="t-wait">{{ summary.counts.WAIT }}</em>
     </span>
     <span class="stat-sub">buy / sell / wait</span>
   </div>
   <div class="stat fade">
-    <span class="stat-label">Точность (проверено)</span>
+    <span class="stat-label">Accuracy (verified)</span>
     <span class="stat-value">{% if summary.accuracy is not none %}{{ "%.1f"|format(summary.accuracy * 100) }}<small>%</small>{% else %}-{% endif %}</span>
-    <span class="stat-sub">{{ summary.verified }} сигналов сверено с фактом</span>
+    <span class="stat-sub">{{ summary.verified }} signals reconciled with actuals</span>
   </div>
   <div class="stat fade {% if summary.stale %}stat-warn{% endif %}">
-    <span class="stat-label">Протухшие данные</span>
+    <span class="stat-label">Stale data</span>
     <span class="stat-value">{{ summary.stale }}</span>
-    <span class="stat-sub">{% if summary.stale %}активов старше 7 дней{% else %}все данные свежие{% endif %}</span>
+    <span class="stat-sub">{% if summary.stale %}assets older than 7 days{% else %}all data fresh{% endif %}</span>
   </div>
 </div>
 
 {% if top %}
 <section class="panel fade">
   <div class="panel-head">
-    <h2>Сильнейшие сигналы</h2>
+    <h2>Strongest signals</h2>
   </div>
   <div class="topstrip">
     {% for s in top %}
@@ -105,7 +105,7 @@
       </span>
       <span class="topcard-prob mono">p = {{ "%.2f"|format(s.probability) }}</span>
       <span class="probbar"><i class="probbar-fill {{ 'pb-buy' if s.signal == 'BUY' else 'pb-sell' }}" style="width: {{ ((s.probability - 0.5) * 200) | abs | round(0) }}%"></i></span>
-      <span class="topcard-acc">{% if s.acc.n %}точность {{ "%.0f"|format(s.acc.acc * 100) }}% ({{ s.acc.correct }}/{{ s.acc.n }}){% else %}без статистики{% endif %}</span>
+      <span class="topcard-acc">{% if s.acc.n %}accuracy {{ "%.0f"|format(s.acc.acc * 100) }}% ({{ s.acc.correct }}/{{ s.acc.n }}){% else %}no stats{% endif %}</span>
     </a>
     {% endfor %}
   </div>
@@ -114,16 +114,16 @@
 
 {% if stale %}
 <section class="warnstrip fade">
-  <b>Деградация данных:</b>
-  {% for s in stale %}<span class="warn-item">{{ s.asset }}{% if s.last_date %} | {{ s.age_days }} дн.{% else %} | нет данных{% endif %}</span>{% endfor %}
+  <b>Data degradation:</b>
+  {% for s in stale %}<span class="warn-item">{{ s.asset }}{% if s.last_date %} | {{ s.age_days }} d{% else %} | no data{% endif %}</span>{% endfor %}
 </section>
 {% endif %}
 
 {% if groups %}
 <div class="toolbar fade">
-  <input id="q" class="search mono" type="text" placeholder="поиск тикера...">
+  <input id="q" class="search mono" type="text" placeholder="search ticker...">
   <div class="filters">
-    <button class="fbtn active" data-f="">Все</button>
+    <button class="fbtn active" data-f="">All</button>
     <button class="fbtn" data-f="BUY">BUY</button>
     <button class="fbtn" data-f="SELL">SELL</button>
     <button class="fbtn" data-f="WAIT">WAIT</button>
@@ -139,7 +139,7 @@
   </div>
   <table class="grid">
     <thead>
-      <tr><th>Актив</th><th>Сигнал</th><th class="num">p</th><th>Уверенность</th><th>Точность</th><th>30 дней</th><th class="num">Дата</th></tr>
+      <tr><th>Asset</th><th>Signal</th><th class="num">p</th><th>Confidence</th><th>Accuracy</th><th>30 days</th><th class="num">Date</th></tr>
     </thead>
     <tbody>
       {% for s in g.rows %}
@@ -236,15 +236,15 @@ async function refresh() {
 setInterval(refresh, 60000);
 setInterval(() => {
   const s = Math.round((Date.now() - lastSync) / 1000);
-  syncEl.textContent = s < 5 ? 'обновлено' : `обновлено ${s} с назад`;
+  syncEl.textContent = s < 5 ? 'updated' : `updated ${s}s ago`;
 }, 5000);
 </script>
 
 {% else %}
 <section class="panel empty-state fade">
-  <h2>Журнал сигналов пуст</h2>
-  <p>Запусти <code>python predict.py</code> - прогнозы запишутся в журнал и появятся здесь.
-     Точность наполнится через пару дней, когда сигналы сверятся с фактическим движением цены.</p>
+  <h2>Signal journal is empty</h2>
+  <p>Run <code>python predict.py</code> - predictions are written to the journal and appear here.
+     Accuracy fills in after a couple of days, once signals are reconciled with actual price moves.</p>
 </section>
 {% endif %}
 

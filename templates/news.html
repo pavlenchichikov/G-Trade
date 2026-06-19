@@ -1,14 +1,14 @@
 {% extends "base.html" %}
-{% block title %}Новости | G-Trade{% endblock %}
+{% block title %}News | G-Trade{% endblock %}
 {% block content %}
 
-<h1 class="fade">Новости</h1>
-<p class="lead fade">Дайджест авторитетных источников, ранжированный по значимости
-  (вес источника на тональность заголовка). Тот же поток, что в консоли news_analyzer.</p>
+<h1 class="fade">News</h1>
+<p class="lead fade">Digest of authoritative sources, ranked by significance
+  (source weight times headline sentiment). The same feed as the news_analyzer console.</p>
 
 <div class="news-filters fade">
-  <span class="nf-label">Язык</span>
-  {% for code, name in [('all', 'Все'), ('en', 'EN'), ('ru', 'RU')] %}
+  <span class="nf-label">Language</span>
+  {% for code, name in [('all', 'All'), ('en', 'EN'), ('ru', 'RU')] %}
   <a class="fbtn {% if lang == code %}active{% endif %}"
      href="/news?lang={{ code }}&category={{ category }}">{{ name }}</a>
   {% endfor %}
@@ -22,7 +22,7 @@
   <li class="news-item">
     <div class="news-meta">
       <span class="news-src">{{ it.source }}</span>
-      {% if it.credibility is defined %}<span class="news-cred mono">авторитет {{ "%.0f"|format(it.credibility * 100) }}%</span>{% endif %}
+      {% if it.credibility is defined %}<span class="news-cred mono">credibility {{ "%.0f"|format(it.credibility * 100) }}%</span>{% endif %}
       {% if it.category %}<span class="news-cat">{{ it.category }}</span>{% endif %}
       {% if it.published %}<span class="news-date dim mono">{{ it.published }}</span>{% endif %}
     </div>
@@ -36,7 +36,7 @@
   {% endfor %}
 </ol>
 {% else %}
-<p class="empty">Новостей нет - источники недоступны (нет сети или фид пуст).</p>
+<p class="empty">No news - sources unavailable (no network or empty feed).</p>
 {% endif %}
 
 {% endblock %}

@@ -1,9 +1,9 @@
-"""Веб-интерфейс: радар сигналов, track record, модели, риск.
+"""Web interface: signal radar, track record, models, risk.
 
-Читает готовые предсказания из market.db (их пишет predict.py),
-модели не загружает - стартует мгновенно.
+Reads ready-made predictions from market.db (written by predict.py); it does not
+load any models, so it starts instantly.
 
-Запуск:
+Run:
     uvicorn webapp:app --host 0.0.0.0 --port 8000
 """
 
@@ -48,7 +48,7 @@ def _risk_state():
 
 
 def _spark(closes, w=110, h=26):
-    """Точки для svg-спарклайна по списку closes."""
+    """Points for an svg sparkline from a list of closes."""
     if len(closes) < 2:
         return None
     lo, hi = min(closes), max(closes)

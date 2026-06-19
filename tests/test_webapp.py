@@ -61,7 +61,7 @@ def test_market_page(client, monkeypatch):
     r = client.get("/market")
     assert r.status_code == 200
     assert "RISK-ON" in r.text          # bull/bear regime status
-    assert "Настроение" in r.text       # fear/greed sentiment panel
+    assert "Sentiment" in r.text        # fear/greed sentiment panel
 
 
 def test_api_regime(client, monkeypatch):
@@ -115,7 +115,7 @@ def test_models_page_health(client, monkeypatch):
         {"asset": "ASTR", "cb_age_days": 91.7, "score": 1.4, "status": "RETRAIN"}])
     r = client.get("/models")
     assert r.status_code == 200
-    assert "Требуют переобучения" in r.text and "ASTR" in r.text
+    assert "Retrain due" in r.text and "ASTR" in r.text
 
 
 def test_sectors_page(client, monkeypatch):
@@ -184,9 +184,9 @@ def test_home_has_command_center(client, monkeypatch):
     monkeypatch.setattr(dash, "top_leaderboard", lambda days=30, limit=8: [])
     r = client.get("/")
     assert r.status_code == 200
-    assert "Рынок" in r.text            # nav link to /market
+    assert "Market" in r.text           # nav link to /market
     assert "command-center" in r.text   # command-center section
-    assert "Настроение" in r.text       # sentiment card
+    assert "Sentiment" in r.text        # sentiment card
 
 
 def test_api_signals(client):

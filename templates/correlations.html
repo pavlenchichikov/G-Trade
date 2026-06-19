@@ -1,15 +1,16 @@
 {% extends "base.html" %}
-{% block title %}Корреляции | G-Trade{% endblock %}
+{% block title %}Correlations | G-Trade{% endblock %}
 {% block content %}
 
-<h1 class="fade">Корреляции</h1>
-<p class="lead fade">Матрица корреляций ключевых активов и индикатор системного стресса.
-  Когда всё движется вместе (высокая средняя корреляция) - риск-офф, диверсификация
-  не работает. Низкая корреляция - рынок рассеян, активы живут своей жизнью.</p>
+<h1 class="fade">Correlations</h1>
+<p class="lead fade">Correlation matrix of key assets and a systemic-stress indicator.
+  When everything moves together (high average correlation) it is risk-off and
+  diversification stops working. Low correlation means the market is dispersed and
+  assets trade on their own.</p>
 
 <div class="risk-layout">
   <section class="panel fade">
-    <div class="panel-head"><h2>Системный стресс</h2></div>
+    <div class="panel-head"><h2>Systemic stress</h2></div>
     <div class="risk-state">
       <div class="gauge-wrap">
         <svg viewBox="0 0 120 70" class="gauge">
@@ -19,23 +20,23 @@
         </svg>
         <div class="gauge-text">
           <b class="mono">{{ stress.score }}</b>
-          <span>0 рассеян - 100 стресс</span>
+          <span>0 dispersed - 100 stress</span>
         </div>
       </div>
       <div class="ind-desc">
         <p class="ind-status {{ 't-sell' if stress.score >= 60 else 't-buy' if stress.score < 35 else 't-wait' }}">{{ stress.label }}</p>
-        <p class="dim">Средняя попарная корреляция ключевых активов.</p>
+        <p class="dim">Average pairwise correlation of key assets.</p>
       </div>
     </div>
     <table class="kv">
-      <tr><td>Средняя корреляция</td><td class="mono">{% if stress.avg_corr is not none %}{{ "%+.2f"|format(stress.avg_corr) }}{% else %}-{% endif %}</td></tr>
-      <tr><td>Минимум</td><td class="mono t-buy">{% if stress.min_corr is defined and stress.min_corr is not none %}{{ "%+.2f"|format(stress.min_corr) }}{% else %}-{% endif %}</td></tr>
-      <tr><td>Максимум</td><td class="mono t-sell">{% if stress.max_corr is defined and stress.max_corr is not none %}{{ "%+.2f"|format(stress.max_corr) }}{% else %}-{% endif %}</td></tr>
+      <tr><td>Average correlation</td><td class="mono">{% if stress.avg_corr is not none %}{{ "%+.2f"|format(stress.avg_corr) }}{% else %}-{% endif %}</td></tr>
+      <tr><td>Minimum</td><td class="mono t-buy">{% if stress.min_corr is defined and stress.min_corr is not none %}{{ "%+.2f"|format(stress.min_corr) }}{% else %}-{% endif %}</td></tr>
+      <tr><td>Maximum</td><td class="mono t-sell">{% if stress.max_corr is defined and stress.max_corr is not none %}{{ "%+.2f"|format(stress.max_corr) }}{% else %}-{% endif %}</td></tr>
     </table>
   </section>
 
   <section class="panel fade">
-    <div class="panel-head"><h2>Матрица ключевых пар</h2></div>
+    <div class="panel-head"><h2>Key-pairs matrix</h2></div>
     <div id="corr-heatmap" style="width:100%;height:420px"></div>
   </section>
 </div>

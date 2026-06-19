@@ -19,45 +19,45 @@
 
 <div class="statgrid">
   <div class="stat fade">
-    <span class="stat-label">Точность (посл. {{ acc.n if acc.n else 0 }})</span>
+    <span class="stat-label">Accuracy (last {{ acc.n if acc.n else 0 }})</span>
     <span class="stat-value">{% if acc.n %}{{ "%.0f"|format(acc.acc * 100) }}<small>%</small>{% else %}-{% endif %}</span>
-    <span class="stat-sub">{% if acc.n %}{{ acc.correct }} верных из {{ acc.n }}{% else %}проверенных сигналов нет{% endif %}</span>
+    <span class="stat-sub">{% if acc.n %}{{ acc.correct }} correct of {{ acc.n }}{% else %}no verified signals{% endif %}</span>
   </div>
   <div class="stat fade">
-    <span class="stat-label">Верно / мимо</span>
+    <span class="stat-label">Correct / missed</span>
     <span class="stat-value"><em class="t-buy">{{ stats.wins }}</em><span class="stat-sep">/</span><em class="t-sell">{{ stats.losses }}</em></span>
-    <span class="stat-sub">за {{ track | length }} записей журнала</span>
+    <span class="stat-sub">over {{ track | length }} journal entries</span>
   </div>
   <div class="stat fade">
-    <span class="stat-label">Средний факт. ход</span>
+    <span class="stat-label">Average actual move</span>
     <span class="stat-value">{% if stats.avg_ret is not none %}{{ "%+.2f"|format(stats.avg_ret * 100) }}<small>%</small>{% else %}-{% endif %}</span>
-    <span class="stat-sub">следующий бар после сигнала</span>
+    <span class="stat-sub">next bar after signal</span>
   </div>
   <div class="stat fade">
-    <span class="stat-label">Серия исходов</span>
+    <span class="stat-label">Outcome streak</span>
     <span class="outcome-dots">
       {% for o in stats.outcomes %}
         <i class="dot {% if o == 1 %}dot-win{% elif o == 0 %}dot-loss{% else %}dot-na{% endif %}"></i>
       {% else %}<span class="dim">-</span>{% endfor %}
     </span>
-    <span class="stat-sub">старые - новые</span>
+    <span class="stat-sub">old - new</span>
   </div>
 </div>
 
 <section class="panel fade">
   <div class="panel-head">
-    <h2>Цена</h2>
+    <h2>Price</h2>
     <div class="ranges">
-      <button class="fbtn rbtn" data-days="30">30д</button>
-      <button class="fbtn rbtn active" data-days="90">90д</button>
-      <button class="fbtn rbtn" data-days="180">180д</button>
-      <button class="fbtn rbtn" data-days="365">1г</button>
-      <button class="fbtn rbtn" data-days="0">Всё</button>
+      <button class="fbtn rbtn" data-days="30">30d</button>
+      <button class="fbtn rbtn active" data-days="90">90d</button>
+      <button class="fbtn rbtn" data-days="180">180d</button>
+      <button class="fbtn rbtn" data-days="365">1y</button>
+      <button class="fbtn rbtn" data-days="0">All</button>
       <span class="mono chart-chg" id="chg"></span>
     </div>
   </div>
   <div class="chart-host" id="chart-host">
-    <div class="chart-loading dim" id="chart-msg">загрузка...</div>
+    <div class="chart-loading dim" id="chart-msg">loading...</div>
     <div class="chart-tip mono" id="tip" hidden></div>
   </div>
   <div class="legend">
@@ -68,7 +68,7 @@
 </section>
 
 <section class="panel fade">
-  <div class="panel-head"><h2>Свечи (OHLC)</h2></div>
+  <div class="panel-head"><h2>Candles (OHLC)</h2></div>
   <div id="asset-candles" style="width:100%;height:340px"></div>
 </section>
 <script src="/static/echarts.min.js"></script>
@@ -82,7 +82,7 @@ fetch("/api/ohlc/{{ asset }}?days=120")
 {% if reg or quality %}
 <div class="duo">
   <section class="panel fade">
-    <div class="panel-head"><h2>Рекомендация моделей</h2></div>
+    <div class="panel-head"><h2>Model recommendation</h2></div>
     {% if current %}
     <div class="consensus">
       {% if current.cb_prob is not none %}
@@ -100,38 +100,38 @@ fetch("/api/ohlc/{{ asset }}?days=120")
       </div>
       {% endif %}
       <div class="cons-row cons-total">
-        <span class="cons-name">Ансамбль</span>
+        <span class="cons-name">Ensemble</span>
         <span class="probbar cons-bar"><i class="probbar-fill {{ 'pb-buy' if current.probability >= 0.5 else 'pb-sell' }}" style="width: {{ ((current.probability - 0.5) * 200) | abs | round(0) }}%"></i></span>
         <span class="mono"><b>{{ "%.2f"|format(current.probability) }}</b></span>
       </div>
     </div>
     {% else %}
-    <p class="empty">Прогнозов в журнале нет.</p>
+    <p class="empty">No predictions in the journal.</p>
     {% endif %}
     {% if thr %}
     <table class="kv">
-      <tr><td>Порог BUY</td><td class="mono t-buy">>= {{ "%.3f"|format(thr.buy) }}</td></tr>
-      <tr><td>Порог SELL</td><td class="mono t-sell"><= {{ "%.3f"|format(thr.sell) }}</td></tr>
-      {% if thr.no_trade_band %}<tr><td>Нейтральная зона</td><td class="mono">+/-{{ thr.no_trade_band }}</td></tr>{% endif %}
+      <tr><td>BUY threshold</td><td class="mono t-buy">>= {{ "%.3f"|format(thr.buy) }}</td></tr>
+      <tr><td>SELL threshold</td><td class="mono t-sell"><= {{ "%.3f"|format(thr.sell) }}</td></tr>
+      {% if thr.no_trade_band %}<tr><td>Neutral band</td><td class="mono">+/-{{ thr.no_trade_band }}</td></tr>{% endif %}
     </table>
     {% endif %}
   </section>
 
   <section class="panel fade">
-    <div class="panel-head"><h2>Чемпион</h2></div>
+    <div class="panel-head"><h2>Champion</h2></div>
     <table class="kv">
       {% if reg %}
-      <tr><td>Режим ансамбля</td><td class="mono">{{ reg.ensemble_mode }}</td></tr>
+      <tr><td>Ensemble mode</td><td class="mono">{{ reg.ensemble_mode }}</td></tr>
       <tr><td>Lookback</td><td class="mono">{{ reg.lookback }}</td></tr>
-      <tr><td>Фичей</td><td class="mono">{{ reg.features | length }}</td></tr>
-      <tr><td>Обучен</td><td class="mono">{{ reg.updated_at[:10] }}</td></tr>
-      <tr><td>Скор обучения</td><td class="mono">{{ "%.2f"|format(reg.score) }}</td></tr>
+      <tr><td>Features</td><td class="mono">{{ reg.features | length }}</td></tr>
+      <tr><td>Trained</td><td class="mono">{{ reg.updated_at[:10] }}</td></tr>
+      <tr><td>Training score</td><td class="mono">{{ "%.2f"|format(reg.score) }}</td></tr>
       {% endif %}
       {% if quality %}
-      <tr><td>Статус</td><td><span class="chip chip-{{ 'BUY' if quality.Status == 'STABLE' else 'SELL' }}">{{ quality.Status }}</span></td></tr>
+      <tr><td>Status</td><td><span class="chip chip-{{ 'BUY' if quality.Status == 'STABLE' else 'SELL' }}">{{ quality.Status }}</span></td></tr>
       <tr><td>CatBoost acc (train)</td><td class="mono">{{ "%.1f"|format(quality.CB_Acc * 100) }}%</td></tr>
       <tr><td>LSTM acc (train)</td><td class="mono">{{ "%.1f"|format(quality.LSTM_Acc * 100) }}%</td></tr>
-      <tr><td>Сделок в оценке</td><td class="mono">{{ quality.Trades }}</td></tr>
+      <tr><td>Trades in eval</td><td class="mono">{{ quality.Trades }}</td></tr>
       {% endif %}
     </table>
   </section>
@@ -139,11 +139,11 @@ fetch("/api/ohlc/{{ asset }}?days=120")
 {% endif %}
 
 <section class="panel fade">
-  <div class="panel-head"><h2>Журнал сигналов</h2></div>
+  <div class="panel-head"><h2>Signal journal</h2></div>
   {% if track %}
   <table class="grid">
     <thead>
-      <tr><th>Дата</th><th>Сигнал</th><th class="num">p</th><th class="num">CB</th><th class="num">LSTM</th><th class="num">Факт (след. бар)</th><th>Итог</th></tr>
+      <tr><th>Date</th><th>Signal</th><th class="num">p</th><th class="num">CB</th><th class="num">LSTM</th><th class="num">Actual (next bar)</th><th>Result</th></tr>
     </thead>
     <tbody>
       {% for t in track %}
@@ -157,16 +157,16 @@ fetch("/api/ohlc/{{ asset }}?days=120")
           {% if t.actual_next_ret is not none %}{{ "%+.2f"|format(t.actual_next_ret * 100) }}%{% else %}-{% endif %}
         </td>
         <td>
-          {% if t.correct is none %}<span class="dim">ждёт сверки</span>
-          {% elif t.correct %}<span class="acc good">верно</span>
-          {% else %}<span class="acc bad">мимо</span>{% endif %}
+          {% if t.correct is none %}<span class="dim">awaiting check</span>
+          {% elif t.correct %}<span class="acc good">correct</span>
+          {% else %}<span class="acc bad">missed</span>{% endif %}
         </td>
       </tr>
       {% endfor %}
     </tbody>
   </table>
   {% else %}
-  <p class="empty">Истории нет - запусти <code>python predict.py</code>.</p>
+  <p class="empty">No history - run <code>python predict.py</code>.</p>
   {% endif %}
 </section>
 
@@ -183,7 +183,7 @@ const NS = 'http://www.w3.org/2000/svg';
 let series = [];
 
 function fmt(v) {
-  if (v >= 10000) return v.toLocaleString('ru-RU', {maximumFractionDigits: 0});
+  if (v >= 10000) return v.toLocaleString('en-US', {maximumFractionDigits: 0});
   if (v >= 100) return v.toFixed(2);
   if (v >= 1) return v.toFixed(3);
   return v.toFixed(5);
@@ -197,7 +197,7 @@ function el(tag, attrs) {
 
 function render() {
   host.querySelectorAll('svg').forEach(s => s.remove());
-  if (series.length < 2) { msg.textContent = 'нет данных по ценам'; msg.hidden = false; return; }
+  if (series.length < 2) { msg.textContent = 'no price data'; msg.hidden = false; return; }
   msg.hidden = true;
 
   const W = 960, H = 280, pad = {l: 14, r: 64, t: 14, b: 26};
@@ -269,11 +269,11 @@ function render() {
   const chg = (closes[closes.length - 1] - closes[0]) / closes[0] * 100;
   chgEl.textContent = `${chg >= 0 ? '+' : ''}${chg.toFixed(1)}%  |  ${series[0].date} - ${series[series.length - 1].date}`;
   chgEl.className = 'mono chart-chg ' + (chg >= 0 ? 't-buy' : 't-sell');
-  lastEl.innerHTML = `последняя цена: <b class="mono">${fmt(closes[closes.length - 1])}</b>`;
+  lastEl.innerHTML = `last price: <b class="mono">${fmt(closes[closes.length - 1])}</b>`;
 }
 
 async function load(days) {
-  msg.textContent = 'загрузка...'; msg.hidden = false;
+  msg.textContent = 'loading...'; msg.hidden = false;
   try {
     const r = await fetch(`/api/prices/${ASSET}?days=${days}`);
     series = (await r.json()).series;
