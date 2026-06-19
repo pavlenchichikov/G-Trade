@@ -1,17 +1,18 @@
 """
-DB Audit & Fix - аудит и ремонт market.db
+DB Audit & Fix - audit and repair market.db
 
-  python db_check.py          - полный read-only аудит (ничего не меняет)
-  python db_check.py --fix    - аудит + авто-ремонт исправимых проблем
-  python db_check.py --stats  - только статистика таблиц
+  python db_check.py          - full read-only audit (changes nothing)
+  python db_check.py --fix    - audit + auto-repair of fixable issues
+  python db_check.py --stats  - table statistics only
 
-Аудит делится на два блока:
-  ИСПРАВИМОЕ (--fix чинит): дубли по дате, формат даты, скрытые дубли, NULL,
-  критическая порча OHLC (High<Low, цена<=0, отрицательный объём). Дубли ищутся
-  и правятся ТОЛЬКО в ценовых таблицах - лог-таблицы (prediction_log, guru_log)
-  держат много строк на дату по смыслу и дедупу не подлежат.
-  КАЧЕСТВО ДАННЫХ (требует ре-фетча через data_engine, не правки БД): свежесть
-  (отставшие таблицы), разрывы в датах, покрытие по config, мало данных,
+The audit is split into two blocks:
+  FIXABLE (--fix repairs these): duplicates by date, date format, hidden
+  duplicates, NULLs, critical OHLC corruption (High<Low, price<=0, negative
+  volume). Duplicates are only searched for and fixed in price tables - log
+  tables (prediction_log, guru_log) intentionally hold many rows per date
+  and are not subject to dedup.
+  DATA QUALITY (requires a re-fetch via data_engine, not a DB fix): freshness
+  (stale tables), date gaps, coverage vs config, too little data,
   PRAGMA integrity.
 """
 
@@ -20,7 +21,7 @@ import sqlite3
 import sys
 from datetime import datetime
 
-# Стабильный UTF-8 в консоль/в пайп лаунчера (иначе кириллица бьётся на cp1251).
+# Stable UTF-8 to console/launcher pipe (otherwise Cyrillic breaks on cp1251).
 if sys.platform == "win32":
     try:
         sys.stdout.reconfigure(encoding="utf-8")
@@ -30,19 +31,19 @@ if sys.platform == "win32":
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(BASE_DIR, "market.db")
 
-# Пороги аудита (можно переопредилить через окружение при желании).
-STALE_DAILY_DAYS = 7      # дневная таблица без новых баров дольше - отстала
-STALE_WEEKLY_DAYS = 21    # недельная
-MAX_GAP_DAYS = 10         # разрыв между соседними дневными барами больше - дыра
-GAP_RECENT_DAYS = 730     # дыры старше не показываем (раннюю историю Yahoo даёт разреженно)
-MIN_ROWS_TRAIN = 100      # меньше строк - мало для обучения
+# Audit thresholds (can be overridden via environment if desired).
+STALE_DAILY_DAYS = 7      # daily table with no new bars for longer than this - stale
+STALE_WEEKLY_DAYS = 21    # weekly
+MAX_GAP_DAYS = 10         # gap between adjacent daily bars larger than this - a hole
+GAP_RECENT_DAYS = 730     # don't report gaps older than this (Yahoo gives sparse early history)
+MIN_ROWS_TRAIN = 100      # fewer rows than this - too little for training
 
 
-# -- Утилиты ------------------------------------------------------------------
+# -- Utilities ------------------------------------------------------------------
 
 def _connect():
     if not os.path.exists(DB_PATH):
-        print(f"[ERROR] База данных не найдена: {DB_PATH}")
+        print(f"[ERROR] Database not found: {DB_PATH}")
         sys.exit(1)
     return sqlite3.connect(DB_PATH)
 
@@ -56,10 +57,10 @@ def get_tables(cur):
     )
 
 
-# -- Проверки -----------------------------------------------------------------
+# -- Checks -----------------------------------------------------------------
 
 def check_duplicates(cur, tables):
-    """Таблицы с дубликатами по Date."""
+    """Tables with duplicates by Date."""
     problems = {}
     for t in tables:
         rows = cur.execute(
@@ -72,7 +73,7 @@ def check_duplicates(cur, tables):
 
 
 def check_date_formats(cur, tables):
-    """Даты не в формате YYYY-MM-DD (10 символов)."""
+    """Dates not in YYYY-MM-DD format (10 characters)."""
     bad = {}
     for t in tables:
         cnt = cur.execute(
@@ -90,7 +91,7 @@ def check_date_formats(cur, tables):
 
 
 def check_hidden_duplicates(cur, tables):
-    """Одна дата в разных форматах (скрытые дубли)."""
+    """Same date in different formats (hidden duplicates)."""
     hidden = {}
     for t in tables:
         rows = cur.execute(
@@ -103,7 +104,7 @@ def check_hidden_duplicates(cur, tables):
 
 
 def check_nulls(cur, tables):
-    """Строки с NULL в ключевых колонках (Date, Close)."""
+    """Rows with NULL in key columns (Date, Close)."""
     bad = {}
     for t in tables:
         cols = [r[1] for r in cur.execute(f"PRAGMA table_info({t})").fetchall()]
@@ -124,7 +125,7 @@ def check_nulls(cur, tables):
 
 
 def check_empty_tables(cur, tables):
-    """Пустые таблицы (0 строк)."""
+    """Empty tables (0 rows)."""
     empty = []
     for t in tables:
         cnt = cur.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0]
@@ -133,7 +134,7 @@ def check_empty_tables(cur, tables):
     return empty
 
 
-# -- Аудит качества данных (read-only) ----------------------------------------
+# -- Data quality audit (read-only) ----------------------------------------
 
 def _parse_date(s):
     try:
@@ -143,7 +144,7 @@ def _parse_date(s):
 
 
 def _price_tables(cur, tables):
-    """Только OHLCV-таблицы активов (исключает лог-таблицы guru_log и т.п.)."""
+    """Only OHLCV asset tables (excludes log tables like guru_log etc.)."""
     out = []
     for t in tables:
         cols = {r[1].lower() for r in cur.execute(f"PRAGMA table_info({t})").fetchall()}
@@ -153,10 +154,10 @@ def _price_tables(cur, tables):
 
 
 def check_freshness(cur, tables):
-    """Сколько дней назад последний бар; отмечает отставшие таблицы.
+    """How many days ago the last bar was; flags stale tables.
 
-    Отставшая таблица обычно = делистинг/переименование тикера или сломанный
-    фетч (см. историю с FIVE-X5, FIXP-FIXR), а не пустая база."""
+    A stale table is usually a delisted/renamed ticker or a broken fetch
+    (see the FIVE-X5, FIXP-FIXR history), not an empty database."""
     today = datetime.now().date()
     stale = {}
     for t in tables:
@@ -172,11 +173,11 @@ def check_freshness(cur, tables):
 
 
 def check_ohlc(cur, tables):
-    """Целостность OHLCV, по тяжести.
+    """OHLCV integrity, by severity.
 
-    critical: High<Low, неположительная цена, отрицательный объём (порча данных).
-    minor:    Open/Close вне диапазона [Low,High] - частый артефакт FX-фида Yahoo,
-              не порча, но к сведению."""
+    critical: High<Low, non-positive price, negative volume (data corruption).
+    minor:    Open/Close outside the [Low,High] range - a common Yahoo FX feed
+              artifact, not corruption, but worth noting."""
     out = {}
     for t in tables:
         cols = {r[1].lower() for r in cur.execute(f"PRAGMA table_info({t})").fetchall()}
@@ -194,8 +195,8 @@ def check_ohlc(cur, tables):
 
 
 def check_gaps(cur, tables):
-    """Самый большой разрыв между соседними дневными барами за последние
-    GAP_RECENT_DAYS (старую разреженную историю Yahoo не считаем)."""
+    """Biggest gap between adjacent daily bars over the last
+    GAP_RECENT_DAYS (old sparse Yahoo history is not counted)."""
     from datetime import timedelta
     cutoff = datetime.now().date() - timedelta(days=GAP_RECENT_DAYS)
     gaps = {}
@@ -212,7 +213,7 @@ def check_gaps(cur, tables):
             d = _parse_date(ds)
             if d is None:
                 continue
-            # считаем дыру только если она заканчивается в недавнем окне
+            # only count a gap if it ends within the recent window
             if prev is not None and d >= cutoff and (d - prev).days > biggest:
                 biggest = (d - prev).days
                 span = (prev.isoformat(), d.isoformat())
@@ -223,7 +224,7 @@ def check_gaps(cur, tables):
 
 
 def check_low_data(cur, tables):
-    """Дневные таблицы со слишком малым числом строк для обучения."""
+    """Daily tables with too few rows for training."""
     low = {}
     for t in tables:
         if t.endswith("_weekly"):
@@ -235,13 +236,13 @@ def check_low_data(cur, tables):
 
 
 def _norm_key(key):
-    """Имя таблицы из ключа актива (как в data_engine)."""
+    """Table name derived from the asset key (same as in data_engine)."""
     return key.lower().replace("^", "").replace(".", "").replace("-", "")
 
 
 def check_coverage(tables):
-    """Сверка таблиц с реестром активов из config: чего не хватает, что лишнее,
-    у каких нет недельной пары. None, если config недоступен."""
+    """Cross-check tables against the asset registry from config: what's missing,
+    what's extra, which ones lack a weekly counterpart. None if config is unavailable."""
     try:
         from config import FULL_ASSET_MAP
     except Exception:
@@ -258,15 +259,15 @@ def check_coverage(tables):
 
 
 def check_integrity(conn):
-    """PRAGMA quick_check + размер файла."""
+    """PRAGMA quick_check + file size."""
     res = conn.execute("PRAGMA quick_check").fetchone()[0]
     return {"quick_check": res, "size_mb": os.path.getsize(DB_PATH) / 1024 / 1024}
 
 
-# -- Исправления --------------------------------------------------------------
+# -- Fixes --------------------------------------------------------------
 
 def fix_date_formats(cur, tables):
-    """Нормализует даты > 10 символов - YYYY-MM-DD."""
+    """Normalizes dates longer than 10 characters to YYYY-MM-DD."""
     total = 0
     for t in tables:
         before = cur.execute(
@@ -277,12 +278,12 @@ def fix_date_formats(cur, tables):
                 f"UPDATE {t} SET Date = substr(Date,1,10) WHERE length(Date) > 10"
             )
             total += before
-            print(f"    {t}: нормализовано {before} дат")
+            print(f"    {t}: normalized {before} dates")
     return total
 
 
 def fix_duplicates(cur, tables):
-    """Удаляет дубликаты - оставляет MAX(rowid) для каждой даты."""
+    """Removes duplicates - keeps MAX(rowid) for each date."""
     total = 0
     for t in tables:
         before = cur.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0]
@@ -294,12 +295,12 @@ def fix_duplicates(cur, tables):
         removed = before - after
         if removed:
             total += removed
-            print(f"    {t}: удалено {removed} дубликатов")
+            print(f"    {t}: removed {removed} duplicates")
     return total
 
 
 def fix_nulls(cur, tables):
-    """Удаляет строки с NULL Date или NULL Close."""
+    """Removes rows with NULL Date or NULL Close."""
     total = 0
     for t in tables:
         cols = [r[1] for r in cur.execute(f"PRAGMA table_info({t})").fetchall()]
@@ -317,22 +318,23 @@ def fix_nulls(cur, tables):
         removed = before - after
         if removed:
             total += removed
-            print(f"    {t}: удалено {removed} строк с NULL")
+            print(f"    {t}: removed {removed} rows with NULL")
     return total
 
 
 def fix_ohlc(cur, tables):
-    """Чинит критическую порчу OHLC в ценовых таблицах (по строке):
+    """Repairs critical OHLC corruption in price tables (row by row):
 
-      - ни одной положительной цены (O/H/L/C все <=0) - строка мертва, удаляем
-        (ранний SHIB: цена ниже точности хранения округлилась в нули);
-      - часть цен валидна - нули/отрицательные заполняем медианой положительных,
-        затем High=max, Low=min по набору. Убирает High<Low, нули O/H/L у tnx/vix
-        (где валиден только Close) и отрицательный Low (oil 2020-04 -40.32);
-      - Volume<0 - модуль (ошибка знака фида).
+      - no positive price at all (O/H/L/C all <=0) - the row is dead, delete it
+        (early SHIB: price below storage precision rounded down to zero);
+      - some prices are valid - fill zero/negative ones with the median of the
+        positive ones, then set High=max, Low=min over the set. Clears High<Low,
+        zero O/H/L on tnx/vix (where only Close is valid), and negative Low
+        (oil 2020-04 -40.32);
+      - Volume<0 - take the absolute value (feed sign error).
 
-    Минорные отклонения Open/Close за [Low,High] (артефакт FX-фида Yahoo) НЕ трогаем.
-    Возвращает (исправлено_строк, удалено_строк)."""
+    Minor Open/Close deviations outside [Low,High] (Yahoo FX feed artifact) are
+    NOT touched. Returns (rows_repaired, rows_deleted)."""
     repaired = deleted = 0
     for t in tables:
         cols = {r[1].lower() for r in cur.execute(f"PRAGMA table_info({t})").fetchall()}
@@ -356,7 +358,7 @@ def fix_ohlc(cur, tables):
                 cur.execute(f"DELETE FROM {t} WHERE rowid = ?", (rid,))
                 t_del += 1
                 continue
-            ref = pos[len(pos) // 2]  # медиана положительных цен
+            ref = pos[len(pos) // 2]  # median of the positive prices
             o = o if (o is not None and o > 0) else ref
             h = h if (h is not None and h > 0) else ref
             l = l if (l is not None and l > 0) else ref
@@ -375,9 +377,9 @@ def fix_ohlc(cur, tables):
         if t_rep or t_del:
             parts = []
             if t_rep:
-                parts.append(f"исправлено {t_rep}")
+                parts.append(f"repaired {t_rep}")
             if t_del:
-                parts.append(f"удалено {t_del} мёртвых")
+                parts.append(f"deleted {t_del} dead")
             print(f"    {t}: " + ", ".join(parts))
         repaired += t_rep
         deleted += t_del
@@ -385,7 +387,7 @@ def fix_ohlc(cur, tables):
 
 
 def fix_vacuum(conn):
-    """VACUUM - сжатие файла БД после удалений."""
+    """VACUUM - compacts the DB file after deletions."""
     before = os.path.getsize(DB_PATH)
     conn.execute("VACUUM")
     after = os.path.getsize(DB_PATH)
@@ -393,14 +395,14 @@ def fix_vacuum(conn):
     if saved > 0:
         print(f"    VACUUM: {before/1024/1024:.1f} MB - {after/1024/1024:.1f} MB (-{saved/1024:.0f} KB)")
     else:
-        print(f"    VACUUM: {after/1024/1024:.1f} MB (без изменений)")
+        print(f"    VACUUM: {after/1024/1024:.1f} MB (no change)")
     return saved
 
 
-# -- Вывод --------------------------------------------------------------------
+# -- Output --------------------------------------------------------------------
 
 def print_stats(cur, tables):
-    """Статистика по таблицам."""
+    """Per-table statistics."""
     print(f"\n  {'Table':<25} {'Rows':>8}  {'Min Date':<12} {'Max Date':<12}")
     print(f"  {'-'*58}")
     for t in tables:
@@ -412,7 +414,7 @@ def print_stats(cur, tables):
 
 
 def run_diagnostics(cur, tables):
-    """Запускает все проверки, возвращает dict результатов."""
+    """Runs all checks, returns a dict of results."""
     W = 60
     print()
     print("=" * W)
@@ -420,10 +422,10 @@ def run_diagnostics(cur, tables):
     print("=" * W)
 
     results = {}
-    # Дубли/скрытые дубли ищем только в ценовых (OHLCV) таблицах. В лог-таблицах
-    # (prediction_log, guru_log) несколько строк на одну дату - это норма (строка
-    # на актив), и авто-дедуп по дате стёр бы историю прогнозов. _price_tables их
-    # отсекает (нет open/high/low/close).
+    # Duplicates/hidden duplicates are only searched for in price (OHLCV) tables.
+    # In log tables (prediction_log, guru_log) multiple rows per date are normal
+    # (one row per asset), and auto-dedup by date would wipe out prediction
+    # history. _price_tables filters them out (no open/high/low/close).
     price = _price_tables(cur, tables)
     results["price"] = price
 
@@ -481,8 +483,8 @@ def run_diagnostics(cur, tables):
     else:
         print("  [OK] No empty tables")
 
-    # Критическая порча OHLC теперь тоже чинится (--fix), поэтому входит в флаг
-    # исправимых проблем. Отчёт о ней по-прежнему печатает блок DATA QUALITY.
+    # Critical OHLC corruption is now also fixable (--fix), so it counts toward
+    # the fixable-problems flag. The DATA QUALITY block still prints its report.
     ohlc = check_ohlc(cur, price)
     results["ohlc_crit"] = {t: v["critical"] for t, v in ohlc.items() if v["critical"]}
 
@@ -493,13 +495,13 @@ def run_diagnostics(cur, tables):
 
 
 def run_quality_audit(conn, cur, tables):
-    """Read-only блок аудита качества данных. Возвращает число предупреждений."""
+    """Read-only data-quality audit block. Returns the number of warnings."""
     W = 60
     print(f"\n{'='*W}")
-    print("  DATA QUALITY  |  OHLC чинит --fix; разрывы/свежесть/мало данных - ре-фетч data_engine")
+    print("  DATA QUALITY  |  OHLC is fixed by --fix; gaps/freshness/low data require a data_engine re-fetch")
     print("=" * W)
     warn = 0
-    price = _price_tables(cur, tables)  # OHLCV-таблицы, без лог-таблиц
+    price = _price_tables(cur, tables)  # OHLCV tables, excluding log tables
 
     print("\n  [+] Integrity (PRAGMA quick_check)")
     integ = check_integrity(conn)
@@ -528,7 +530,7 @@ def run_quality_audit(conn, cur, tables):
     if crit:
         warn += len(crit)
         print(f"  [!] CRITICAL in {len(crit)} tables (High<Low / price<=0 / volume<0) "
-              "- чинится --fix:")
+              "- fixed by --fix:")
         for t, c in sorted(crit.items()):
             print(f"       {t:<28} {c} rows")
     else:
@@ -584,41 +586,41 @@ def run_quality_audit(conn, cur, tables):
 
 
 def run_fix(conn, cur, tables, results):
-    """Исправляет все найденные проблемы."""
+    """Repairs all problems found."""
     print()
     print("=" * 60)
     print("  DB FIX  |  Auto-repair")
     print("=" * 60)
 
     fixed_total = 0
-    # Дедуп только по ценовым таблицам - лог-таблицы трогать нельзя.
+    # Dedup only on price tables - log tables must not be touched.
     price = results.get("price") or _price_tables(cur, tables)
 
     if results.get("bad_fmt"):
-        print("\n  [FIX] Нормализация дат:")
+        print("\n  [FIX] Normalizing dates:")
         fixed_total += fix_date_formats(cur, tables)
 
     if results.get("dups") or results.get("hidden"):
-        print("\n  [FIX] Удаление дубликатов:")
+        print("\n  [FIX] Removing duplicates:")
         fixed_total += fix_duplicates(cur, price)
 
     if results.get("nulls"):
-        print("\n  [FIX] Удаление NULL-строк:")
+        print("\n  [FIX] Removing NULL rows:")
         fixed_total += fix_nulls(cur, tables)
 
     if results.get("ohlc_crit"):
-        print("\n  [FIX] Ремонт OHLC (критическая порча):")
+        print("\n  [FIX] Repairing OHLC (critical corruption):")
         rep, dele = fix_ohlc(cur, price)
         fixed_total += rep + dele
 
     conn.commit()
 
-    print("\n  [FIX] Сжатие БД:")
+    print("\n  [FIX] Compacting DB:")
     fix_vacuum(conn)
 
-    # Перепроверка
+    # Re-check
     print(f"\n{'='*60}")
-    print("  ПЕРЕПРОВЕРКА")
+    print("  RE-CHECK")
     print(f"{'='*60}")
     dups2 = check_duplicates(cur, price)
     bad2 = check_date_formats(cur, tables)
@@ -627,18 +629,18 @@ def run_fix(conn, cur, tables, results):
     ohlc2 = {t: v["critical"] for t, v in check_ohlc(cur, price).items() if v["critical"]}
 
     if not dups2 and not bad2 and not hidden2 and not nulls2 and not ohlc2:
-        print(f"\n  ГОТОВО: исправлено {fixed_total} строк. База чистая.")
+        print(f"\n  DONE: fixed {fixed_total} rows. Database is clean.")
     else:
         remaining = len(dups2) + len(bad2) + len(hidden2) + len(nulls2) + len(ohlc2)
-        print(f"\n  ВНИМАНИЕ: осталось {remaining} проблем. Запустите ещё раз.")
+        print(f"\n  WARNING: {remaining} problems remain. Run again.")
 
     return fixed_total
 
 
-# -- Точки входа --------------------------------------------------------------
+# -- Entry points --------------------------------------------------------------
 
 def main_audit():
-    """Полный read-only аудит. Ничего не меняет (безопасно из лаунчера)."""
+    """Full read-only audit. Changes nothing (safe to run from the launcher)."""
     conn = _connect()
     cur = conn.cursor()
     tables = get_tables(cur)
@@ -648,20 +650,20 @@ def main_audit():
 
     print(f"\n{'='*60}")
     if not results["has_problems"] and not warn:
-        print("  РЕЗУЛЬТАТ: база чистая, замечаний нет")
+        print("  RESULT: database is clean, no issues found")
     else:
-        fixable = "есть" if results["has_problems"] else "нет"
-        print(f"  РЕЗУЛЬТАТ: исправимых проблем - {fixable}; "
-              f"предупреждений по качеству - {warn}")
+        fixable = "yes" if results["has_problems"] else "no"
+        print(f"  RESULT: fixable problems - {fixable}; "
+              f"quality warnings - {warn}")
         if results["has_problems"]:
-            print("  Запусти  python db_check.py --fix  для авто-ремонта.")
+            print("  Run  python db_check.py --fix  for auto-repair.")
     print(f"{'='*60}")
     print_stats(cur, tables)
     conn.close()
 
 
 def main_fix():
-    """Аудит + авто-ремонт исправимых проблем (без вопросов)."""
+    """Audit + auto-repair of fixable problems (no prompts)."""
     conn = _connect()
     cur = conn.cursor()
     tables = get_tables(cur)
@@ -671,7 +673,7 @@ def main_fix():
     if results["has_problems"]:
         run_fix(conn, cur, tables, results)
     else:
-        print("\n  Исправимых проблем нет.")
+        print("\n  No fixable problems.")
 
     run_quality_audit(conn, cur, tables)
     print_stats(cur, tables)
@@ -679,21 +681,21 @@ def main_fix():
 
 
 def main_stats():
-    """Только статистика."""
+    """Statistics only."""
     conn = _connect()
     cur = conn.cursor()
     tables = get_tables(cur)
-    print(f"\n  DB STATS - market.db ({len(tables)} таблиц)")
+    print(f"\n  DB STATS - market.db ({len(tables)} tables)")
     print_stats(cur, tables)
     conn.close()
 
 
 if __name__ == "__main__":
     import argparse
-    parser = argparse.ArgumentParser(description="DB Audit & Fix для market.db")
-    parser.add_argument("--fix", action="store_true", help="Авто-ремонт исправимых проблем")
-    parser.add_argument("--stats", action="store_true", help="Только статистика")
-    # Обратная совместимость
+    parser = argparse.ArgumentParser(description="DB Audit & Fix for market.db")
+    parser.add_argument("--fix", action="store_true", help="Auto-repair fixable problems")
+    parser.add_argument("--stats", action="store_true", help="Statistics only")
+    # Backward compatibility
     parser.add_argument("--audit", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--autofix", action="store_true", help=argparse.SUPPRESS)
     args = parser.parse_args()

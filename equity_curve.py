@@ -1,8 +1,8 @@
 """
-Equity Curve - график капитала по результатам Paper Trading / Backtest.
-Открывает окно matplotlib с интерактивным графиком.
-  python equity_curve.py               - из paper trading
-  python equity_curve.py --backtest    - из backtest результатов
+Equity Curve - capital chart from Paper Trading / Backtest results.
+Opens a matplotlib window with an interactive chart.
+  python equity_curve.py               - from paper trading
+  python equity_curve.py --backtest    - from backtest results
 """
 
 import os
@@ -19,14 +19,14 @@ sys.path.insert(0, BASE_DIR)
 
 
 def _get_paper_equity():
-    """Equity из paper trading (закрытые сделки)."""
+    """Equity from paper trading (closed trades)."""
     if not os.path.exists(PAPER_DB):
         return None
 
     conn = sqlite3.connect(PAPER_DB)
     cur = conn.cursor()
 
-    # Проверяем таблицы
+    # Check tables
     tables = [r[0] for r in cur.execute(
         "SELECT name FROM sqlite_master WHERE type='table'"
     ).fetchall()]
@@ -34,7 +34,7 @@ def _get_paper_equity():
         conn.close()
         return None
 
-    # Начальный баланс
+    # Initial balance
     initial = 10000.0
     try:
         row = cur.execute(
@@ -45,7 +45,7 @@ def _get_paper_equity():
     except Exception:
         pass
 
-    # Закрытые сделки по дате
+    # Closed trades by date
     trades = cur.execute(
         "SELECT exit_date, pnl FROM positions WHERE status='CLOSED' AND exit_date IS NOT NULL ORDER BY exit_date"
     ).fetchall()
@@ -64,8 +64,8 @@ def _get_paper_equity():
 
 
 def _get_backtest_equity():
-    """Equity из backtest результатов (если есть experiments/backtest_results.json)."""
-    # Попробуем прочитать из models/experiments
+    """Equity from backtest results (if experiments/backtest_results.json exists)."""
+    # Try reading from models/experiments
     exp_dir = os.path.join(BASE_DIR, "models", "experiments")
     results_file = os.path.join(exp_dir, "backtest_results.json")
 
@@ -76,8 +76,8 @@ def _get_backtest_equity():
         if "equity_curve" in data:
             return pd.DataFrame(data["equity_curve"])
 
-    # Альтернативно - сгенерировать из market.db используя простую стратегию
-    # на основе champion_registry scores
+    # Otherwise - generate from market.db using a simple strategy
+    # based on champion_registry scores
     registry_path = os.path.join(BASE_DIR, "models", "champion_registry.json")
     if not os.path.exists(registry_path):
         return None
@@ -89,7 +89,7 @@ def _get_backtest_equity():
     with open(registry_path, "r") as f:
         registry = json.load(f)
 
-    # Берём топ-5 активов по score
+    # Take the top 5 assets by score
     scored = [(k, v.get("score", 0)) for k, v in registry.items() if isinstance(v.get("score"), (int, float))]
     scored.sort(key=lambda x: x[1], reverse=True)
     top_assets = [k for k, _ in scored[:5]]
@@ -97,7 +97,7 @@ def _get_backtest_equity():
     if not top_assets:
         return None
 
-    # Простой equity: равные доли, buy-and-hold за последние 120 дней
+    # Simple equity: equal shares, buy-and-hold over the last 120 days
     initial = 10000.0
     share = initial / len(top_assets)
     all_returns = []
@@ -166,14 +166,14 @@ def show_equity_curve(source="paper"):
     y = df["equity"].values
     initial = y[0]
 
-    # Цвет линии зависит от результата
+    # Line color depends on the outcome
     final_color = "#22c55e" if y[-1] >= initial else "#ef4444"
     ax.plot(x, y, color=final_color, linewidth=2)
     ax.fill_between(x, initial, y, where=(y >= initial), alpha=0.15, color="#22c55e")
     ax.fill_between(x, initial, y, where=(y < initial), alpha=0.15, color="#ef4444")
     ax.axhline(y=initial, color="#64748b", linestyle="--", linewidth=0.8, alpha=0.5)
 
-    # Метки
+    # Labels
     ax.set_title(title, color="#e2e8f0", fontsize=14, fontweight="bold")
     ax.set_xlabel("Trades" if source == "paper" else "Days", color="#64748b")
     ax.set_ylabel("Equity ($)", color="#64748b")
@@ -181,7 +181,7 @@ def show_equity_curve(source="paper"):
     for spine in ax.spines.values():
         spine.set_color("#1e293b")
 
-    # Аннотации
+    # Annotations
     ret_pct = (y[-1] / initial - 1) * 100
     max_eq = max(y)
     max_dd = min((y[i] / max(y[:i+1]) - 1) * 100 for i in range(len(y)))

@@ -1,4 +1,4 @@
-"""Ансамбль: гейтинг, стэкинг, подбор весов."""
+"""Ensemble: gating, stacking, weight selection."""
 
 import numpy as np
 

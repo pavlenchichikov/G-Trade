@@ -3,11 +3,11 @@ guru_report.py - Console Guru Council report with full financial data.
 Shows raw fundamentals + guru verdicts for any asset or all assets.
 
 Usage:
-    python guru_report.py              # Все активы (краткий)
-    python guru_report.py TSLA         # Один актив (полный отчёт)
-    python guru_report.py TSLA SBER    # Несколько активов
-    python guru_report.py --all        # Все активы (полный отчёт)
-    python guru_report.py --sector US  # По группе (US, RUS, CRYPTO, COMMODITY)
+    python guru_report.py              # All assets (summary)
+    python guru_report.py TSLA         # One asset (full report)
+    python guru_report.py TSLA SBER    # Several assets
+    python guru_report.py --all        # All assets (full report)
+    python guru_report.py --sector US  # By group (US, RUS, CRYPTO, COMMODITY)
 """
 
 import os
@@ -386,16 +386,16 @@ def run_guru(name, fund, tech):
                 results['lynch'] = ("[OFF] EXP", f"PEG={peg:.2f} P/E={pe:.1f} Growth={growth:.0%}", 0)
         elif pe > 0:
             if pe < 12:
-                results['lynch'] = ("[OK] CHEAP", f"P/E={pe:.1f} (нет growth)", 2)
+                results['lynch'] = ("[OK] CHEAP", f"P/E={pe:.1f} (no growth data)", 2)
             elif pe < 25:
-                results['lynch'] = ("[--] FAIR", f"P/E={pe:.1f} (нет growth)", 1)
+                results['lynch'] = ("[--] FAIR", f"P/E={pe:.1f} (no growth data)", 1)
             else:
                 results['lynch'] = ("[OFF] EXP", f"P/E={pe:.1f}", 0)
     if 'lynch' not in results and tech:
         s = int(tech['above_50']) + int(tech['above_200'])
         results['lynch'] = (["[OFF]", "[--]", "[OK]"][s], f"SMA50/200 trend score={s}", s)
     if 'lynch' not in results:
-        results['lynch'] = ("[--] N/A", "Нет данных", 0)
+        results['lynch'] = ("[--] N/A", "No data", 0)
 
     # --- Buffett ---
     if fund:
@@ -425,7 +425,7 @@ def run_guru(name, fund, tech):
     elif tech:
         results['buffett'] = ("[--] TECH", f"RSI={tech['rsi']:.0f} SMA200={'+' if tech['above_200'] else '-'}", int(tech['above_200']))
     else:
-        results['buffett'] = ("[--] N/A", "Нет данных", 0)
+        results['buffett'] = ("[--] N/A", "No data", 0)
 
     # --- Graham ---
     if fund:
@@ -458,14 +458,14 @@ def run_guru(name, fund, tech):
             f"52W={pct:.0f}%", 2 if pct < 25 else 1 if pct < 60 else 0
         )
     else:
-        results['graham'] = ("[--] N/A", "Нет данных", 0)
+        results['graham'] = ("[--] N/A", "No data", 0)
 
     # --- Munger ---
     risk_score = 0
     risk_notes = []
     if fund:
-        if fund.get('debt_equity', 0) > 3: risk_score += 2; risk_notes.append("Долг>3x")
-        elif fund.get('debt_equity', 0) > 1.5: risk_score += 1; risk_notes.append(f"Долг={fund['debt_equity']:.1f}x")
+        if fund.get('debt_equity', 0) > 3: risk_score += 2; risk_notes.append("Debt>3x")
+        elif fund.get('debt_equity', 0) > 1.5: risk_score += 1; risk_notes.append(f"Debt={fund['debt_equity']:.1f}x")
         if fund.get('roe', 0) < 0: risk_score += 2; risk_notes.append("ROE<0")
         if fund.get('pe', 0) > 50: risk_score += 1; risk_notes.append(f"P/E={fund['pe']:.0f}")
         if fund.get('profit_margin', 0) < 0: risk_score += 2; risk_notes.append("Margin<0")
@@ -480,7 +480,7 @@ def run_guru(name, fund, tech):
         elif tech['rsi'] > 70: risk_score += 1; risk_notes.append(f"RSI={tech['rsi']:.0f}")
         if tech['vol_30d'] > 0.60: risk_score += 1; risk_notes.append(f"Vol={tech['vol_30d']:.0%}")
     if risk_score == 0:
-        results['munger'] = ("[OK] CLEAN", "Рисков нет", 2)
+        results['munger'] = ("[OK] CLEAN", "No risks found", 2)
     elif risk_score >= 5:
         results['munger'] = ("[!!] DANGER", " | ".join(risk_notes[:4]), 0)
     elif risk_score >= 2:

@@ -13,7 +13,7 @@ import urllib3
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-# --- НАСТРОЙКИ ---
+# --- SETTINGS ---
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 if BASE_DIR not in sys.path: sys.path.append(BASE_DIR)
 
@@ -24,25 +24,25 @@ logger = get_logger("data_engine")
 try:
     from config import FULL_ASSET_MAP
 except ImportError:
-    exit(f"[ERR] config.py не найден в {BASE_DIR}")
+    exit(f"[ERR] config.py not found in {BASE_DIR}")
 
 engine = create_engine(f'sqlite:///{os.path.join(BASE_DIR, "market.db")}')
 _db_lock = threading.Lock()  # serialize SQLite writes
 
 
 def _env_int(name, default):
-    """int из переменной окружения, иначе default (пустое/мусор тоже даёт default)."""
+    """int from an environment variable, else default (empty/garbage also falls back to default)."""
     try:
         return int((os.getenv(name) or "").strip() or default)
     except ValueError:
         return default
 
 
-# Всё конфигурируемо через окружение, без зашитых констант.
+# Everything is configurable via the environment, no hardcoded constants.
 DAILY_WORKERS = _env_int("GTRADE_DAILY_WORKERS", 12)
 WEEKLY_WORKERS = _env_int("GTRADE_WEEKLY_WORKERS", 10)
-RETRY_SWEEPS = _env_int("GTRADE_RETRY_SWEEPS", 2)   # доп. проходы по активам с ERROR
-MOEX_RETRIES = _env_int("GTRADE_MOEX_RETRIES", 5)   # попыток на запрос внутри одного прохода
+RETRY_SWEEPS = _env_int("GTRADE_RETRY_SWEEPS", 2)   # extra passes over assets with ERROR
+MOEX_RETRIES = _env_int("GTRADE_MOEX_RETRIES", 5)   # attempts per request within a single pass
 MOEX_TARGETS = [
     "IMOEX", "SBER", "GAZP", "LKOH", "ROSN", "NVTK", "TATN", "SNGS",
     "PLZL", "SIBN", "MGNT",
@@ -58,14 +58,14 @@ MOEX_TARGETS = [
 ]
 
 def get_last_date(table_name):
-    """Узнаем дату последней свечи в базе"""
+    """Find the date of the most recent bar in the database."""
     try:
         with engine.connect() as conn:
-            # Проверяем наличие таблицы
+            # Check whether the table exists
             check = conn.execute(text(f"SELECT name FROM sqlite_master WHERE type='table' AND name='{table_name}'"))
             if not check.fetchone(): return None
 
-            # Берем последнюю дату
+            # Get the most recent date
             res = conn.execute(text(f"SELECT MAX(Date) FROM {table_name}"))
             last_date_str = res.fetchone()[0]
             if last_date_str:
@@ -76,12 +76,12 @@ def get_last_date(table_name):
 
 
 def _drop_existing_dates(df, table_name):
-    """Убираем из df даты, которые уже есть в БД - защита от дубликатов."""
+    """Remove dates from df that are already in the DB - guards against duplicates."""
     try:
         with engine.connect() as conn:
             check = conn.execute(text(f"SELECT name FROM sqlite_master WHERE type='table' AND name='{table_name}'"))
             if not check.fetchone():
-                return df  # таблицы нет - всё новое
+                return df  # table doesn't exist - everything is new
             existing = pd.read_sql(f"SELECT DISTINCT Date FROM {table_name}", conn)
             if existing.empty:
                 return df
@@ -89,11 +89,12 @@ def _drop_existing_dates(df, table_name):
             mask = ~df.index.astype(str).str[:10].isin(existing_set)
             return df[mask]
     except Exception:
-        return df  # при ошибке - пишем как есть
+        return df  # on error - write as-is
 
 def _yahoo_chart_ok(r) -> bool:
-    """True только для годного ответа Yahoo. 200 с error/без result = маршрут
-    попал не туда, net.http_get пробует другой. Пустой ответ держит 'result'."""
+    """True only for a valid Yahoo response. A 200 with error/no result means the
+    route landed on the wrong endpoint, so net.http_get tries another one. An empty
+    response still has a 'result' key."""
     if r.status_code != 200:
         return False
     try:
@@ -162,9 +163,9 @@ def fetch_yahoo_smart(symbol, last_date):
 
         return df.set_index('Date'), None
 
-    # net.http_get сам выбирает рабочий маршрут (direct/SOCKS5) и делает
-    # failover на сетевой ошибке либо когда validate отбраковал 200 с пустым
-    # или error-телом Yahoo.
+    # net.http_get picks the working route itself (direct/SOCKS5) and does a
+    # failover on a network error or when validate rejects a 200 with an empty
+    # or error body from Yahoo.
     try:
         r = net.http_get(url, route="auto", validate=_yahoo_chart_ok)
     except requests.exceptions.RequestException as exc:
@@ -190,19 +191,19 @@ def fetch_moex_smart(symbol, last_date):
     clean = symbol.split('.')[0]
     print(f"   - [MOEX] {clean:<12}", end=" ", flush=True)
 
-    # Уже актуально: следующий бар начался бы в будущем, MOEX вернёт пусто.
-    # Пропускаем запрос (как и Yahoo по start_ts >= now), чтобы не долбить
-    # нестабильный прямой маршрут и не плодить транзиентные таймауты в логе.
+    # Already up to date: the next bar would start in the future, MOEX would return
+    # nothing. Skip the request (same as Yahoo's start_ts >= now check) to avoid
+    # hammering the unstable direct route and piling up transient timeouts in the log.
     if last_date is not None and last_date.date() >= datetime.now().date():
         print("[OK] (Up to date)")
         return None
 
-    # MOEX позволяет указать дату старта 'YYYY-MM-DD'
+    # MOEX lets us specify a start date as 'YYYY-MM-DD'
     start_str = (last_date + timedelta(days=1)).strftime('%Y-%m-%d') if last_date else "2015-01-01"
 
     all_data = []
     net_failed = False  # distinguish "connection died" from "no new data"
-    # Качаем порциями (если история большая)
+    # Download in chunks (in case the history is large)
     for offset in [0, 500, 1000]:
         url = f"https://iss.moex.com/iss/engines/stock/markets/shares/boards/TQBR/securities/{clean}/candles.json?interval=24&from={start_str}&start={offset}"
         if clean == "IMOEX":
@@ -214,7 +215,7 @@ def fetch_moex_smart(symbol, last_date):
             if not data: break
             all_data.extend(data)
             cols = r.json()['candles']['columns']
-            if len(data) < 500: break # Конец данных
+            if len(data) < 500: break # End of data
         except Exception as exc:
             # A failure on the FIRST page means we never reached MOEX - this is
             # an error, NOT "up to date". MOEX needs a Russian IP; a foreign VPN
@@ -247,7 +248,7 @@ def fetch_moex_weekly(symbol, last_date):
     clean = symbol.split('.')[0]
     print(f"   - [WEEKLY RU] {clean:<12}", end=" ", flush=True)
 
-    # Уже актуально: пропускаем запрос вместо обращения к нестабильному маршруту.
+    # Already up to date: skip the request instead of hitting the unstable route.
     if last_date is not None and last_date.date() >= datetime.now().date():
         print("[OK] (Up to date)")
         return None
@@ -306,13 +307,13 @@ def fetch_yahoo_weekly(symbol, last_date):
         y_sym = f"{symbol}-USD"
 
     now_ts = int(datetime.now().timestamp())
-    _orig_last_date = last_date  # сохраняем для фильтрации
+    _orig_last_date = last_date  # saved for filtering
 
     if last_date is not None:
-        # Сдвигаем на 1 день (не неделю) - чтобы не пропустить текущую неделю
+        # Shift by 1 day (not a week) so we don't skip the current week
         start_ts = int(last_date.timestamp()) + 86400
         if start_ts >= now_ts:
-            # Данные уже актуальны
+            # Data is already up to date
             print(f"   - [WEEKLY] {y_sym:<12} [OK] (UP_TO_DATE)")
             return None
     else:
@@ -491,14 +492,14 @@ def _fetch_and_save_weekly(n, s):
 
 
 def _retry_failed(fetch_fn, sym_for, results, *, sweeps, workers, label):
-    """Доп. проходы по активам со статусом ERR. Блэкхолы к iss.moex.com
-    случайны на каждую попытку, поэтому свежий проход обычно их закрывает.
-    results (список (name, status, bars)) обновляется на месте."""
+    """Extra passes over assets with ERR status. Blackholes to iss.moex.com are
+    random on each attempt, so a fresh pass usually clears them.
+    results (a list of (name, status, bars)) is updated in place."""
     for sweep in range(sweeps):
         failed = [n for n, st, _ in results if st == 'ERR']
         if not failed:
             break
-        net.reset_route_cache()  # заново подобрать маршрут на повторе
+        net.reset_route_cache()  # pick a fresh route on retry
         print(f"  retry {label}: sweep {sweep + 1}/{sweeps}, {len(failed)} assets")
         fixed = {}
         with ThreadPoolExecutor(max_workers=workers) as ex:

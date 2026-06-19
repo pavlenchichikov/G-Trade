@@ -2,20 +2,20 @@
 Optuna Hyperparameter Tuner - G-Trade
 ========================================================
 
-ЧТО ЭТО. Подбор гиперпараметров модели (в основном CatBoost: глубина, learning
-rate, отбор признаков, пороги BUY/SELL) методом байесовской оптимизации Optuna.
-Для каждого актива прогоняет N "trial"-ов и ищет набор параметров с лучшим score.
+WHAT THIS IS. Tunes model hyperparameters (mainly CatBoost: depth, learning
+rate, feature selection, BUY/SELL thresholds) using Optuna's Bayesian optimization.
+For each asset it runs N "trials" and looks for the parameter set with the best score.
 
-ЗАЧЕМ. Дефолтные параметры в core/profiles.py - разумные, но не оптимальные под
-каждый актив. Тюнинг выжимает качество там, где это важно.
+WHY. The default parameters in core/profiles.py are sensible but not optimal for
+every asset. Tuning squeezes out extra quality where it matters.
 
-КАК РАБОТАЕТ СВЯЗКА. Результат сохраняется в models/optuna_params.json.
-train_hybrid.py при следующем обучении САМ подхватывает этот файл, если он есть.
-То есть: запустил тюнинг - потом обычное обучение использует найденные параметры.
+HOW THE INTEGRATION WORKS. The result is saved to models/optuna_params.json.
+On the next training run, train_hybrid.py automatically picks up this file if it exists.
+In other words: run the tuner once, then regular training will use the found parameters.
 
-КОГДА ЗАПУСКАТЬ. Опционально и редко (это НЕ часть ежедневного цикла
-data_engine - train - predict). Имеет смысл раз в несколько месяцев или когда
-качество по активу просело. Прогон долгий.
+WHEN TO RUN IT. Optional and infrequent (this is NOT part of the daily
+data_engine - train - predict cycle). Worth running every few months or when
+quality for an asset has degraded. The run takes a while.
 
 Usage:
   python optuna_tune.py                    # tune all assets (fast mode)

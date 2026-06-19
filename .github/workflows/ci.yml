@@ -7,8 +7,8 @@ on:
     branches: [main]
 
 jobs:
-  # Линт не требует тяжёлых зависимостей - отрабатывает за секунды
-  # и даёт быстрый сигнал, не дожидаясь установки TensorFlow.
+  # Lint doesn't require heavy dependencies - runs in seconds
+  # and gives fast feedback without waiting for TensorFlow to install.
   lint:
     runs-on: ubuntu-latest
     steps:

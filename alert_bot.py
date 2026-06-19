@@ -1,7 +1,7 @@
-"""Telegram-бот: часовой скан сигналов, команды, дайджест, алерты деградации.
+"""Telegram bot: hourly signal scan, commands, digest, degradation alerts.
 
-Скан считает сигналы той же связкой, что predict.py. Команды и дайджест
-читают журнал через core.track_record.
+The scan computes signals with the same pipeline as predict.py. Commands and
+the digest read the log via core.track_record.
 """
 
 import json
@@ -361,13 +361,13 @@ def send_telegram(messages, use_proxy):
 
 
 # ==============================================================================
-# КОМАНДЫ, ДАЙДЖЕСТ, ДЕГРАДАЦИЯ
+# COMMANDS, DIGEST, DEGRADATION
 # ==============================================================================
 
 DIGEST_HOUR = int(os.getenv("GTRADE_DIGEST_HOUR", "9"))
 STALE_MAX_DAYS = int(os.getenv("GTRADE_STALE_MAX_DAYS", "7"))
-ACC_ALERT_FLOOR = 0.40   # точность ниже - предупреждение
-ACC_ALERT_MIN_N = 10     # минимум проверенных сигналов для вывода
+ACC_ALERT_FLOOR = 0.40   # accuracy below this triggers a warning
+ACC_ALERT_MIN_N = 10     # minimum verified signals required before reporting
 ALERT_STATE_PATH = os.path.join(MODEL_DIR, "alert_state.json")
 RISK_STATE_PATH = os.path.join(MODEL_DIR, "risk_state.json")
 
@@ -399,7 +399,7 @@ def _save_alert_state(state):
 
 
 def _send_plain(text, use_proxy):
-    """Отправка без Markdown (тексты отчётов содержат спецсимволы)."""
+    """Send without Markdown (report text contains special characters)."""
     if not TELEGRAM_TOKEN or not TELEGRAM_USER_ID:
         return False
     apihelper.proxy = {"https": SOCKS5_PROXY} if use_proxy else None
@@ -425,7 +425,7 @@ def _compose_digest():
 
 
 def maybe_send_digest(use_proxy):
-    """Раз в день, начиная с DIGEST_HOUR."""
+    """Once a day, starting from DIGEST_HOUR."""
     now = datetime.now()
     if now.hour < DIGEST_HOUR:
         return
@@ -440,7 +440,7 @@ def maybe_send_digest(use_proxy):
 
 
 def check_degradation(use_proxy):
-    """Протухшие данные и упавшая точность; не чаще раза в сутки на актив."""
+    """Stale data and dropped accuracy; no more than once a day per asset."""
     state = _load_alert_state()
     sent = state.setdefault("degradation_sent", {})
     today = datetime.now().strftime("%Y-%m-%d")
@@ -451,9 +451,9 @@ def check_degradation(use_proxy):
         if sent.get(key) == today:
             continue
         if s["last_date"] is None:
-            lines.append(f"{s['asset']}: данных в market.db нет")
+            lines.append(f"{s['asset']}: no data in market.db")
         else:
-            lines.append(f"{s['asset']}: данные от {s['last_date']} ({s['age_days']} дн.)")
+            lines.append(f"{s['asset']}: data from {s['last_date']} ({s['age_days']} days ago)")
         sent[key] = today
 
     for sig in track_record.latest_signals():
@@ -463,20 +463,20 @@ def check_degradation(use_proxy):
             if sent.get(key) == today:
                 continue
             lines.append(
-                f"{sig['asset']}: точность {acc['acc']:.0%} "
-                f"({acc['correct']}/{acc['n']}) - модель деградировала"
+                f"{sig['asset']}: accuracy {acc['acc']:.0%} "
+                f"({acc['correct']}/{acc['n']}) - model has degraded"
             )
             sent[key] = today
 
     if lines:
-        text = "Деградация:\n" + "\n".join(lines)
+        text = "Degradation:\n" + "\n".join(lines)
         if _send_plain(text, use_proxy):
             logger.info("Degradation alert: %d items", len(lines))
         _save_alert_state(state)
 
 
 def start_command_listener(use_proxy):
-    """Поток с polling: /top, /signal X, /risk, /digest. Только для владельца."""
+    """Polling thread: /top, /signal X, /risk, /digest. Owner only."""
     if not TELEGRAM_TOKEN or not TELEGRAM_USER_ID:
         return None
 
@@ -498,11 +498,11 @@ def start_command_listener(use_proxy):
             return
         parts = message.text.split()
         if len(parts) < 2:
-            bot.reply_to(message, "Формат: /signal BTC")
+            bot.reply_to(message, "Format: /signal BTC")
             return
         asset = parts[1].upper()
         if asset not in FULL_ASSET_MAP:
-            bot.reply_to(message, f"Не знаю актив {asset}")
+            bot.reply_to(message, f"Unknown asset {asset}")
             return
         bot.reply_to(message, reports.build_signal_message(
             asset,
@@ -526,8 +526,8 @@ def start_command_listener(use_proxy):
     def _help(message):
         if not _own(message):
             return
-        bot.reply_to(message, "Команды:\n/top - лучшие сигналы\n/signal BTC - история актива\n"
-                              "/risk - риск-статус\n/digest - дайджест сейчас")
+        bot.reply_to(message, "Commands:\n/top - best signals\n/signal BTC - asset history\n"
+                              "/risk - risk status\n/digest - digest now")
 
     def _poll():
         while True:

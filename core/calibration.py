@@ -1,7 +1,7 @@
-"""Изотоническая калибровка вероятностей ансамбля.
+"""Isotonic calibration of ensemble probabilities.
 
-Сырые вероятности у разных активов несравнимы, калибровка по валидационным
-прогнозам приводит их к честным частотам.
+Raw probabilities are not comparable across different assets; calibrating
+against validation predictions brings them to honest frequencies.
 
 Fit on validation, save next to the champion, apply at inference. When no
 calibrator is available the functions degrade to identity, so the pipeline keeps

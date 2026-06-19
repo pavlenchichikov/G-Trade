@@ -1,6 +1,7 @@
-"""Консольный радар: грузит чемпионов и печатает BUY/SELL/WAIT по всем активам.
+"""Console radar: loads champions and prints BUY/SELL/WAIT for all assets.
 
-Скейлер и калибратор берутся сохранённые, фичи и пороги - из реестра чемпионов.
+The scaler and calibrator are the saved ones; features and thresholds come
+from the champion registry.
 """
 
 import json
@@ -51,7 +52,7 @@ REGISTRY_PATH = os.path.join(MODEL_DIR, "champion_registry.json")
 THRESHOLDS_PATH = os.path.join(MODEL_DIR, "tuned_thresholds.json")
 
 
-_GROUPS = RADAR_GROUPS  # единый источник: config.ASSET_TYPES
+_GROUPS = RADAR_GROUPS  # single source: config.ASSET_TYPES
 
 W = 62  # output width
 
@@ -114,7 +115,7 @@ def _predict_asset(name, registry, thresholds):
         curr_price = float(df['close'].iloc[-1])
         n_bars = min(500, len(df))
         x_fit = df[features].iloc[-n_bars:].values
-        # скейлер с тренировки; фит на окне - только для старых моделей без него
+        # scaler from training; fitting on the window is only for old models without one
         scaler, _src = load_or_fit_scaler(MODEL_DIR, table, x_fit)
         if _src == "fit":
             logger.debug("No saved scaler for %s; fitting on recent window (retrain to fix)", table)

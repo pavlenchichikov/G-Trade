@@ -13,7 +13,7 @@ import warnings
 
 warnings.filterwarnings('ignore')
 
-# --- 1. СИСТЕМНЫЕ НАСТРОЙКИ ---
+# --- 1. SYSTEM SETTINGS ---
 st.set_page_config(page_title="G-TRADE TERMINAL", layout="wide", page_icon="")
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -24,7 +24,7 @@ from net import ssl_verify
 try:
     from config import FULL_ASSET_MAP, ASSET_TYPES
 except ImportError:
-    st.error("[!] КРИТИЧЕСКАЯ ОШИБКА: Файл config.py не найден!"); st.stop()
+    st.error("[!] CRITICAL ERROR: config.py file not found!"); st.stop()
 
 try:
     from risk_manager import RiskManager, RISK_CONFIG
@@ -117,43 +117,43 @@ engine = create_engine(f'sqlite:///{os.path.join(BASE_DIR, "market.db")}')
 MODEL_DIR = os.path.join(BASE_DIR, "models")
 MOEX_LIST = ["IMOEX", "SBER", "GAZP", "LKOH", "ROSN", "NVTK", "YNDX", "TCSG", "OZON", "VKCO", "POSI", "AFLT"]
 
-# --- 2. ГЛОБАЛЬНАЯ БАЗА ЗНАНИЙ (РЕЗЕРВ) ---
+# --- 2. GLOBAL KNOWLEDGE BASE (BACKUP) ---
 GLOBAL_BACKUP = {
-    # РФ (MOEX)
-    'SBER': {'pe': 4.2, 'roe': 0.24, 'debt': 0.0, 'div': 11.5, 'desc': 'Лидер сектора'},
-    'GAZP': {'pe': 3.5, 'roe': 0.04, 'debt': 1.8, 'div': 0.0, 'desc': 'Инфраструктурные риски'},
-    'LKOH': {'pe': 5.5, 'roe': 0.18, 'debt': 0.2, 'div': 16.0, 'desc': 'Дивидендный аристократ'},
-    'ROSN': {'pe': 5.9, 'roe': 0.15, 'debt': 0.9, 'div': 9.0, 'desc': 'Стабильный поток'},
-    'NVTK': {'pe': 7.1, 'roe': 0.19, 'debt': 0.4, 'div': 8.5, 'desc': 'СПГ проекты'},
-    'YNDX': {'pe': 14.5, 'roe': 0.25, 'debt': 0.1, 'div': 3.5, 'desc': 'МКПАО Яндекс (Рост)'}, # ОБНОВЛЕНО
-    'YDEX': {'pe': 14.5, 'roe': 0.25, 'debt': 0.1, 'div': 3.5, 'desc': 'МКПАО Яндекс (Рост)'}, # ДУБЛЬ
-    'TCSG': {'pe': 7.8, 'roe': 0.32, 'debt': 0.0, 'div': 5.0, 'desc': 'Т-Банк (Рост)'},
-    'OZON': {'pe': 99.0, 'roe': -0.10, 'debt': 2.5, 'div': 0.0, 'desc': 'Рост оборота, убыток'},
-    'VKCO': {'pe': 99.0, 'roe': -0.05, 'debt': 1.2, 'div': 0.0, 'desc': 'Долговая нагрузка'},
-    'POSI': {'pe': 25.0, 'roe': 0.35, 'debt': 0.1, 'div': 3.5, 'desc': 'Кибербезопасность'},
-    'AFLT': {'pe': 99.0, 'roe': -0.50, 'debt': 8.0, 'div': 0.0, 'desc': 'Гос. поддержка'},
-    'IMOEX': {'pe': 5.5, 'roe': 0.15, 'debt': 0.8, 'div': 9.0, 'desc': 'Индекс Мосбиржи'},
-    'TATN': {'pe': 5.0, 'roe': 0.20, 'debt': 0.0, 'div': 12.0, 'desc': 'Татнефть'},
-    'SNGS': {'pe': 2.5, 'roe': 0.08, 'debt': 0.0, 'div': 3.0, 'desc': 'Сургутнефтегаз (кубышка)'},
-    'PLZL': {'pe': 10.0, 'roe': 0.50, 'debt': 1.5, 'div': 5.0, 'desc': 'Полюс Золото'},
-    'SIBN': {'pe': 4.0, 'roe': 0.25, 'debt': 0.3, 'div': 14.0, 'desc': 'Газпром нефть'},
-    'MGNT': {'pe': 8.0, 'roe': 0.40, 'debt': 1.5, 'div': 8.0, 'desc': 'Магнит (ритейл)'},
-    'VTBR': {'pe': 3.0, 'roe': 0.18, 'debt': 0.0, 'div': 0.0, 'desc': 'ВТБ'},
-    'BSPB': {'pe': 3.5, 'roe': 0.19, 'debt': 0.0, 'div': 10.0, 'desc': 'Банк СПб'},
-    'MOEX_EX': {'pe': 12.0, 'roe': 0.30, 'debt': 0.0, 'div': 7.0, 'desc': 'Мосбиржа'},
-    'MTSS': {'pe': 8.0, 'roe': 0.40, 'debt': 2.0, 'div': 12.0, 'desc': 'МТС'},
-    'RTKM': {'pe': 7.0, 'roe': 0.15, 'debt': 2.5, 'div': 8.0, 'desc': 'Ростелеком'},
-    'CHMF': {'pe': 6.0, 'roe': 0.30, 'debt': 0.5, 'div': 10.0, 'desc': 'Северсталь'},
-    'NLMK': {'pe': 5.5, 'roe': 0.25, 'debt': 0.3, 'div': 10.0, 'desc': 'НЛМК'},
-    'MAGN': {'pe': 5.0, 'roe': 0.20, 'debt': 0.0, 'div': 8.0, 'desc': 'ММК'},
-    'RUAL': {'pe': 8.0, 'roe': 0.10, 'debt': 2.0, 'div': 0.0, 'desc': 'РУСАЛ'},
-    'ALRS': {'pe': 6.0, 'roe': 0.15, 'debt': 0.5, 'div': 6.0, 'desc': 'АЛРОСА'},
-    'IRAO': {'pe': 4.0, 'roe': 0.12, 'debt': 0.0, 'div': 10.0, 'desc': 'Интер РАО'},
-    'HYDR': {'pe': 5.0, 'roe': 0.10, 'debt': 0.5, 'div': 8.0, 'desc': 'РусГидро'},
-    'FLOT': {'pe': 3.5, 'roe': 0.30, 'debt': 1.0, 'div': 12.0, 'desc': 'Совкомфлот'},
-    'PIKK': {'pe': 6.0, 'roe': 0.20, 'debt': 2.5, 'div': 5.0, 'desc': 'ПИК'},
+    # RF (MOEX)
+    'SBER': {'pe': 4.2, 'roe': 0.24, 'debt': 0.0, 'div': 11.5, 'desc': 'Sector leader'},
+    'GAZP': {'pe': 3.5, 'roe': 0.04, 'debt': 1.8, 'div': 0.0, 'desc': 'Infrastructure risks'},
+    'LKOH': {'pe': 5.5, 'roe': 0.18, 'debt': 0.2, 'div': 16.0, 'desc': 'Dividend aristocrat'},
+    'ROSN': {'pe': 5.9, 'roe': 0.15, 'debt': 0.9, 'div': 9.0, 'desc': 'Stable cash flow'},
+    'NVTK': {'pe': 7.1, 'roe': 0.19, 'debt': 0.4, 'div': 8.5, 'desc': 'LNG projects'},
+    'YNDX': {'pe': 14.5, 'roe': 0.25, 'debt': 0.1, 'div': 3.5, 'desc': 'MKPAO Yandex (Growth)'}, # UPDATED
+    'YDEX': {'pe': 14.5, 'roe': 0.25, 'debt': 0.1, 'div': 3.5, 'desc': 'MKPAO Yandex (Growth)'}, # DUPLICATE
+    'TCSG': {'pe': 7.8, 'roe': 0.32, 'debt': 0.0, 'div': 5.0, 'desc': 'T-Bank (Growth)'},
+    'OZON': {'pe': 99.0, 'roe': -0.10, 'debt': 2.5, 'div': 0.0, 'desc': 'Turnover growth, loss-making'},
+    'VKCO': {'pe': 99.0, 'roe': -0.05, 'debt': 1.2, 'div': 0.0, 'desc': 'Debt burden'},
+    'POSI': {'pe': 25.0, 'roe': 0.35, 'debt': 0.1, 'div': 3.5, 'desc': 'Cybersecurity'},
+    'AFLT': {'pe': 99.0, 'roe': -0.50, 'debt': 8.0, 'div': 0.0, 'desc': 'State support'},
+    'IMOEX': {'pe': 5.5, 'roe': 0.15, 'debt': 0.8, 'div': 9.0, 'desc': 'Moscow Exchange Index'},
+    'TATN': {'pe': 5.0, 'roe': 0.20, 'debt': 0.0, 'div': 12.0, 'desc': 'Tatneft'},
+    'SNGS': {'pe': 2.5, 'roe': 0.08, 'debt': 0.0, 'div': 3.0, 'desc': 'Surgutneftegas (cash hoard)'},
+    'PLZL': {'pe': 10.0, 'roe': 0.50, 'debt': 1.5, 'div': 5.0, 'desc': 'Polyus Gold'},
+    'SIBN': {'pe': 4.0, 'roe': 0.25, 'debt': 0.3, 'div': 14.0, 'desc': 'Gazprom Neft'},
+    'MGNT': {'pe': 8.0, 'roe': 0.40, 'debt': 1.5, 'div': 8.0, 'desc': 'Magnit (retail)'},
+    'VTBR': {'pe': 3.0, 'roe': 0.18, 'debt': 0.0, 'div': 0.0, 'desc': 'VTB'},
+    'BSPB': {'pe': 3.5, 'roe': 0.19, 'debt': 0.0, 'div': 10.0, 'desc': 'Bank St. Petersburg'},
+    'MOEX_EX': {'pe': 12.0, 'roe': 0.30, 'debt': 0.0, 'div': 7.0, 'desc': 'Moscow Exchange'},
+    'MTSS': {'pe': 8.0, 'roe': 0.40, 'debt': 2.0, 'div': 12.0, 'desc': 'MTS'},
+    'RTKM': {'pe': 7.0, 'roe': 0.15, 'debt': 2.5, 'div': 8.0, 'desc': 'Rostelecom'},
+    'CHMF': {'pe': 6.0, 'roe': 0.30, 'debt': 0.5, 'div': 10.0, 'desc': 'Severstal'},
+    'NLMK': {'pe': 5.5, 'roe': 0.25, 'debt': 0.3, 'div': 10.0, 'desc': 'NLMK'},
+    'MAGN': {'pe': 5.0, 'roe': 0.20, 'debt': 0.0, 'div': 8.0, 'desc': 'MMK'},
+    'RUAL': {'pe': 8.0, 'roe': 0.10, 'debt': 2.0, 'div': 0.0, 'desc': 'RUSAL'},
+    'ALRS': {'pe': 6.0, 'roe': 0.15, 'debt': 0.5, 'div': 6.0, 'desc': 'ALROSA'},
+    'IRAO': {'pe': 4.0, 'roe': 0.12, 'debt': 0.0, 'div': 10.0, 'desc': 'Inter RAO'},
+    'HYDR': {'pe': 5.0, 'roe': 0.10, 'debt': 0.5, 'div': 8.0, 'desc': 'RusHydro'},
+    'FLOT': {'pe': 3.5, 'roe': 0.30, 'debt': 1.0, 'div': 12.0, 'desc': 'Sovcomflot'},
+    'PIKK': {'pe': 6.0, 'roe': 0.20, 'debt': 2.5, 'div': 5.0, 'desc': 'PIK'},
 
-    # США (US GIANTS) - updated 2026-03
+    # USA (US GIANTS) - updated 2026-03
     'NVDA': {'pe': 38.0, 'growth': 0.96, 'roe': 1.01, 'debt': 0.07, 'marg': 0.56},
     'TSLA': {'pe': 95.0, 'growth': 0.17, 'roe': 0.27, 'debt': 0.13, 'marg': 0.13},
     'AAPL': {'pe': 33.0, 'growth': 0.18, 'roe': 1.52, 'debt': 1.03, 'marg': 0.27},
@@ -167,10 +167,10 @@ GLOBAL_BACKUP = {
     'MSTR': {'pe': 99.0, 'growth': 0.0, 'roe': 0.05, 'debt': 2.0, 'marg': -0.10},
 }
 
-# --- 3. ПАРСЕР SMART-LAB (RF LIVE) ---
+# --- 3. SMART-LAB PARSER (RF LIVE) ---
 @st.cache_data(ttl=3600)
 def get_smartlab_data():
-    """Парсит Smart-Lab, притворяясь браузером"""
+    """Parses Smart-Lab, pretending to be a browser"""
     url = "https://smart-lab.ru/q/shares_fundamental/"
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -193,7 +193,7 @@ def get_smartlab_data():
                     return None
                 return float(s)
 
-            # Table 0: general companies (P/E, долг/EBITDA, ДД ао)
+            # Table 0: general companies (P/E, debt/EBITDA, dividend yield common)
             df0 = dfs[0]
             if 'Тикер' in df0.columns and 'P/E' in df0.columns:
                 for _, row in df0.iterrows():
@@ -207,7 +207,7 @@ def get_smartlab_data():
                         f_map[t] = {'pe': pe, 'roe': 0.0, 'debt': debt, 'div': div}
                     except Exception: continue
 
-            # Table 1: banks (P/E, RoE, ДД ао) - merge/override
+            # Table 1: banks (P/E, RoE, dividend yield common) - merge/override
             if len(dfs) > 1:
                 df1 = dfs[1]
                 roe_col = [c for c in df1.columns if c.lower() == 'roe']
@@ -229,7 +229,7 @@ def get_smartlab_data():
 
     return {}, "[OFF] OFFLINE (Using Backup)"
 
-# --- 4. ТЕХНИЧЕСКИЙ АНАЛИЗ (SQL) ---
+# --- 4. TECHNICAL ANALYSIS (SQL) ---
 def get_technical_data(asset, weekly=False):
     table = asset.lower().replace("^", "").replace(".", "").replace("-", "")
     if weekly:
@@ -306,11 +306,11 @@ def load_ai_report():
 
 def calculate_kelly(acc, taleb):
     if acc < 0.51: return 0.0
-    base_kelly = (acc - 0.50) * 200 # Упрощенный Келли
-    risk_factor = max(0.2, 1.0 - (taleb / 5.0)) # Штраф за риск Талеба
+    base_kelly = (acc - 0.50) * 200 # Simplified Kelly
+    risk_factor = max(0.2, 1.0 - (taleb / 5.0)) # Taleb risk penalty
     return base_kelly * risk_factor
 
-# --- 5. ФУНДАМЕНТАЛЬНЫЙ АНАЛИЗАТОР (GURU COUNCIL V2) ---
+# --- 5. FUNDAMENTAL ANALYZER (GURU COUNCIL V2) ---
 
 # Auto-fetch fundamentals from yfinance (cached 1 hour)
 @st.cache_data(ttl=3600)
@@ -556,24 +556,24 @@ def get_guru_analysis(symbol, df, smart_data_tuple, sector=None):
     tech = _technical_context(df)
     return _guru_analysis(fund, tech, sector=sector, weights=_council_weights())
 
-# --- 6. ИНТЕРФЕЙС (STREAMLIT UI) ---
+# --- 6. INTERFACE (STREAMLIT UI) ---
 st.title("G-TRADE")
 
-# Загрузка источников
-with st.spinner('Подключение к каналам данных...'):
+# Load sources
+with st.spinner('Connecting to data feeds...'):
     s_data = get_smartlab_data()
 
-# Индикатор источника
+# Source indicator
 status_icon = "[ON]" if "LIVE" in s_data[1] else "[~]"
-st.caption(f"Источник фундаментала: {status_icon} **{s_data[1]}**")
+st.caption(f"Fundamentals source: {status_icon} **{s_data[1]}**")
 
-# Сайдбар
-category = st.sidebar.selectbox("КАТЕГОРИЯ", list(ASSET_TYPES.keys()))
-selected_asset = st.sidebar.selectbox("АКТИВ", ASSET_TYPES[category])
+# Sidebar
+category = st.sidebar.selectbox("CATEGORY", list(ASSET_TYPES.keys()))
+selected_asset = st.sidebar.selectbox("ASSET", ASSET_TYPES[category])
 symbol = FULL_ASSET_MAP[selected_asset]
-timeframe = st.sidebar.radio("ТАЙМФРЕЙМ", ["Daily", "Weekly"], horizontal=True)
+timeframe = st.sidebar.radio("TIMEFRAME", ["Daily", "Weekly"], horizontal=True)
 
-# Загрузка конкретного актива
+# Load the specific asset
 if timeframe == "Weekly":
     df = get_technical_data(selected_asset, weekly=True)
 else:
@@ -581,7 +581,7 @@ else:
 rep = load_ai_report()
 stats = rep[rep['Asset']==selected_asset].iloc[0] if rep is not None and not rep[rep['Asset']==selected_asset].empty else None
 
-# Вкладки
+# Tabs
 tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9, tab10, tab11, tab12, tab13 = st.tabs([
     "AI SNIPER",
     "GURU COUNCIL",
@@ -598,14 +598,14 @@ tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9, tab10, tab11, tab12, tab13
     "ALERTS",
 ])
 
-# === ВКЛАДКА 1: ТРЕЙДИНГ ===
+# === TAB 1: TRADING ===
 with tab1:
     if df is not None:
         last = df.iloc[-1]
 
-        # Метрики
+        # Metrics
         c1, c2, c3, c4 = st.columns(4)
-        c1.metric("ЦЕНА", f"{last['close']:,.2f}")
+        c1.metric("PRICE", f"{last['close']:,.2f}")
 
         # RSI Logic
         rsi_val = last['RSI']
@@ -627,7 +627,7 @@ with tab1:
 
         st.divider()
 
-        # AI Центр
+        # AI Center
         st.subheader("Neural Intelligence Decision")
         ac1, ac2, ac3 = st.columns(3)
         cb_acc = stats['CB_Acc'] if stats is not None else 0.50
@@ -643,13 +643,13 @@ with tab1:
 
         ac3.metric("AI VERDICT", final_dec, delta=f"Conf: {lstm_acc:.0%}", delta_color=final_col)
 
-        # Шпаргалка
-        with st.expander("ШПАРГАЛКА СНАЙПЕРА"):
+        # Cheat sheet
+        with st.expander("SNIPER CHEAT SHEET"):
             st.markdown("""
             * **[>>] SNIPER BUY:** LSTM > 55%.
             * **[<<] SNIPER SELL:** LSTM < 45%.
-            * **[!] TAKE PROFIT:** RSI > 75 (Фиксируй прибыль).
-            * **CRASH:** Risk > 5.0 (Не входи).
+            * **[!] TAKE PROFIT:** RSI > 75 (Lock in profit).
+            * **CRASH:** Risk > 5.0 (Do not enter).
             """)
 
         # -- Charts (4 rows: Price, MACD, RSI, Taleb Risk) -------------------
@@ -695,13 +695,13 @@ with tab1:
         st.plotly_chart(fig, use_container_width=True)
 
     else:
-        st.error("Нет данных! Запусти data_engine.py")
+        st.error("No data! Run data_engine.py")
 
-# === ВКЛАДКА 2: ИНВЕСТИРОВАНИЕ ===
+# === TAB 2: INVESTING ===
 with tab2:
-    st.header(f"Совет Легенд: {selected_asset}")
+    st.header(f"Council of Legends: {selected_asset}")
 
-    # Получаем анализ
+    # Get the analysis
     current_price = df['close'].iloc[-1] if df is not None else 0
     curs = get_guru_analysis(symbol, df, s_data, sector=_sector_of(selected_asset))
 
@@ -730,30 +730,30 @@ with tab2:
 
         # Left column
         with col1:
-            st.subheader("Питер Линч")
-            st.caption("GARP: рост по разумной цене (PEG ratio)")
+            st.subheader("Peter Lynch")
+            st.caption("GARP: growth at a reasonable price (PEG ratio)")
             res = curs['lynch']
             st.markdown(f":{_guru_color(res['status'])}[**{res['status']}**]")
             st.write(res['desc'])
             st.divider()
 
-            st.subheader("Уоррен Баффет")
-            st.caption("Качество: ROE, маржа, низкий долг, дивиденды")
+            st.subheader("Warren Buffett")
+            st.caption("Quality: ROE, margin, low debt, dividends")
             res = curs['buffett']
             st.markdown(f":{_guru_color(res['status'])}[**{res['status']}**]")
             st.write(res['desc'])
 
         # Right column
         with col2:
-            st.subheader("Бенджамин Грэм")
-            st.caption("Value: Graham Number, P/E < 15, запас прочности")
+            st.subheader("Benjamin Graham")
+            st.caption("Value: Graham Number, P/E < 15, margin of safety")
             res = curs['graham']
             st.markdown(f":{_guru_color(res['status'])}[**{res['status']}**]")
             st.write(res['desc'])
             st.divider()
 
-            st.subheader("Чарли Мангер")
-            st.caption("Инверсия: долг, убытки, пузырь, волатильность")
+            st.subheader("Charlie Munger")
+            st.caption("Inversion: debt, losses, bubble, volatility")
             res = curs['munger']
             st.markdown(f":{_guru_color(res['status'])}[**{res['status']}**]")
             st.write(res['desc'])
@@ -790,9 +790,9 @@ with tab2:
             except Exception:
                 pass
 
-            horizon = st.selectbox("Горизонт оценки", ["1d", "5d", "20d"], index=1,
+            horizon = st.selectbox("Evaluation horizon", ["1d", "5d", "20d"], index=1,
                                    key="guru_horizon")
-            days_back = st.slider("Период (дней)", 7, 180, 60, key="guru_days")
+            days_back = st.slider("Period (days)", 7, 180, 60, key="guru_days")
 
             col_a, col_b = st.columns(2)
 
@@ -808,7 +808,7 @@ with tab2:
                     for v, s in acc.get("by_verdict", {}).items():
                         st.caption(f"{v}: {s['accuracy']:.1%} ({s['count']} calls, avg {s['avg_return']:.2%})")
                 else:
-                    st.info("Нет данных. Совет начнёт накапливать историю при просмотре активов.")
+                    st.info("No data yet. The council will start accumulating history as assets are viewed.")
 
             with col_b:
                 gurus = _gt.get_guru_individual_accuracy(days=days_back, horizon=horizon) if _gt else {}
@@ -831,7 +831,7 @@ with tab2:
             st.warning("guru_tracker.py not found.")
 
     else:
-        st.error("Критическая ошибка анализа")
+        st.error("Critical analysis error")
 
 # ==============================================================================
 # TAB 3 - PORTFOLIO

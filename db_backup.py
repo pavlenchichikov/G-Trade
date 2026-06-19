@@ -1,7 +1,7 @@
-"""CLI для бэкапов market.db.
+"""CLI for market.db backups.
 
-Создание и ротация делаются в core.db_backup (общий движок, покрыт тестами),
-здесь только консольный интерфейс: список, восстановление, очистка.
+Creation and rotation are handled in core.db_backup (the shared engine, covered
+by tests); this module is just the console interface: list, restore, cleanup.
 """
 
 import argparse
@@ -39,7 +39,7 @@ def _ensure_backup_dir():
 
 
 def _get_backups():
-    """Бэкапы (новые market_*.db и старые market_backup_*.db), новые первыми."""
+    """Backups (new market_*.db and old market_backup_*.db), newest first."""
     pattern = os.path.join(BACKUP_DIR, "market_*.db")
     files = glob.glob(pattern)
     files.sort(key=os.path.getmtime, reverse=True)

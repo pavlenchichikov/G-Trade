@@ -1,8 +1,8 @@
 import os
 import sys
 
-# -- GPU: добавляем Library\bin conda-окружения в PATH до импорта TF ----------
-# Нужно при запуске python.exe напрямую без `conda activate`
+# -- GPU: add the conda environment's Library\bin to PATH before importing TF -
+# Needed when launching python.exe directly without `conda activate`
 _env_lib_bin = os.path.join(os.path.dirname(sys.executable), "Library", "bin")
 if os.path.isdir(_env_lib_bin) and _env_lib_bin not in os.environ.get("PATH", ""):
     os.environ["PATH"] = _env_lib_bin + os.pathsep + os.environ.get("PATH", "")
@@ -30,7 +30,7 @@ import joblib
 import time
 
 # --- GPU CONFIG ---
-# Определяем VRAM и под неё настраиваем пул памяти TF. Нет GPU - работаем на CPU.
+# Detect VRAM and size the TF memory pool to it. No GPU - run on CPU.
 gpus = tf.config.list_physical_devices('GPU')
 if gpus:
     try:
@@ -110,7 +110,7 @@ _print_lock = threading.Lock()
 _progress_state = {'label': '-', 'epoch': 0, 'total_ep': 0, 'loss': float('nan')}
 _state_lock = threading.Lock()
 
-# fp16 ускоряет на картах с Tensor Cores, на старых остаётся fp32
+# fp16 speeds things up on cards with Tensor Cores; older cards stay on fp32
 if _HAS_GPU:
     try:
         tf.keras.mixed_precision.set_global_policy('mixed_float16')
@@ -160,7 +160,7 @@ def _asset_table(asset: str) -> str:
 
 
 class EpochStateCallback(Callback):
-    """Callback: только пишет состояние в _progress_state, никогда не печатает."""
+    """Callback: only writes state to _progress_state, never prints."""
     def __init__(self, asset: str, fold: int, total_epochs: int,
                  label: str = "LSTM", val_metric: str = "val_loss"):
         super().__init__()
@@ -179,7 +179,7 @@ class EpochStateCallback(Callback):
     def on_train_end(self, logs=None):
         pass
 
-# --- НАСТРОЙКИ ПУТЕЙ ---
+# --- PATH SETTINGS ---
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 if BASE_DIR not in sys.path:
     sys.path.append(BASE_DIR)
@@ -187,7 +187,7 @@ if BASE_DIR not in sys.path:
 try:
     from config import FULL_ASSET_MAP
 except ImportError:
-    exit(f"ОШИБКА: config.py не найден в {BASE_DIR}!")
+    exit(f"ERROR: config.py not found in {BASE_DIR}!")
 
 DB_PATH = os.path.join(BASE_DIR, "market.db")
 engine = create_engine(f'sqlite:///{DB_PATH}')
@@ -197,12 +197,12 @@ THRESHOLDS_PATH = os.path.join(MODEL_DIR, "tuned_thresholds.json")
 REGISTRY_PATH = os.path.join(MODEL_DIR, "champion_registry.json")
 OPTUNA_PARAMS_PATH = os.path.join(MODEL_DIR, "optuna_params.json")
 
-# --- ПРОФИЛИ АКТИВОВ --- (imported from core.profiles above)
+# --- ASSET PROFILES --- (imported from core.profiles above)
 
 # Trading constants imported from core.backtesting above
 INDICATOR_ONLY_ASSETS = set()
 
-# --- АРХИТЕКТУРЫ --- (imported from core.architectures above)
+# --- ARCHITECTURES --- (imported from core.architectures above)
 
 
 def adversarial_fold_weight(X_train, X_test):
@@ -330,8 +330,8 @@ import gc as _gc
 
 
 def _free_keras_from_fold(fold_info):
-    """Удаляет тяжёлые Keras-модели из fold_info['models'] чтобы освободить GPU/RAM.
-    Оставляет CatBoost (мелкий) и scaler для статистики. Вызывать сразу после scoring."""
+    """Drop the heavy Keras models from fold_info['models'] to free GPU/RAM.
+    Keeps CatBoost (small) and the scaler for stats. Call right after scoring."""
     models = fold_info.get('models')
     if models is None:
         return
@@ -342,12 +342,12 @@ def _free_keras_from_fold(fold_info):
                 del m
             except Exception as _e:
                 logger.debug("Model cleanup failed: %s", _e)
-    # meta (LogisticRegression) тоже мелкий - оставляем
+    # meta (LogisticRegression) is small too - keep it
     _gc.collect()
 
 
 def _train_one_asset(asset, candidate_features, prev_registry_entry):
-    """Обучение одного актива. Запускается в ThreadPoolExecutor."""
+    """Train a single asset. Runs inside a ThreadPoolExecutor."""
     profile = get_profile(asset)
     table = asset.lower().replace("^", "").replace(".", "").replace("-", "")
     # -- Load Optuna-tuned hyperparams if available ----------------------
@@ -406,7 +406,7 @@ def _train_one_asset(asset, candidate_features, prev_registry_entry):
         # Optuna lookback overrides profile default
         lookback = int(opt.get('lookback', profile['lookback']))
 
-        # --- PRE-COMPUTE: все данные фолдов заранее ---
+        # --- PRE-COMPUTE: all fold data computed up front ---
         precomputed = []
         for tr, va, te in splits:
             scaler = StandardScaler()
@@ -465,7 +465,7 @@ def _train_one_asset(asset, candidate_features, prev_registry_entry):
             va = fold_data['va']; te = fold_data['te']
             scaler = fold_data['scaler']
 
-            # --- CatBoost (CPU, half cores) в фоновом потоке ---
+            # --- CatBoost (CPU, half cores) in a background thread ---
             cb_result = {}
 
             def _train_catboost(_X_train=X_train, _y_train=y_train,
@@ -490,7 +490,7 @@ def _train_one_asset(asset, candidate_features, prev_registry_entry):
             cb_thread = threading.Thread(target=_train_catboost)
             cb_thread.start()
 
-            # --- LSTM (GPU: build + fit + predict под gpu_lock, 1 за раз) ---
+            # --- LSTM (GPU: build + fit + predict under gpu_lock, one at a time) ---
             BATCH = 256  # default batch size; works well on 4GB+ VRAM GPUs with fp16
             y_mag_train = np.clip(fold_data['y_mag_seq_train'] / 0.05, -1.0, 1.0).astype('float32')
             y_mag_val_d  = np.clip(fold_data['y_mag_seq_val']   / 0.05, -1.0, 1.0).astype('float32')
@@ -760,7 +760,7 @@ def _train_one_asset(asset, candidate_features, prev_registry_entry):
                    or best_fold['score'] > (prev_registry_entry.get('score', -1e9) + 0.2))
 
         # If final best_fold differs from running best (edge case: adv_weight divergence),
-        # его Keras-модели могли быть освобождены - откатываемся на FROZEN_CHAMPION.
+        # its Keras models may have already been freed - fall back to FROZEN_CHAMPION.
         _bm = best_fold.get('models', {})
         if not _bm.get('lstm') or not _bm.get('tf_enc') or not _bm.get('tcn'):
             promote = False  # models unavailable - keep existing champion
@@ -1043,7 +1043,7 @@ def train_system():
     _refresh_smi()
 
     def _ticker():
-        """Перерисовывает прогресс-бар раз в секунду."""
+        """Redraws the progress bar once a second."""
         while not _bar_stop.wait(1.0):
             elapsed = time.time() - t_train
             with _state_lock:

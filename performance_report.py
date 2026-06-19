@@ -1,7 +1,7 @@
 """
-Performance Report - генерация HTML-отчёта по состоянию системы.
-  python performance_report.py               - создать и открыть
-  python performance_report.py --no-open      - без открытия
+Performance Report - generates an HTML report on system status.
+  python performance_report.py               - create and open
+  python performance_report.py --no-open      - without opening
   python performance_report.py --output f.html
 """
 

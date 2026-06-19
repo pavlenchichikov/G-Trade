@@ -1,8 +1,8 @@
 """
-Correlation Alert - детектор смены корреляций между активами.
-  python correlation_alert.py            - показать алерты
-  python correlation_alert.py --matrix   - матрица ключевых пар
-  python correlation_alert.py --json     - JSON вывод
+Correlation Alert - detector of correlation shifts between assets.
+  python correlation_alert.py            - show alerts
+  python correlation_alert.py --matrix   - key pairs matrix
+  python correlation_alert.py --json     - JSON output
 """
 
 import os
@@ -56,7 +56,7 @@ def _table_name(asset):
 
 
 def _load_returns(assets, days=120):
-    """Загружает дневные доходности для списка активов."""
+    """Loads daily returns for the list of assets."""
     returns = {}
     for asset in assets:
         table = _table_name(asset)
@@ -79,7 +79,7 @@ def _load_returns(assets, days=120):
 
 
 def get_correlation_alerts(threshold=ALERT_THRESHOLD):
-    """Ищет пары с большим изменением корреляции (short vs long window)."""
+    """Finds pairs with a large change in correlation (short vs long window)."""
     all_assets = list(set(a for p in KEY_PAIRS for a in p))
     ret_df = _load_returns(all_assets)
     if ret_df.empty:

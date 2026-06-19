@@ -1,13 +1,14 @@
-"""Сетевые хелперы с адаптивной маршрутизацией (direct / SOCKS5-прокси).
+"""Network helpers with adaptive routing (direct / SOCKS5 proxy).
 
-Рабочий маршрут зависит от VPN: MOEX (iss.moex.com) ходит только по
-российскому IP, Yahoo лучше через зарубежный выход, а какой из двух
-маршрутов сейчас какой - заранее неизвестно и меняется при переключении VPN.
-Поэтому http_get не хардкодит маршрут под источник: пробует доступные
-маршруты с быстрым failover (короткий connect-таймаут), запоминает per-host
-рабочий маршрут (sticky-кэш с TTL) и сбрасывает его при полном отказе, чтобы
-смена VPN переучивалась сама. validate-callback позволяет считать "200 с
-ошибкой в теле" отказом маршрута.
+The working route depends on the VPN: MOEX (iss.moex.com) only works over
+a Russian IP, while Yahoo works better through a foreign exit, and which
+of the two routes is currently which is not known in advance and changes
+when the VPN switches. So http_get does not hardcode a route per source:
+it tries the available routes with fast failover (short connect timeout),
+remembers the working route per host (a sticky cache with TTL), and resets
+it on a full failure so that a VPN change is relearned automatically. The
+validate-callback lets a "200 with an error in the body" be treated as a
+route failure.
 
 Env: GTRADE_PROXY_MODE (auto|on|off), GTRADE_CONNECT_TIMEOUT (5),
 GTRADE_READ_TIMEOUT (25), GTRADE_ROUTE_TTL (300), GTRADE_HTTP_RETRIES (3).

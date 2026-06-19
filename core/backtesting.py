@@ -1,4 +1,4 @@
-"""Walk-forward сплиты, симуляция PnL, скоринг фолдов."""
+"""Walk-forward splits, PnL simulation, fold scoring."""
 
 import numpy as np
 

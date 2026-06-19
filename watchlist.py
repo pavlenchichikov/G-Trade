@@ -1,12 +1,12 @@
 """
-Watchlist - управление списками избранных активов с текущими ценами.
-  python watchlist.py                  - показать default
-  python watchlist.py --list crypto    - конкретный список
-  python watchlist.py --add BTC GOLD   - добавить
-  python watchlist.py --remove VIX     - убрать
+Watchlist - manage lists of favorite assets with current prices.
+  python watchlist.py                  - show default
+  python watchlist.py --list crypto    - specific list
+  python watchlist.py --add BTC GOLD   - add
+  python watchlist.py --remove VIX     - remove
   python watchlist.py --create mylist BTC ETH
-  python watchlist.py --lists          - все списки
-  python watchlist.py --status         - компактный вывод (для GUI)
+  python watchlist.py --lists          - all lists
+  python watchlist.py --status         - compact output (for GUI)
 """
 
 import os
@@ -54,7 +54,7 @@ def _table_name(asset):
 
 
 def _get_asset_data(asset, rows=50):
-    """Читает последние N строк из market.db, возвращает price, chg, rsi, trend."""
+    """Reads the last N rows from market.db, returns price, chg, rsi, trend."""
     table = _table_name(asset)
     try:
         df = pd.read_sql(
@@ -95,8 +95,8 @@ def show_watchlist(name="default"):
     data = _load()
     assets = data.get(name, [])
     if not assets:
-        print(f"  Список '{name}' пуст или не найден.")
-        print(f"  Доступные: {', '.join(data.keys())}")
+        print(f"  List '{name}' is empty or not found.")
+        print(f"  Available: {', '.join(data.keys())}")
         return
 
     print()
@@ -119,7 +119,7 @@ def show_watchlist(name="default"):
 
 
 def show_status():
-    """Компактный вывод для GUI."""
+    """Compact output for GUI."""
     data = _load()
     assets = data.get("default", [])
     print(f"  WATCHLIST  |  default ({len(assets)} assets)")

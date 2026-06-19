@@ -1,6 +1,6 @@
 """
 G-Trade - GUI Launcher (Tkinter)
-Графический лаунчер вместо bat-меню.
+Graphical launcher replacing the bat-file menu.
 """
 
 import os
@@ -17,7 +17,7 @@ PY = sys.executable
 DB_PATH = os.path.join(BASE_DIR, "market.db")
 MODEL_DIR = os.path.join(BASE_DIR, "models")
 
-# -- Цвета --------------------------------------------------------------------
+# -- Colors --------------------------------------------------------------------
 BG = "#0a0e17"
 BG_CARD = "#111827"
 BG_BUTTON = "#1e293b"
@@ -34,7 +34,7 @@ BORDER = "#1e293b"
 
 
 class LogRedirector:
-    """Перенаправляет stdout/stderr в виджет Text."""
+    """Redirects stdout/stderr to a Text widget."""
     def __init__(self, widget, tag="stdout"):
         self.widget = widget
         self.tag = tag
@@ -60,9 +60,9 @@ class GTradeLauncher(tk.Tk):
         self.minsize(900, 700)
         self._process = None
         self._running_task = None
-        self._cr_line = False  # True если последняя строка лога - \r (progress bar)
+        self._cr_line = False  # True if the last log line ends with \r (progress bar)
 
-        # Иконка окна (опционально)
+        # Window icon (optional)
         try:
             self.iconbitmap(default="")
         except Exception:
@@ -74,7 +74,7 @@ class GTradeLauncher(tk.Tk):
     # -- UI ----------------------------------------------------------------
 
     def _build_ui(self):
-        # --- Верхняя панель (заголовок + статус) ---
+        # --- Top panel (title + status) ---
         top = tk.Frame(self, bg=BG)
         top.pack(fill=tk.X, padx=16, pady=(12, 0))
 
@@ -93,16 +93,16 @@ class GTradeLauncher(tk.Tk):
         )
         self._status_label.pack(side=tk.RIGHT)
 
-        # --- Разделитель ---
+        # --- Separator ---
         ttk.Separator(self, orient="horizontal").pack(fill=tk.X, padx=16, pady=8)
 
-        # --- Основное тело: левая панель (кнопки) + правая (лог) ---
+        # --- Main body: left panel (buttons) + right panel (log) ---
         body = tk.Frame(self, bg=BG)
         body.pack(fill=tk.BOTH, expand=True, padx=16, pady=(0, 8))
         body.columnconfigure(1, weight=1)
         body.rowconfigure(0, weight=1)
 
-        # Левая панель - кнопки со скроллом
+        # Left panel - scrollable buttons
         left_outer = tk.Frame(body, bg=BG, width=300)
         left_outer.grid(row=0, column=0, sticky="ns", padx=(0, 12))
         left_outer.grid_propagate(False)
@@ -118,25 +118,25 @@ class GTradeLauncher(tk.Tk):
         left_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         left_scroll.pack(side=tk.RIGHT, fill=tk.Y)
 
-        # Прокрутка колесом мыши
+        # Mouse wheel scrolling
         def _on_mousewheel(event):
             left_canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
         left_canvas.bind_all("<MouseWheel>", _on_mousewheel)
 
         self._build_buttons(left)
 
-        # Правая панель - лог + статус
+        # Right panel - log + status
         right = tk.Frame(body, bg=BG)
         right.grid(row=0, column=1, sticky="nsew")
         right.rowconfigure(1, weight=1)
         right.columnconfigure(0, weight=1)
 
-        # Статус-карточки
+        # Status cards
         cards = tk.Frame(right, bg=BG)
         cards.grid(row=0, column=0, sticky="ew", pady=(0, 8))
         self._build_status_cards(cards)
 
-        # Лог-панель
+        # Log panel
         log_frame = tk.Frame(right, bg=BG_CARD, highlightbackground=BORDER, highlightthickness=1)
         log_frame.grid(row=1, column=0, sticky="nsew")
         log_frame.rowconfigure(0, weight=1)
@@ -155,7 +155,7 @@ class GTradeLauncher(tk.Tk):
         self._log.tag_configure("success", foreground=FG_GREEN)
         self._log.tag_configure("warn", foreground=FG_YELLOW)
 
-        # Нижняя панель лога - кнопки
+        # Bottom log panel - buttons
         log_bottom = tk.Frame(right, bg=BG)
         log_bottom.grid(row=2, column=0, sticky="ew", pady=(4, 0))
 
@@ -173,58 +173,58 @@ class GTradeLauncher(tk.Tk):
         self._task_label.pack(side=tk.LEFT)
 
     def _build_buttons(self, parent):
-        """Создаёт кнопки действий."""
+        """Creates the action buttons."""
 
         sections = [
-            ("ОСНОВНОЕ", [
-                (">  Full Cycle",       "Данные > Обучение > Dashboard", self._run_full),
-                ("   Dashboard",        "Streamlit аналитика",          self._run_dashboard),
-                ("   Web UI",           "FastAPI: радар/модели/риск (быстрый, в браузере)", self._run_webapp),
-                ("   Predict (Radar)",  "Прогноз по текущим данным",    self._run_predict),
+            ("MAIN", [
+                (">  Full Cycle",       "Data > Training > Dashboard", self._run_full),
+                ("   Dashboard",        "Streamlit analytics",          self._run_dashboard),
+                ("   Web UI",           "FastAPI: radar/models/risk (fast, in browser)", self._run_webapp),
+                ("   Predict (Radar)",  "Forecast on current data",    self._run_predict),
             ]),
-            ("ДАННЫЕ & ОБУЧЕНИЕ", [
-                ("   Data Update",      "Загрузить новые данные",       self._run_data),
-                ("   Train Models",     "Обучение CatBoost + LSTM",    self._run_train),
-                ("   Backtest",         "Тест стратегии на истории",    self._run_backtest),
+            ("DATA & TRAINING", [
+                ("   Data Update",      "Load new data",       self._run_data),
+                ("   Train Models",     "Train CatBoost + LSTM",    self._run_train),
+                ("   Backtest",         "Test strategy on history",    self._run_backtest),
             ]),
-            ("АНАЛИТИКА", [
-                ("   News Analyzer",    "Новости + sentiment",          self._run_news),
-                ("   News Digest",      "Обзор авторитетных изданий",   self._run_digest),
-                ("   Regime Detector",  "Рыночный режим",               self._run_regime),
-                ("   Correlation",      "Корреляции + алерты",          self._run_corr),
-                ("   Paper Trading",    "Виртуальный портфель",         self._run_paper),
-                ("   Watchlist",        "Избранные активы",             self._run_watchlist),
-                ("   Signal Radar",     "Все сигналы одним экраном",    self._run_signal_radar),
-                ("   Sector Rotation",  "Секторная ротация",            self._run_sector_rotation),
-                ("   What-If",          "Симуляция портфеля - 5 режимов", None, [
-                    ("  > Top-5  90д equal",  "Топ-5 по Score, 90 торг. дней",   self._run_whatif_top5),
-                    ("  > Top-10 90д equal",  "Топ-10 по Score, 90 торг. дней",  self._run_whatif_top10),
-                    ("  > Top-5 180д equal",  "Топ-5 по Score, полгода назад",   self._run_whatif_180),
-                    ("  > Top-5  90д Kelly",  "Веса пропорционально Score",      self._run_whatif_kelly),
-                    ("  > Custom assets",     "Свои активы + дни + капитал",     self._run_whatif_custom),
+            ("ANALYTICS", [
+                ("   News Analyzer",    "News + sentiment",          self._run_news),
+                ("   News Digest",      "Roundup from authoritative outlets",   self._run_digest),
+                ("   Regime Detector",  "Market regime",               self._run_regime),
+                ("   Correlation",      "Correlations + alerts",          self._run_corr),
+                ("   Paper Trading",    "Virtual portfolio",         self._run_paper),
+                ("   Watchlist",        "Favorite assets",             self._run_watchlist),
+                ("   Signal Radar",     "All signals on one screen",    self._run_signal_radar),
+                ("   Sector Rotation",  "Sector rotation",            self._run_sector_rotation),
+                ("   What-If",          "Portfolio simulation - 5 modes", None, [
+                    ("  > Top-5  90d equal",  "Top-5 by Score, 90 trading days",   self._run_whatif_top5),
+                    ("  > Top-10 90d equal",  "Top-10 by Score, 90 trading days",  self._run_whatif_top10),
+                    ("  > Top-5 180d equal",  "Top-5 by Score, six months ago",   self._run_whatif_180),
+                    ("  > Top-5  90d Kelly",  "Weights proportional to Score",      self._run_whatif_kelly),
+                    ("  > Custom assets",     "Custom assets + days + capital",     self._run_whatif_custom),
                 ]),
-                ("   Auto-Trader",      "Авто-исполнение сигналов",     self._run_auto_trader),
-                ("   Check Alerts",     "Проверка пользовательских алертов", self._run_check_alerts),
-                ("   Optuna Tune",      "Байесовская оптимизация гиперпараметров", self._run_optuna),
+                ("   Auto-Trader",      "Auto-execute signals",     self._run_auto_trader),
+                ("   Check Alerts",     "Check user alerts", self._run_check_alerts),
+                ("   Optuna Tune",      "Bayesian hyperparameter optimization", self._run_optuna),
             ]),
-            ("ОТЧЁТЫ & МОНИТОРИНГ", [
-                ("   Model Health",     "Возраст/качество моделей",     self._run_model_health),
-                ("   Model Compare",    "Сравнение моделей по обучениям", self._run_model_compare),
-                ("   Performance",      "Точность ML прогнозов",        self._run_performance),
-                ("   Guru Track",       "Точность совета легенд",       self._run_guru_track),
-                ("   Guru Report",      "Фундаментал + анализ гуру",   self._run_guru_report),
-                ("   Export Signals",   "Выгрузка сигналов CSV",        self._run_export),
-                ("   Signal Log",       "История сигналов",             self._run_signal_log),
-                ("   HTML Report",      "Полный отчёт в браузере",      self._run_report),
-                ("   Equity Curve",     "График капитала",              self._run_equity),
+            ("REPORTS & MONITORING", [
+                ("   Model Health",     "Model age/quality",     self._run_model_health),
+                ("   Model Compare",    "Compare models across training runs", self._run_model_compare),
+                ("   Performance",      "ML forecast accuracy",        self._run_performance),
+                ("   Guru Track",       "Accuracy of legends' advice",       self._run_guru_track),
+                ("   Guru Report",      "Fundamentals + guru analysis",   self._run_guru_report),
+                ("   Export Signals",   "Export signals to CSV",        self._run_export),
+                ("   Signal Log",       "Signal history",             self._run_signal_log),
+                ("   HTML Report",      "Full report in browser",      self._run_report),
+                ("   Equity Curve",     "Capital chart",              self._run_equity),
             ]),
-            ("СЕРВИСЫ", [
+            ("SERVICES", [
                 ("   Telegram Bot",     "Sentinel",                     self._run_bot),
-                ("   Scheduler",        "Автозапуск по расписанию",     self._run_scheduler),
-                ("   DB Audit",         "Полный аудит market.db (read-only)", self._run_db_check),
-                ("   DB Fix",           "Авто-ремонт базы данных",     self._run_db_fix),
-                ("   DB Backup",        "Бэкап market.db",              self._run_backup),
-                ("   Install/Repair",   "Установить зависимости",      self._run_install),
+                ("   Scheduler",        "Scheduled auto-run",     self._run_scheduler),
+                ("   DB Audit",         "Full market.db audit (read-only)", self._run_db_check),
+                ("   DB Fix",           "Auto-repair the database",     self._run_db_fix),
+                ("   DB Backup",        "Backup market.db",              self._run_backup),
+                ("   Install/Repair",   "Install dependencies",      self._run_install),
             ]),
         ]
 
@@ -245,7 +245,7 @@ class GTradeLauncher(tk.Tk):
                     label, tooltip, cmd = item
                     self._make_action_btn(parent, label, tooltip, cmd)
 
-        # EXIT внизу
+        # EXIT at the bottom
         tk.Frame(parent, bg=BG, height=16).pack()
         exit_btn = tk.Button(
             parent, text="EXIT", font=("Consolas", 11, "bold"),
@@ -258,7 +258,7 @@ class GTradeLauncher(tk.Tk):
         exit_btn.bind("<Leave>", lambda e: exit_btn.configure(bg=BG_BUTTON))
 
     def _make_action_btn(self, parent, text, tooltip, command):
-        """Создаёт стилизованную кнопку."""
+        """Creates a styled button."""
         frame = tk.Frame(parent, bg=BG)
         frame.pack(fill=tk.X, pady=2)
 
@@ -354,7 +354,7 @@ class GTradeLauncher(tk.Tk):
         return btn
 
     def _build_status_cards(self, parent):
-        """Информационные карточки вверху."""
+        """Info cards at the top."""
         cards_data = [
             ("db_size", "DB"),
             ("db_tables", "Tables"),
@@ -379,10 +379,10 @@ class GTradeLauncher(tk.Tk):
             val.pack(anchor="w", padx=8, pady=(0, 4))
             self._cards[key] = val
 
-    # -- Статус ------------------------------------------------------------
+    # -- Status ------------------------------------------------------------
 
     def _refresh_status(self):
-        """Обновляет статус-карточки."""
+        """Refreshes the status cards."""
         try:
             # DB size
             if os.path.exists(DB_PATH):
@@ -400,7 +400,7 @@ class GTradeLauncher(tk.Tk):
                 ).fetchall()]
                 self._cards["db_tables"].configure(text=str(len(tables)))
 
-                # Последняя дата из первой таблицы
+                # Most recent date from the first table
                 max_date = None
                 for t in tables[:5]:
                     try:
@@ -431,7 +431,7 @@ class GTradeLauncher(tk.Tk):
                 )
                 if r.returncode == 0 and r.stdout.strip():
                     name = r.stdout.strip().split("\n")[0]
-                    # Сокращаем имя
+                    # Shorten the name
                     short = name.replace("NVIDIA ", "").replace("GeForce ", "")
                     self._cards["gpu"].configure(text=short, fg=FG_GREEN)
                 else:
@@ -442,7 +442,7 @@ class GTradeLauncher(tk.Tk):
         except Exception as e:
             self._log_msg(f"Status error: {e}\n", "warn")
 
-    # -- Логирование -------------------------------------------------------
+    # -- Logging -------------------------------------------------------
 
     def _log_msg(self, text, tag="info"):
         if not text:
@@ -456,15 +456,15 @@ class GTradeLauncher(tk.Tk):
         self._log.configure(state="disabled")
 
     def _log_line(self, text, tag="stdout", is_cr=False):
-        """Вставить строку в лог. is_cr=True - заменить предыдущую \r строку."""
+        """Insert a line into the log. is_cr=True replaces the previous \r line."""
         if not text:
             return
         self._log.configure(state="normal")
         if self._cr_line and is_cr:
-            # CR-CR: заменяем предыдущий прогресс-бар
+            # CR-CR: replace the previous progress bar
             self._log.delete("end-1c linestart", "end-1c")
         elif self._cr_line and not is_cr:
-            # CR-non-CR: бар остаётся, новая строка ниже
+            # CR-non-CR: the bar stays, new line goes below it
             self._log.insert(tk.END, "\n")
         self._log.insert(tk.END, text, tag)
         self._cr_line = is_cr
@@ -472,7 +472,7 @@ class GTradeLauncher(tk.Tk):
         self._log.configure(state="disabled")
 
     def _stream_output(self, process):
-        """Читает stdout процесса побайтово, обрабатывает \\r для live progress."""
+        """Reads the process's stdout byte by byte, handling \\r for live progress."""
         decoder = codecs.getincrementaldecoder('utf-8')('replace')
         buf = ""
         while True:
@@ -505,12 +505,12 @@ class GTradeLauncher(tk.Tk):
             self.clipboard_append(text)
             self._show_toast("Log copied to clipboard")
 
-    # -- Запуск процессов --------------------------------------------------
+    # -- Running processes --------------------------------------------------
 
     def _run_script(self, args, task_name):
-        """Запускает скрипт в фоне, стримит вывод в лог."""
+        """Runs a script in the background, streaming output to the log."""
         if self._process and self._process.poll() is None:
-            self._log_msg(f"[BUSY] Дождитесь завершения: {self._running_task}\n", "warn")
+            self._log_msg(f"[BUSY] Please wait for this to finish: {self._running_task}\n", "warn")
             return
 
         self._clear_log()
@@ -561,10 +561,10 @@ class GTradeLauncher(tk.Tk):
         self._refresh_status()
         self._show_toast(f"{task} completed")
 
-    # -- Toast-уведомления -------------------------------------------------
+    # -- Toast notifications -------------------------------------------------
 
     def _show_toast(self, message, duration=3000):
-        """Всплывающее уведомление в правом нижнем углу."""
+        """Popup notification in the bottom-right corner."""
         toast = tk.Toplevel(self)
         toast.overrideredirect(True)
         toast.attributes("-topmost", True)
@@ -575,7 +575,7 @@ class GTradeLauncher(tk.Tk):
             fg=FG_GREEN, bg=BG_CARD, padx=16, pady=8
         ).pack()
 
-        # Позиция: правый нижний угол экрана
+        # Position: bottom-right corner of the screen
         toast.update_idletasks()
         w = toast.winfo_width()
         h = toast.winfo_height()
@@ -587,13 +587,13 @@ class GTradeLauncher(tk.Tk):
 
     def _stop_process(self):
         if self._process and self._process.poll() is None:
-            self._log_msg("\n[STOP] Завершение процесса...\n", "warn")
+            self._log_msg("\n[STOP] Terminating process...\n", "warn")
             self._process.terminate()
 
-    # -- Команды кнопок ----------------------------------------------------
+    # -- Button commands ----------------------------------------------------
 
     def _run_full(self):
-        # Запускаем цепочку: data - train - dashboard
+        # Run the chain: data - train - dashboard
         self._run_chain([
             ([PY, os.path.join(BASE_DIR, "data_engine.py")], "Data Update"),
             ([PY, os.path.join(BASE_DIR, "train_hybrid.py")], "Train Models"),
@@ -601,9 +601,9 @@ class GTradeLauncher(tk.Tk):
         ])
 
     def _run_chain(self, steps):
-        """Запускает несколько скриптов последовательно."""
+        """Runs several scripts in sequence."""
         if self._process and self._process.poll() is None:
-            self._log_msg(f"[BUSY] Дождитесь завершения: {self._running_task}\n", "warn")
+            self._log_msg(f"[BUSY] Please wait for this to finish: {self._running_task}\n", "warn")
             return
 
         self._clear_log()
@@ -655,9 +655,9 @@ class GTradeLauncher(tk.Tk):
         )
 
     def _run_webapp(self):
-        # FastAPI-дашборд: читает готовые предсказания из market.db (их пишет
-        # predict.py), стартует мгновенно. Открываем браузер с задержкой, пока
-        # uvicorn поднимается.
+        # FastAPI dashboard: reads ready-made predictions from market.db (written
+        # by predict.py), so it starts instantly. We open the browser with a delay
+        # while uvicorn comes up.
         import webbrowser
         threading.Timer(2.5, lambda: webbrowser.open("http://127.0.0.1:8000")).start()
         self._run_script(
@@ -699,7 +699,7 @@ class GTradeLauncher(tk.Tk):
         self._open_watchlist_dialog()
 
     def _open_watchlist_dialog(self):
-        """Интерактивное окно управления Watchlist."""
+        """Interactive Watchlist management window."""
         dlg = tk.Toplevel(self)
         dlg.title("Watchlist Manager")
         dlg.configure(bg=BG)
@@ -708,13 +708,13 @@ class GTradeLauncher(tk.Tk):
         dlg.transient(self)
         dlg.grab_set()
 
-        # -- Заголовок --
+        # -- Title --
         tk.Label(
             dlg, text="WATCHLIST", font=("Consolas", 14, "bold"),
             fg=FG_ACCENT, bg=BG
         ).pack(pady=(12, 4))
 
-        # -- Выбор списка --
+        # -- List selection --
         list_frame = tk.Frame(dlg, bg=BG)
         list_frame.pack(fill=tk.X, padx=16, pady=(8, 4))
 
@@ -760,7 +760,7 @@ class GTradeLauncher(tk.Tk):
 
         ttk.Separator(dlg, orient="horizontal").pack(fill=tk.X, padx=16, pady=12)
 
-        # -- Добавить актив --
+        # -- Add asset --
         add_frame = tk.Frame(dlg, bg=BG)
         add_frame.pack(fill=tk.X, padx=16, pady=4)
 
@@ -799,7 +799,7 @@ class GTradeLauncher(tk.Tk):
             font=("Consolas", 8), fg=FG_DIM, bg=BG, anchor="w"
         ).pack(fill=tk.X, padx=24)
 
-        # -- Удалить актив --
+        # -- Remove asset --
         rem_frame = tk.Frame(dlg, bg=BG)
         rem_frame.pack(fill=tk.X, padx=16, pady=(8, 4))
 
@@ -835,7 +835,7 @@ class GTradeLauncher(tk.Tk):
 
         ttk.Separator(dlg, orient="horizontal").pack(fill=tk.X, padx=16, pady=12)
 
-        # -- Создать новый список --
+        # -- Create new list --
         tk.Label(
             dlg, text="CREATE NEW LIST", font=("Consolas", 10, "bold"),
             fg=FG_DIM, bg=BG, anchor="w"
@@ -894,7 +894,7 @@ class GTradeLauncher(tk.Tk):
             font=("Consolas", 8), fg=FG_DIM, bg=BG, anchor="w"
         ).pack(fill=tk.X, padx=24, pady=(0, 4))
 
-        # -- Показать все списки --
+        # -- Show all lists --
         ttk.Separator(dlg, orient="horizontal").pack(fill=tk.X, padx=16, pady=8)
 
         def _show_all():
@@ -941,14 +941,14 @@ class GTradeLauncher(tk.Tk):
         import tkinter.simpledialog as sd
         assets_str = sd.askstring(
             "What-If Custom",
-            "Активы через пробел (например: BTC ETH NVDA GOLD):",
+            "Assets separated by spaces (e.g.: BTC ETH NVDA GOLD):",
             parent=self.root,
         )
         if not assets_str:
             return
         days_str = sd.askstring(
             "What-If Custom",
-            "Количество дней (по умолчанию 90):",
+            "Number of days (default 90):",
             parent=self.root,
         )
         days = days_str.strip() if days_str and days_str.strip().isdigit() else "90"
@@ -993,7 +993,7 @@ class GTradeLauncher(tk.Tk):
         ).pack(pady=(12, 4))
 
         tk.Label(
-            dlg, text="Фундаментальная отчётность + вердикт гуру",
+            dlg, text="Fundamental reporting + guru verdict",
             font=("Consolas", 9), fg=FG_DIM, bg=BG
         ).pack(pady=(0, 8))
 
@@ -1133,7 +1133,7 @@ class GTradeLauncher(tk.Tk):
             "Install/Repair"
         )
 
-    # -- Закрытие ----------------------------------------------------------
+    # -- Shutdown ----------------------------------------------------------
 
     def destroy(self):
         if self._process and self._process.poll() is None:

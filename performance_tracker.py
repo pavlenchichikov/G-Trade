@@ -103,9 +103,10 @@ def update_actuals():
                     _engine(),
                     index_col="Date",
                 )
-                # data_engine хранит колонки в нижнем регистре (close), поэтому
-                # нормализуем имена - иначе df["Close"] кидает KeyError, попадает
-                # в except и сверка с фактом молча не происходит.
+                # data_engine stores columns in lowercase (close), so we
+                # normalize the names - otherwise df["Close"] raises KeyError,
+                # falls into except, and the actual-vs-predicted check silently
+                # never happens.
                 df.columns = [c.lower() for c in df.columns]
                 df = df[~df.index.duplicated(keep="last")].sort_index()
                 if date_str not in df.index:

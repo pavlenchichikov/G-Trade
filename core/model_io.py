@@ -1,7 +1,7 @@
-"""Загрузка сохранённых моделей-чемпионов.
+"""Loading of saved champion models.
 
-Перенесено из backtest.py: загрузчик нужен также predict.py, alert_bot.py и
-signal_dashboard.py, импортировать его из скрипта бэктеста было неправильно.
+Moved out of backtest.py: the loader is also needed by predict.py, alert_bot.py
+and signal_dashboard.py, so importing it from the backtest script was wrong.
 """
 
 import json

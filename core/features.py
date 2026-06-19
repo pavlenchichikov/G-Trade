@@ -1,4 +1,4 @@
-"""Фичи по OHLCV: индикаторы, недельные и кросс-активные."""
+"""OHLCV features: indicators, weekly, and cross-asset."""
 
 import hashlib
 

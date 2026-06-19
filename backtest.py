@@ -1,7 +1,7 @@
-"""Бэктест чемпионов на отложенных данных.
+"""Backtest of champions on held-out data.
 
-Скейлер фитится только на трейне. Метрики: PnL, винрейт, Шарп, точность
-направления, Brier, альфа к buy & hold.
+The scaler is fit on the training set only. Metrics: PnL, win rate, Sharpe,
+direction accuracy, Brier, alpha vs buy & hold.
 """
 
 import os
@@ -61,7 +61,7 @@ KELLY_FRACTION = 0.25
 MAX_POSITION = 0.10
 MAX_TRADE_RET = 0.04
 
-# Load registry and thresholds (optuna params читает core.model_io)
+# Load registry and thresholds (optuna params are read by core.model_io)
 REGISTRY_PATH = os.path.join(MODEL_DIR, "champion_registry.json")
 THRESHOLDS_PATH = os.path.join(MODEL_DIR, "tuned_thresholds.json")
 

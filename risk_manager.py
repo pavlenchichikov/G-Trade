@@ -1,4 +1,4 @@
-"""Риск-менеджмент: Келли, лимиты позиций и убытков, стопы по просадке."""
+"""Risk management: Kelly criterion, position and loss limits, drawdown stops."""
 
 import json
 import logging
