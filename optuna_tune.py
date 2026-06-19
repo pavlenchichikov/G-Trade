@@ -181,9 +181,9 @@ def tune_asset(asset, n_trials=20, fast_mode=True):
 
     # Quick feature selection (CatBoost with 150 iterations)
     candidate = [
-        'close', 'volume', 'vol_z', 'taleb_risk', 'ret_1', 'ret_5',
-        'ret_10', 'ret_20', 'trend_strength', 'rsi', 'sma_20', 'sma_50',
-        'macd_hist', 'bb_pos', 'atr', 'vol_ratio',
+        'close', 'volume', 'vol_z', 'taleb_risk', 'ret_skew', 'var_5',
+        'ret_1', 'ret_5', 'ret_10', 'ret_20', 'trend_strength', 'rsi',
+        'sma_20', 'sma_50', 'macd_hist', 'bb_pos', 'atr', 'vol_ratio',
         'w_ret', 'w_rsi', 'w_trend',
         'corr_btc', 'corr_sp500', 'corr_dxy',
     ]
