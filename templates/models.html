@@ -18,7 +18,36 @@
     <span class="stat-value">{% if summary.avg_score is not none %}{{ "%.2f"|format(summary.avg_score) }}{% else %}-{% endif %}</span>
     <span class="stat-sub">Sharpe-взвешенная оценка обучения</span>
   </div>
+  <div class="stat fade">
+    <span class="stat-label">Средний возраст моделей</span>
+    <span class="stat-value">{% if health.avg_age_days is defined %}{{ "%.0f"|format(health.avg_age_days) }}<small> дн</small>{% else %}-{% endif %}</span>
+    <span class="stat-sub">{% if health.oldest_asset is defined %}старейшая {{ health.oldest_asset }} ({{ "%.0f"|format(health.oldest_age_days) }} дн){% else %}нет данных{% endif %}</span>
+  </div>
 </div>
+
+{% if stale %}
+<section class="panel fade">
+  <div class="panel-head">
+    <h2>Требуют переобучения</h2>
+    <span class="count mono">{{ stale | length }} активов старше порога</span>
+  </div>
+  <table class="grid">
+    <thead>
+      <tr><th>Актив</th><th class="num">Возраст (дн)</th><th class="num">Скор</th><th>Статус</th></tr>
+    </thead>
+    <tbody>
+      {% for s in stale %}
+      <tr>
+        <td><a class="asset-link" href="/asset/{{ s.asset }}">{{ s.asset }}</a></td>
+        <td class="num mono">{{ "%.0f"|format(s.cb_age_days) }}</td>
+        <td class="num mono">{{ "%.2f"|format(s.score) if s.score is not none else "-" }}</td>
+        <td><span class="chip chip-SELL">{{ s.status }}</span></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endif %}
 
 {% if rows %}
 <section class="panel fade">

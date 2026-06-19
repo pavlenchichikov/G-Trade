@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}Новости | G-Trade{% endblock %}
+{% block content %}
+
+<h1 class="fade">Новости</h1>
+<p class="lead fade">Дайджест авторитетных источников, ранжированный по значимости
+  (вес источника на тональность заголовка). Тот же поток, что в консоли news_analyzer.</p>
+
+<div class="news-filters fade">
+  <span class="nf-label">Язык</span>
+  {% for code, name in [('all', 'Все'), ('en', 'EN'), ('ru', 'RU')] %}
+  <a class="fbtn {% if lang == code %}active{% endif %}"
+     href="/news?lang={{ code }}&category={{ category }}">{{ name }}</a>
+  {% endfor %}
+</div>
+
+{% if items %}
+<ol class="news-list fade">
+  {% for it in items %}
+  {% set ws = it.weighted_score | default(0) %}
+  {% set tone = 't-buy' if ws > 0.05 else 't-sell' if ws < -0.05 else 't-wait' %}
+  <li class="news-item">
+    <div class="news-meta">
+      <span class="news-src">{{ it.source }}</span>
+      {% if it.credibility is defined %}<span class="news-cred mono">авторитет {{ "%.0f"|format(it.credibility * 100) }}%</span>{% endif %}
+      {% if it.category %}<span class="news-cat">{{ it.category }}</span>{% endif %}
+      {% if it.published %}<span class="news-date dim mono">{{ it.published }}</span>{% endif %}
+    </div>
+    <a class="news-title" href="{{ it.link }}" target="_blank" rel="noopener">{{ it.title }}</a>
+    {% if it.description %}<p class="news-desc dim">{{ it.description[:240] }}{% if it.description | length > 240 %}...{% endif %}</p>{% endif %}
+    <div class="news-foot">
+      <span class="news-tone {{ tone }}">{{ it.sentiment_label }}</span>
+      <span class="news-score mono dim">score {{ "%+.2f"|format(ws) }}</span>
+    </div>
+  </li>
+  {% endfor %}
+</ol>
+{% else %}
+<p class="empty">Новостей нет - источники недоступны (нет сети или фид пуст).</p>
+{% endif %}
+
+{% endblock %}

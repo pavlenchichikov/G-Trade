@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}Секторы | G-Trade{% endblock %}
+{% block content %}
+
+<h1 class="fade">Секторы</h1>
+<p class="lead fade">Недельная доходность по секторам (в процентах) и импульс ротации.
+  Зелёное - приток, красное - отток. Лучший и худший актив в каждом секторе за период.</p>
+
+<section class="panel fade">
+  <div class="panel-head"><h2>Тепловая карта: сектор на неделю</h2></div>
+  <div id="sector-heatmap" style="width:100%;height:360px"></div>
+</section>
+
+<section class="panel fade">
+  <div class="panel-head"><h2>Импульс секторов</h2></div>
+  {% if momentum %}
+  <table class="grid">
+    <thead>
+      <tr><th>Сектор</th><th class="num">Импульс</th><th>Тренд</th><th>Лидер</th><th>Аутсайдер</th></tr>
+    </thead>
+    <tbody>
+      {% for s in momentum %}
+      <tr>
+        <td>{{ s.Sector }}</td>
+        <td class="num mono {{ 't-buy' if (s.Momentum_Score or 0) > 0 else 't-sell' if (s.Momentum_Score or 0) < 0 else '' }}">
+          {{ "%+.2f"|format(s.Momentum_Score) if s.Momentum_Score is not none else '-' }}%</td>
+        <td><span class="chip chip-{{ 'BUY' if s.Trend == 'RISING' else 'SELL' if s.Trend == 'FALLING' else 'WAIT' }}">{{ s.Trend }}</span></td>
+        <td><a class="asset-link" href="/asset/{{ s.Best_Asset }}">{{ s.Best_Asset }}</a></td>
+        <td><a class="asset-link" href="/asset/{{ s.Worst_Asset }}">{{ s.Worst_Asset }}</a></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="empty">Данных по секторам нет.</p>
+  {% endif %}
+</section>
+
+<script id="sector-data" type="application/json">{{ heatmap | tojson }}</script>
+<script src="/static/echarts.min.js"></script>
+<script src="/static/js/charts.js"></script>
+<script>gtHeatmap("sector-heatmap", JSON.parse(document.getElementById("sector-data").textContent));</script>
+
+{% endblock %}

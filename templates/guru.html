@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% block title %}Гуру | G-Trade{% endblock %}
+{% block content %}
+
+<h1 class="fade">Совет легенд</h1>
+<p class="lead fade">Фундаментальные вердикты совета (Линч, Баффет, Грэм, Мангер) по активам
+  и их трек-рекорд. Мангер - риск-вето: DANGER блокирует BUY. Каждый гуру 0-2,
+  итог - взвешенный консенсус.</p>
+
+{% set c = accuracy.council %}
+<div class="statgrid">
+  <div class="stat fade">
+    <span class="stat-label">Точность совета (5д)</span>
+    <span class="stat-value">{% if c and c.accuracy is not none %}{{ "%.0f"|format(c.accuracy * 100) }}<small>%</small>{% else %}-{% endif %}</span>
+    <span class="stat-sub">{% if c and c.total %}{{ c.correct }} верных из {{ c.total }}{% else %}трек-рекорд накапливается{% endif %}</span>
+  </div>
+  <div class="stat fade">
+    <span class="stat-label">Средний ход после сигнала</span>
+    <span class="stat-value">{% if c and c.avg_return is not none %}{{ "%+.2f"|format(c.avg_return) }}<small>%</small>{% else %}-{% endif %}</span>
+    <span class="stat-sub">за 5 дней, не-HOLD вердикты</span>
+  </div>
+  <div class="stat fade">
+    <span class="stat-label">Активов с вердиктом</span>
+    <span class="stat-value">{{ verdicts | length }}</span>
+    <span class="stat-sub">последняя оценка по каждому</span>
+  </div>
+</div>
+
+{% if accuracy.individual %}
+<section class="panel fade">
+  <div class="panel-head"><h2>Точность каждого гуру (5д)</h2></div>
+  <table class="grid">
+    <thead>
+      <tr><th>Гуру</th><th class="num">Точность</th><th class="num">Бычьих звонков</th><th class="num">Верных</th><th class="num">Ход при бычьем</th></tr>
+    </thead>
+    <tbody>
+      {% for name, g in accuracy.individual.items() %}
+      <tr>
+        <td>{{ name }}</td>
+        <td class="num mono {{ 't-buy' if g.accuracy and g.accuracy >= 0.5 else 't-sell' if g.accuracy is not none else '' }}">{% if g.accuracy is not none %}{{ "%.0f%%"|format(g.accuracy * 100) }}{% else %}-{% endif %}</td>
+        <td class="num mono dim">{{ g.bullish_calls }}</td>
+        <td class="num mono dim">{{ g.bullish_correct }}</td>
+        <td class="num mono">{% if g.avg_ret_when_bullish is not none %}{{ "%+.2f"|format(g.avg_ret_when_bullish) }}%{% else %}-{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endif %}
+
+<section class="panel fade">
+  <div class="panel-head"><h2>Вердикты по активам</h2></div>
+  {% if verdicts %}
+  <table class="grid">
+    <thead>
+      <tr><th>Актив</th><th>Вердикт</th><th class="num">Консенсус</th>
+        <th class="num">Линч</th><th class="num">Баффет</th><th class="num">Грэм</th><th class="num">Мангер</th>
+        <th>Данные</th><th class="num">Дата</th></tr>
+    </thead>
+    <tbody>
+      {% for v in verdicts %}
+      <tr>
+        <td><a class="asset-link" href="/asset/{{ v.asset }}">{{ v.asset }}</a></td>
+        <td><span class="chip chip-{{ 'BUY' if v.verdict == 'BUY' else 'SELL' if v.verdict == 'AVOID' else 'WAIT' }}">{{ v.verdict }}</span></td>
+        <td class="num mono">{% if v.pct is not none %}{{ "%.0f%%"|format(v.pct) }}{% else %}-{% endif %}</td>
+        <td class="num mono dim">{{ v.lynch }}</td>
+        <td class="num mono dim">{{ v.buffett }}</td>
+        <td class="num mono dim">{{ v.graham }}</td>
+        <td class="num mono dim">{{ v.munger }}</td>
+        <td class="dim">{{ v.source }}</td>
+        <td class="num dim mono">{{ v.date }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="empty">Вердиктов нет - запусти <code>python guru_report.py</code> для оценки активов.</p>
+  {% endif %}
+</section>
+
+{% endblock %}

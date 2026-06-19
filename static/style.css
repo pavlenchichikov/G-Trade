@@ -551,6 +551,144 @@ table.kv { border-collapse: collapse; margin: 6px 16px 14px; }
 
 .limit-bar .lb-red { background: linear-gradient(90deg, rgba(226, 92, 92, 0.5), var(--red)); }
 
+/* ---- рынок / командный центр ---- */
+
+.lead {
+  color: var(--dim);
+  max-width: 78ch;
+  margin: 6px 0 16px;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.ind-desc { flex: 1; min-width: 170px; }
+.ind-status { font-size: 21px; font-weight: 700; margin: 0 0 6px; }
+.gauge-sm { width: 116px; }
+
+.command-center {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  margin: 16px 0 18px;
+}
+
+.cc-card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+}
+
+.cc-card h3 {
+  margin: 0 0 10px;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+
+.cc-gaugewrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+}
+
+.cc-gaugeval { text-align: center; }
+.cc-gaugeval b { display: block; font-size: 17px; font-weight: 700; }
+.cc-gaugeval span { font-size: 11px; }
+
+.cc-more {
+  margin-top: 12px;
+  font-size: 12px;
+  color: var(--dim);
+  align-self: flex-start;
+}
+.cc-more:hover { color: var(--amber); }
+
+.breadth { display: flex; justify-content: space-between; margin-bottom: 10px; }
+.breadth-seg { display: flex; flex-direction: column; align-items: center; }
+.breadth-seg span { font-size: 11px; color: var(--dim); }
+.breadth-seg b { font-size: 21px; font-weight: 700; }
+
+.breadth-bar {
+  display: flex;
+  height: 8px;
+  border-radius: 4px;
+  overflow: hidden;
+  background: var(--line-soft);
+}
+.breadth-bar i { display: block; height: 100%; }
+.bb-buy { background: var(--green); }
+.bb-sell { background: var(--red); }
+.bb-wait { background: var(--dim); }
+.cc-sub { margin-top: 8px; font-size: 12px; }
+
+.cc-leaders { list-style: none; margin: 0; padding: 0; }
+.cc-leaders li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 0;
+  border-bottom: 1px dashed var(--line-soft);
+  font-size: 13px;
+}
+.cc-leaders li:last-child { border-bottom: none; }
+.cc-leaders .rank { width: 16px; color: var(--dim); font-family: var(--mono); }
+.cc-leaders .lead-acc { margin-left: auto; color: var(--green); }
+
+@media (max-width: 860px) {
+  .command-center { grid-template-columns: 1fr 1fr; }
+}
+
+/* ---- новости ---- */
+
+.news-filters { display: flex; align-items: center; gap: 8px; margin: 12px 0 16px; }
+.nf-label { font-size: 12px; color: var(--dim); margin-right: 4px; }
+
+.news-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+
+.news-item {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 13px 15px;
+}
+.news-item:hover { border-color: rgba(227, 162, 58, 0.4); }
+
+.news-meta { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 6px; font-size: 12px; }
+.news-src { color: var(--amber); font-weight: 600; }
+.news-cred { color: var(--dim); font-size: 11px; }
+.news-cat {
+  color: var(--dim);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.news-date { margin-left: auto; }
+
+.news-title {
+  display: block;
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.35;
+  text-decoration: none;
+}
+.news-title:hover { color: var(--amber); }
+
+.news-desc { margin: 6px 0 8px; font-size: 13px; line-height: 1.5; }
+
+.news-foot { display: flex; align-items: center; gap: 12px; font-size: 12px; }
+.news-tone { font-weight: 600; }
+.news-score { font-size: 11px; }
+
 /* ---- пустые состояния ---- */
 
 .empty-state { padding: 34px 24px; text-align: center; }

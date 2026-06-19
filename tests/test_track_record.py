@@ -110,6 +110,26 @@ def test_price_series_missing_table(db):
     assert track_record.price_series("GOLD", db_path=db) == []
 
 
+def test_ohlc_series_returns_bars(tmp_path):
+    path = str(tmp_path / "market.db")
+    con = sqlite3.connect(path)
+    con.execute("CREATE TABLE btc (Date TEXT, open REAL, high REAL, low REAL, "
+                "close REAL, volume REAL)")
+    con.executemany("INSERT INTO btc VALUES (?,?,?,?,?,?)", [
+        ("2026-06-10", 100, 110, 95, 105, 1),
+        ("2026-06-11", 105, 120, 104, 118, 1),
+    ])
+    con.commit(); con.close()
+    bars = track_record.ohlc_series("BTC", db_path=path)
+    assert len(bars) == 2
+    assert bars[0]["date"] == "2026-06-10" and bars[0]["high"] == 110
+    assert bars[1]["open"] == 105 and bars[1]["close"] == 118
+
+
+def test_ohlc_series_missing_table(db):
+    assert track_record.ohlc_series("GOLD", db_path=db) == []
+
+
 def test_stale_assets_missing_table_reported(db):
     stale = track_record.stale_assets(
         max_age_days=7, assets=["GOLD"], db_path=db, today="2026-06-12",

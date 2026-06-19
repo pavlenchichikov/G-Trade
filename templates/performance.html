@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}Точность | G-Trade{% endblock %}
+{% block content %}
+
+<h1 class="fade">Точность</h1>
+<p class="lead fade">Скользящая точность сигналов во времени: текущее поколение модели
+  (<span class="mono">{{ version }}</span>) отдельно от всех поколений, чтобы старый
+  трек-рекорд не смешивался с новой моделью. Ниже - лидеры по точности.</p>
+
+<section class="panel fade">
+  <div class="panel-head"><h2>Точность во времени</h2></div>
+  <div id="perf-chart" style="width:100%;height:320px"></div>
+</section>
+
+<section class="panel fade">
+  <div class="panel-head"><h2>Лидеры (текущая модель)</h2></div>
+  {% if leaderboard %}
+  <table class="grid">
+    <thead>
+      <tr><th class="num">#</th><th>Актив</th><th class="num">Точность</th><th class="num">Прогнозов</th><th class="num">Верных</th></tr>
+    </thead>
+    <tbody>
+      {% for r in leaderboard %}
+      <tr>
+        <td class="num dim mono">{{ loop.index }}</td>
+        <td><a class="asset-link" href="/asset/{{ r.Asset }}">{{ r.Asset }}</a></td>
+        <td class="num mono {{ 't-buy' if (r.Accuracy or 0) >= 0.5 else 't-sell' }}">{{ "%.0f%%"|format((r.Accuracy or 0) * 100) }}</td>
+        <td class="num mono dim">{{ r.Predictions }}</td>
+        <td class="num mono dim">{{ r.Correct }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="empty">Точность текущей модели накопится после прогонов predict.py.</p>
+  {% endif %}
+</section>
+
+<script id="perf-data" type="application/json">{{ series | tojson }}</script>
+<script src="/static/echarts.min.js"></script>
+<script>
+(function () {
+  var d = JSON.parse(document.getElementById("perf-data").textContent);
+  var el = document.getElementById("perf-chart");
+  if (!el || typeof echarts === "undefined") return;
+  function pts(arr) { return (arr || []).map(function (r) { return [r.date, r.rolling_acc * 100]; }); }
+  var chart = echarts.init(el);
+  chart.setOption({
+    tooltip: { trigger: "axis" },
+    legend: { data: ["Текущая модель", "Все поколения"], textStyle: { color: "#9aa0a6" } },
+    xAxis: { type: "time" },
+    yAxis: { type: "value", min: 0, max: 100, axisLabel: { formatter: "{value}%" } },
+    series: [
+      { name: "Текущая модель", type: "line", smooth: true, showSymbol: false, data: pts(d.current) },
+      { name: "Все поколения", type: "line", smooth: true, showSymbol: false, data: pts(d.all) },
+    ],
+  });
+  window.addEventListener("resize", function () { chart.resize(); });
+})();
+</script>
+
+{% endblock %}

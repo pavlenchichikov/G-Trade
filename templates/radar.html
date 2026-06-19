@@ -3,6 +3,69 @@
 {% block topright %}{{ now }}{% endblock %}
 {% block content %}
 
+<section class="command-center">
+  <div class="cc-card">
+    <h3>Режим рынка</h3>
+    <div class="cc-gaugewrap">
+      <svg viewBox="0 0 120 70" class="gauge gauge-sm">
+        <path d="M 10 65 A 50 50 0 0 1 110 65" class="gauge-track"/>
+        <path d="M 10 65 A 50 50 0 0 1 110 65" class="gauge-fill {{ zone }}"
+              style="stroke-dasharray: {{ (score / 100 * 157) | round(1) }} 157"/>
+      </svg>
+      <div class="cc-gaugeval">
+        <b class="{{ 't-buy' if score >= 60 else 't-sell' if score < 35 else 't-wait' }}">{{ regime.status }}</b>
+        <span class="dim">бык / медведь &middot; {{ score }}/100</span>
+      </div>
+    </div>
+    <a class="cc-more" href="/market">подробнее о рынке</a>
+  </div>
+
+  <div class="cc-card">
+    <h3>Настроение</h3>
+    <div class="cc-gaugewrap">
+      <svg viewBox="0 0 120 70" class="gauge gauge-sm">
+        <path d="M 10 65 A 50 50 0 0 1 110 65" class="gauge-track"/>
+        <path d="M 10 65 A 50 50 0 0 1 110 65" class="gauge-fill {{ sent_zone }}"
+              style="stroke-dasharray: {{ (sentiment.score / 100 * 157) | round(1) }} 157"/>
+      </svg>
+      <div class="cc-gaugeval">
+        <b class="{{ 't-buy' if sentiment.score >= 60 else 't-sell' if sentiment.score < 35 else 't-wait' }}">{{ sentiment.label }}</b>
+        <span class="dim">страх / жадность &middot; {{ sentiment.score }}/100</span>
+      </div>
+    </div>
+    <a class="cc-more" href="/market">страх и жадность</a>
+  </div>
+
+  <div class="cc-card">
+    <h3>Ширина рынка</h3>
+    {% set tot = breadth.total or 1 %}
+    <div class="breadth">
+      <div class="breadth-seg"><span>BUY</span><b class="t-buy">{{ breadth.BUY }}</b></div>
+      <div class="breadth-seg"><span>SELL</span><b class="t-sell">{{ breadth.SELL }}</b></div>
+      <div class="breadth-seg"><span>WAIT</span><b class="t-wait">{{ breadth.WAIT }}</b></div>
+    </div>
+    <div class="breadth-bar">
+      <i class="bb-buy" style="width: {{ (breadth.BUY / tot * 100) | round(1) }}%"></i>
+      <i class="bb-sell" style="width: {{ (breadth.SELL / tot * 100) | round(1) }}%"></i>
+      <i class="bb-wait" style="width: {{ (breadth.WAIT / tot * 100) | round(1) }}%"></i>
+    </div>
+    <span class="cc-sub dim">{{ breadth.actionable }} активных из {{ breadth.total }}</span>
+  </div>
+
+  <div class="cc-card">
+    <h3>Лидеры точности</h3>
+    <ol class="cc-leaders">
+      {% for r in leaderboard %}
+      <li><span class="rank">{{ loop.index }}</span>
+        <a href="/asset/{{ r.Asset }}">{{ r.Asset }}</a>
+        <span class="mono lead-acc">{{ "%.0f%%"|format((r.Accuracy or 0) * 100) }}</span></li>
+      {% else %}
+      <li class="dim">точность накопится после запуска модели</li>
+      {% endfor %}
+    </ol>
+  </div>
+</section>
+
 <div class="statgrid">
   <div class="stat fade">
     <span class="stat-label">Активов в журнале</span>

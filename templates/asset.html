@@ -67,6 +67,18 @@
   </div>
 </section>
 
+<section class="panel fade">
+  <div class="panel-head"><h2>Свечи (OHLC)</h2></div>
+  <div id="asset-candles" style="width:100%;height:340px"></div>
+</section>
+<script src="/static/echarts.min.js"></script>
+<script src="/static/js/charts.js"></script>
+<script>
+fetch("/api/ohlc/{{ asset }}?days=120")
+  .then(function (r) { return r.json(); })
+  .then(function (d) { gtCandles("asset-candles", d.series || []); });
+</script>
+
 {% if reg or quality %}
 <div class="duo">
   <section class="panel fade">

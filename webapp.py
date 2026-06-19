@@ -18,6 +18,7 @@ from fastapi.templating import Jinja2Templates
 
 from config import FULL_ASSET_MAP, RADAR_GROUPS
 from core import track_record
+from core import dashboard
 from risk_manager import RISK_CONFIG
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -104,12 +105,22 @@ def radar(request: Request):
         closes = [p["close"] for p in track_record.price_series(s["asset"], days=30)]
         s["spark"] = _spark(closes)
     stale = track_record.stale_assets()
+    regime = dashboard.global_regime()
+    score = dashboard.regime_score(regime)
+    sentiment = dashboard.market_sentiment()
     return templates.TemplateResponse(request, "radar.html", {
         "groups": _grouped_signals(signals),
         "summary": _summary(signals, stale),
         "top": _top_signals(signals),
         "stale": stale[:8],
         "now": datetime.now().strftime("%Y-%m-%d %H:%M"),
+        "regime": regime,
+        "score": score,
+        "zone": dashboard.gauge_zone(score),
+        "sentiment": sentiment,
+        "sent_zone": dashboard.gauge_zone(sentiment["score"]),
+        "breadth": dashboard.market_breadth(),
+        "leaderboard": dashboard.top_leaderboard(limit=5),
     })
 
 
@@ -196,6 +207,8 @@ def models_page(request: Request):
     }
     return templates.TemplateResponse(request, "models.html", {
         "rows": rows, "summary": summary,
+        "health": dashboard.models_health(),
+        "stale": dashboard.models_stale(),
     })
 
 
@@ -212,6 +225,96 @@ def risk_page(request: Request):
     })
 
 
+@app.get("/market", response_class=HTMLResponse)
+def market_page(request: Request):
+    regime = dashboard.global_regime()
+    score = dashboard.regime_score(regime)
+    sentiment = dashboard.market_sentiment()
+    return templates.TemplateResponse(request, "market.html", {
+        "regime": regime,
+        "score": score,
+        "zone": dashboard.gauge_zone(score),
+        "sentiment": sentiment,
+        "sent_zone": dashboard.gauge_zone(sentiment["score"]),
+    })
+
+
+@app.get("/news", response_class=HTMLResponse)
+def news_page(request: Request, lang: str = "all", category: str = "all"):
+    items = dashboard.news_digest(lang=lang, category=category)
+    return templates.TemplateResponse(request, "news.html", {
+        "items": items, "lang": lang, "category": category,
+    })
+
+
+@app.get("/sectors", response_class=HTMLResponse)
+def sectors_page(request: Request):
+    return templates.TemplateResponse(request, "sectors.html", {
+        "momentum": dashboard.sector_momentum(),
+        "heatmap": dashboard.sector_heatmap(),
+    })
+
+
+@app.get("/correlations", response_class=HTMLResponse)
+def correlations_page(request: Request):
+    return templates.TemplateResponse(request, "correlations.html", {
+        "stress": dashboard.correlation_stress(),
+        "heatmap": dashboard.correlation_heatmap(),
+    })
+
+
+@app.get("/performance", response_class=HTMLResponse)
+def performance_page(request: Request):
+    return templates.TemplateResponse(request, "performance.html", {
+        "series": dashboard.accuracy_timeseries(),
+        "leaderboard": dashboard.top_leaderboard(limit=20),
+        "version": dashboard.current_model_version(),
+    })
+
+
+@app.get("/guru", response_class=HTMLResponse)
+def guru_page(request: Request):
+    return templates.TemplateResponse(request, "guru.html", {
+        "verdicts": dashboard.guru_latest(),
+        "accuracy": dashboard.guru_accuracy(),
+    })
+
+
+@app.get("/api/regime")
+def api_regime():
+    regime = dashboard.global_regime()
+    return {**regime, "score": dashboard.regime_score(regime)}
+
+
+@app.get("/api/sectors")
+def api_sectors():
+    return {"momentum": dashboard.sector_momentum(),
+            "heatmap": dashboard.sector_heatmap()}
+
+
+@app.get("/api/correlations")
+def api_correlations():
+    return {"stress": dashboard.correlation_stress(),
+            "heatmap": dashboard.correlation_heatmap()}
+
+
+@app.get("/api/performance")
+def api_performance():
+    return {"series": dashboard.accuracy_timeseries(),
+            "leaderboard": dashboard.top_leaderboard(limit=20)}
+
+
+@app.get("/api/guru")
+def api_guru():
+    return {"verdicts": dashboard.guru_latest(),
+            "accuracy": dashboard.guru_accuracy()}
+
+
+@app.get("/api/news")
+def api_news(lang: str = "all", category: str = "all"):
+    return dashboard.news_digest(lang=lang, category=category)
+
+
 @app.get("/api/signals")
 def api_signals():
     return track_record.latest_signals()
@@ -224,6 +327,15 @@ def api_prices(name: str, days: int = 90):
         raise HTTPException(404, f"Unknown asset: {name}")
     days = 100000 if days <= 0 else max(10, min(days, 100000))
     return {"asset": name, "series": track_record.price_series(name, days=days)}
+
+
+@app.get("/api/ohlc/{name}")
+def api_ohlc(name: str, days: int = 120):
+    name = name.upper()
+    if name not in FULL_ASSET_MAP:
+        raise HTTPException(404, f"Unknown asset: {name}")
+    days = 100000 if days <= 0 else max(10, min(days, 100000))
+    return {"asset": name, "series": track_record.ohlc_series(name, days=days)}
 
 
 @app.get("/api/track/{name}")

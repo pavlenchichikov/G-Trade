@@ -15,6 +15,12 @@
       <a class="brand" href="/">G-TRADE<span class="brand-dot"></span></a>
       <nav>
         <a href="/" {% if request.url.path == '/' %}class="active"{% endif %}>Радар</a>
+        <a href="/market" {% if request.url.path == '/market' %}class="active"{% endif %}>Рынок</a>
+        <a href="/sectors" {% if request.url.path == '/sectors' %}class="active"{% endif %}>Секторы</a>
+        <a href="/correlations" {% if request.url.path == '/correlations' %}class="active"{% endif %}>Корреляции</a>
+        <a href="/performance" {% if request.url.path == '/performance' %}class="active"{% endif %}>Точность</a>
+        <a href="/news" {% if request.url.path == '/news' %}class="active"{% endif %}>Новости</a>
+        <a href="/guru" {% if request.url.path == '/guru' %}class="active"{% endif %}>Гуру</a>
         <a href="/models" {% if request.url.path == '/models' %}class="active"{% endif %}>Модели</a>
         <a href="/risk" {% if request.url.path == '/risk' %}class="active"{% endif %}>Риск</a>
       </nav>

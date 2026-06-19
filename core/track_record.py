@@ -118,6 +118,27 @@ def price_series(asset: str, days: int = 60, db_path=None) -> list:
     return [{"date": str(d)[:10], "close": c} for d, c in rows if c is not None]
 
 
+def ohlc_series(asset: str, days: int = 120, db_path=None) -> list:
+    """Last `days` OHLC bars ascending by date: [{date,open,high,low,close}, ...]."""
+    table = _table_name(asset)
+    with _connect(db_path) as con:
+        try:
+            rows = con.execute(
+                f'SELECT Date, Open, High, Low, Close FROM "{table}" '
+                f'ORDER BY Date DESC LIMIT ?',
+                (days,),
+            ).fetchall()
+        except sqlite3.OperationalError:
+            return []
+    rows.reverse()
+    out = []
+    for d, o, h, l, c in rows:
+        if None in (o, h, l, c):
+            continue
+        out.append({"date": str(d)[:10], "open": o, "high": h, "low": l, "close": c})
+    return out
+
+
 def stale_assets(max_age_days: int = 7, assets=None, db_path=None, today=None) -> list:
     """Активы, у которых данные в market.db старше порога (или отсутствуют)."""
     if assets is None:
