@@ -6,8 +6,14 @@
 
 <div class="risk-layout">
   <section class="panel fade">
-    <div class="panel-head"><h2>State</h2></div>
-    {% if state %}
+    <div class="panel-head">
+      <h2>State</h2>
+      <div class="risk-status-actions">
+        <span class="chip chip-{{ 'SELL' if halted else 'BUY' }}" id="risk-status-chip">{{ 'HALTED' if halted else 'ACTIVE' }}</span>
+        <button class="fbtn" id="risk-halt-btn" data-manual-halt="{{ manual_halt | lower }}">{{ 'Resume' if manual_halt else 'Halt' }}</button>
+      </div>
+    </div>
+    <p class="dim" id="risk-halt-reason" {% if not halted %}hidden{% endif %} style="padding: 0 16px;">{{ halt_reason }}</p>
     <div class="risk-state">
       <div class="gauge-wrap">
         {% set pct = (dd / config.max_drawdown_halt) if config.max_drawdown_halt else 0 %}
@@ -29,61 +35,101 @@
         <tr><td>Open positions</td><td class="mono" id="risk-positions-val">{{ state.open_positions | length }}</td></tr>
       </table>
     </div>
-    {% if state.open_positions %}
-    <table class="grid">
-      <thead><tr><th>Asset</th><th class="num">Size</th><th class="num">Entry</th><th>Direction</th></tr></thead>
-      <tbody>
+    <form id="risk-open-form" class="open-position-form">
+      <input type="text" list="risk-asset-list" name="asset" placeholder="asset" required class="search mono" style="width:90px">
+      <datalist id="risk-asset-list">
+        {% for a in full_asset_map %}<option value="{{ a }}">{% endfor %}
+      </datalist>
+      <select name="direction" class="fbtn">
+        <option value="BUY">BUY</option>
+        <option value="SELL">SELL</option>
+      </select>
+      <input type="number" name="size_usd" placeholder="size USD" required min="0.01" step="0.01" class="search mono" style="width:100px">
+      <input type="number" name="entry_price" placeholder="entry price (auto)" min="0" step="0.000001" class="search mono" style="width:140px">
+      <button type="submit" class="fbtn">Open position</button>
+    </form>
+    <p class="empty" id="risk-open-error" hidden></p>
+    <table class="grid" id="risk-positions-table" {% if not state.open_positions %}hidden{% endif %}>
+      <thead><tr><th>Asset</th><th class="num">Size</th><th class="num">Entry</th><th>Direction</th><th>Close</th></tr></thead>
+      <tbody id="risk-positions-tbody">
         {% for name, p in state.open_positions.items() %}
-        <tr>
+        <tr data-asset="{{ name }}">
           <td><a class="asset-link" href="/asset/{{ name }}">{{ name }}</a></td>
           <td class="num mono">${{ "{:,.2f}".format(p.get('size_usd', 0)) }}</td>
           <td class="num mono">{{ p.get('entry_price', '-') }}</td>
           <td>{{ p.get('direction', '-') }}</td>
+          <td>
+            <button class="fbtn close-position-btn" data-asset="{{ name }}">Close</button>
+            <span class="close-position-form" hidden>
+              <input type="number" class="search mono close-exit-price" placeholder="exit price" min="0" step="0.000001" style="width:110px">
+              <button class="fbtn close-position-confirm" data-asset="{{ name }}">Confirm</button>
+            </span>
+          </td>
         </tr>
         {% endfor %}
       </tbody>
     </table>
-    {% endif %}
-    {% else %}
-    <p class="empty">No state saved - risk_manager has not opened positions yet.
-       The limits it will operate with are below.</p>
-    {% endif %}
   </section>
 
   <section class="panel fade">
-    <div class="panel-head"><h2>Limits</h2></div>
-    <div class="limits">
-      <div class="limit">
-        <div class="limit-head"><span>Portfolio exposure</span><b class="mono">{{ "%.0f"|format(config.max_portfolio_exposure * 100) }}%</b></div>
+    <div class="panel-head">
+      <h2>Limits</h2>
+      <button class="fbtn" id="risk-limits-edit-btn">Edit</button>
+    </div>
+    <div class="limits" id="risk-limits">
+      <div class="limit" data-key="max_portfolio_exposure" data-pct="true">
+        <div class="limit-head"><span>Portfolio exposure</span><b class="mono limit-val">{{ "%.0f"|format(config.max_portfolio_exposure * 100) }}%</b></div>
         <div class="limit-bar"><i style="width: {{ config.max_portfolio_exposure * 100 }}%"></i></div>
       </div>
-      <div class="limit">
-        <div class="limit-head"><span>Single position</span><b class="mono">{{ "%.0f"|format(config.max_single_position * 100) }}%</b></div>
+      <div class="limit" data-key="max_single_position" data-pct="true">
+        <div class="limit-head"><span>Single position</span><b class="mono limit-val">{{ "%.0f"|format(config.max_single_position * 100) }}%</b></div>
         <div class="limit-bar"><i style="width: {{ config.max_single_position * 100 }}%"></i></div>
       </div>
-      <div class="limit">
-        <div class="limit-head"><span>Daily loss (halt)</span><b class="mono">{{ "%.0f"|format(config.max_daily_loss * 100) }}%</b></div>
+      <div class="limit" data-key="max_daily_loss" data-pct="true">
+        <div class="limit-head"><span>Daily loss (halt)</span><b class="mono limit-val">{{ "%.0f"|format(config.max_daily_loss * 100) }}%</b></div>
         <div class="limit-bar"><i class="lb-red" style="width: {{ config.max_daily_loss * 100 }}%"></i></div>
       </div>
-      <div class="limit">
-        <div class="limit-head"><span>Drawdown (halt)</span><b class="mono">{{ "%.0f"|format(config.max_drawdown_halt * 100) }}%</b></div>
+      <div class="limit" data-key="max_drawdown_halt" data-pct="true">
+        <div class="limit-head"><span>Drawdown (halt)</span><b class="mono limit-val">{{ "%.0f"|format(config.max_drawdown_halt * 100) }}%</b></div>
         <div class="limit-bar"><i class="lb-red" style="width: {{ config.max_drawdown_halt * 100 }}%"></i></div>
       </div>
     </div>
-    <table class="kv">
-      <tr><td>Kelly fraction</td><td class="mono">{{ config.kelly_fraction }}</td></tr>
-      <tr><td>Min Kelly threshold</td><td class="mono">{{ "%.1f"|format(config.min_kelly_threshold * 100) }}%</td></tr>
-      <tr><td>Taleb risk hard cap</td><td class="mono">{{ config.taleb_risk_cap }}</td></tr>
-      <tr><td>Taleb risk soft cap</td><td class="mono">{{ config.taleb_soft_cap }}</td></tr>
-      <tr><td>Correlation penalty</td><td class="mono">{{ "%.0f"|format(config.correlation_penalty * 100) }}%</td></tr>
+    <p class="empty" id="risk-limits-error" hidden></p>
+    <table class="kv" id="risk-limits-kv">
+      <tr data-key="kelly_fraction"><td>Kelly fraction</td><td class="mono limit-val">{{ config.kelly_fraction }}</td></tr>
+      <tr data-key="min_kelly_threshold" data-pct="true"><td>Min Kelly threshold</td><td class="mono limit-val">{{ "%.1f"|format(config.min_kelly_threshold * 100) }}%</td></tr>
+      <tr data-key="taleb_risk_cap"><td>Taleb risk hard cap</td><td class="mono limit-val">{{ config.taleb_risk_cap }}</td></tr>
+      <tr data-key="taleb_soft_cap"><td>Taleb risk soft cap</td><td class="mono limit-val">{{ config.taleb_soft_cap }}</td></tr>
+      <tr data-key="correlation_penalty" data-pct="true"><td>Correlation penalty</td><td class="mono limit-val">{{ "%.0f"|format(config.correlation_penalty * 100) }}%</td></tr>
     </table>
+    <button class="fbtn" id="risk-limits-save-btn" hidden>Save</button>
   </section>
 </div>
 
 <script src="/static/js/live.js"></script>
 <script>
 const MAX_DD_HALT = {{ config.max_drawdown_halt }};
-gtPoll('/api/risk', 20000, function (r) {
+
+function renderPositionsTable(positions) {
+  const tbody = document.getElementById('risk-positions-tbody');
+  const table = document.getElementById('risk-positions-table');
+  const entries = Object.entries(positions || {});
+  table.hidden = entries.length === 0;
+  tbody.innerHTML = entries.map(function ([name, p]) {
+    return '<tr data-asset="' + name + '">' +
+      '<td><a class="asset-link" href="/asset/' + name + '">' + name + '</a></td>' +
+      '<td class="num mono">$' + Number(p.size_usd || 0).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + '</td>' +
+      '<td class="num mono">' + (p.entry_price != null ? p.entry_price : '-') + '</td>' +
+      '<td>' + (p.direction || '-') + '</td>' +
+      '<td><button class="fbtn close-position-btn" data-asset="' + name + '">Close</button>' +
+      '<span class="close-position-form" hidden>' +
+      '<input type="number" class="search mono close-exit-price" placeholder="exit price" min="0" step="0.000001" style="width:110px">' +
+      '<button class="fbtn close-position-confirm" data-asset="' + name + '">Confirm</button></span></td></tr>';
+  }).join('');
+  wireCloseButtons();
+}
+
+function applyRiskSnapshot(r) {
   const ddEl = document.getElementById('risk-dd-val');
   if (!r.state || !ddEl) return;
   const cap = r.state.current_capital || 0;
@@ -101,6 +147,135 @@ gtPoll('/api/risk', 20000, function (r) {
   document.getElementById('risk-capital-val').textContent = '$' + cap.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
   document.getElementById('risk-peak-val').textContent = '$' + peak.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
   document.getElementById('risk-positions-val').textContent = Object.keys(r.state.open_positions || {}).length;
+  renderPositionsTable(r.state.open_positions);
+
+  const chip = document.getElementById('risk-status-chip');
+  chip.textContent = r.halted ? 'HALTED' : 'ACTIVE';
+  chip.className = 'chip chip-' + (r.halted ? 'SELL' : 'BUY');
+  const reasonEl = document.getElementById('risk-halt-reason');
+  reasonEl.textContent = r.halt_reason || '';
+  reasonEl.hidden = !r.halted;
+  const haltBtn = document.getElementById('risk-halt-btn');
+  haltBtn.dataset.manualHalt = r.manual_halt;
+  haltBtn.textContent = r.manual_halt ? 'Resume' : 'Halt';
+}
+
+gtPoll('/api/risk', 20000, applyRiskSnapshot);
+
+function wireCloseButtons() {
+  document.querySelectorAll('.close-position-btn').forEach(function (btn) {
+    btn.onclick = async function () {
+      btn.hidden = true;
+      const form = btn.nextElementSibling;
+      form.hidden = false;
+      const priceInput = form.querySelector('.close-exit-price');
+      if (priceInput && !priceInput.value) {
+        try {
+          const r = await fetch('/api/prices/' + btn.dataset.asset + '?days=2');
+          if (r.ok) {
+            const series = (await r.json()).series || [];
+            if (series.length) priceInput.value = series[series.length - 1].close;
+          }
+        } catch (e) { /* leave blank; backend falls back to latest close */ }
+      }
+    };
+  });
+  document.querySelectorAll('.close-position-confirm').forEach(function (btn) {
+    btn.onclick = async function () {
+      const asset = btn.dataset.asset;
+      const priceInput = btn.previousElementSibling;
+      const exitPrice = priceInput.value ? parseFloat(priceInput.value) : null;
+      try {
+        const r = await fetch('/api/risk/position/' + asset + '/close', {
+          method: 'POST', headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify(exitPrice != null ? {exit_price: exitPrice} : {}),
+        });
+        if (!r.ok) throw new Error(await r.text());
+        applyRiskSnapshot(await r.json());
+      } catch (e) {
+        const errEl = document.getElementById('risk-open-error');
+        errEl.textContent = 'Close failed - try again.';
+        errEl.hidden = false;
+      }
+    };
+  });
+}
+wireCloseButtons();
+
+document.getElementById('risk-open-form').addEventListener('submit', async function (ev) {
+  ev.preventDefault();
+  const form = ev.target;
+  const errEl = document.getElementById('risk-open-error');
+  errEl.hidden = true;
+  const body = {
+    asset: form.asset.value.toUpperCase(),
+    direction: form.direction.value,
+    size_usd: parseFloat(form.size_usd.value),
+  };
+  if (form.entry_price.value) body.entry_price = parseFloat(form.entry_price.value);
+  try {
+    const r = await fetch('/api/risk/position', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(body),
+    });
+    if (!r.ok) throw new Error(await r.text());
+    applyRiskSnapshot(await r.json());
+    form.reset();
+  } catch (e) {
+    errEl.textContent = 'Open failed - check the asset and values, then try again.';
+    errEl.hidden = false;
+  }
+});
+
+document.getElementById('risk-halt-btn').addEventListener('click', async function () {
+  const btn = this;
+  const resuming = btn.dataset.manualHalt === 'true';
+  const r = await fetch(resuming ? '/api/risk/resume' : '/api/risk/halt', {method: 'POST'});
+  if (r.ok) applyRiskSnapshot(await r.json());
+});
+
+const limitsEditBtn = document.getElementById('risk-limits-edit-btn');
+const limitsSaveBtn = document.getElementById('risk-limits-save-btn');
+const limitsErrorEl = document.getElementById('risk-limits-error');
+
+limitsEditBtn.addEventListener('click', function () {
+  document.querySelectorAll('#risk-limits .limit, #risk-limits-kv tr').forEach(function (row) {
+    const valEl = row.querySelector('.limit-val');
+    const isPct = row.dataset.pct === 'true';
+    const raw = parseFloat(valEl.textContent);
+    const input = document.createElement('input');
+    input.type = 'number';
+    input.className = 'search mono';
+    input.style.width = '80px';
+    input.value = isPct ? raw : raw;
+    input.dataset.pct = isPct ? 'true' : 'false';
+    valEl.replaceWith(input);
+  });
+  limitsEditBtn.hidden = true;
+  limitsSaveBtn.hidden = false;
+});
+
+limitsSaveBtn.addEventListener('click', async function () {
+  limitsErrorEl.hidden = true;
+  const updates = {};
+  document.querySelectorAll('#risk-limits .limit, #risk-limits-kv tr').forEach(function (row) {
+    const input = row.querySelector('input');
+    if (!input) return;
+    const isPct = input.dataset.pct === 'true';
+    const v = parseFloat(input.value);
+    updates[row.dataset.key] = isPct ? v / 100 : v;
+  });
+  try {
+    const r = await fetch('/api/risk/config', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(updates),
+    });
+    if (!r.ok) throw new Error(await r.text());
+    location.reload();
+  } catch (e) {
+    limitsErrorEl.textContent = 'Save failed - check the values (most limits must be 0-100%).';
+    limitsErrorEl.hidden = false;
+  }
 });
 </script>
 

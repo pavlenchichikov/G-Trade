@@ -1,5 +1,6 @@
 """Tests for risk_manager.py - Kelly sizing, circuit breakers, signal gating."""
 
+import json
 import os
 import sys
 import tempfile
@@ -141,6 +142,74 @@ class TestProperties:
         rm.open_positions = {"BTC": {"size_usd": 2000}}  # 20%
         remaining = rm.remaining_capacity
         assert abs(remaining - 0.10) < 0.001  # 30% - 20% = 10%
+
+
+class TestManualHalt:
+    def test_default_not_halted(self, rm):
+        assert rm.manual_halt is False
+
+    def test_manual_halt_blocks_regardless_of_drawdown(self, rm):
+        rm.set_manual_halt(True)
+        halted, reason = rm.is_trading_halted()
+        assert halted is True
+        assert "MANUAL HALT" in reason
+
+    def test_manual_halt_persists(self, rm, tmp_path):
+        import risk_manager as rm_mod
+        rm_mod.RISK_STATE_PATH = str(tmp_path / "risk_state.json")
+        rm.set_manual_halt(True)
+
+        rm2 = RiskManager(initial_capital=10000)
+        assert rm2.manual_halt is True
+
+    def test_resume_clears_manual_halt(self, rm):
+        rm.set_manual_halt(True)
+        rm.set_manual_halt(False)
+        halted, reason = rm.is_trading_halted()
+        assert halted is False
+        assert reason == ""
+
+
+class TestRiskConfigOverride:
+    def test_apply_known_key(self):
+        import risk_manager as rm_mod
+        original = dict(rm_mod.RISK_CONFIG)
+        try:
+            rm_mod.save_risk_config_override({"max_single_position": 0.2})
+            assert rm_mod.RISK_CONFIG["max_single_position"] == 0.2
+        finally:
+            rm_mod.RISK_CONFIG.clear()
+            rm_mod.RISK_CONFIG.update(original)
+
+    def test_unknown_key_rejected(self):
+        import risk_manager as rm_mod
+        with pytest.raises(ValueError):
+            rm_mod.save_risk_config_override({"not_a_real_key": 1.0})
+
+    def test_out_of_bounds_fraction_rejected(self):
+        import risk_manager as rm_mod
+        with pytest.raises(ValueError):
+            rm_mod.save_risk_config_override({"max_portfolio_exposure": 1.5})
+
+    def test_negative_taleb_cap_rejected(self):
+        import risk_manager as rm_mod
+        with pytest.raises(ValueError):
+            rm_mod.save_risk_config_override({"taleb_risk_cap": -1.0})
+
+    def test_persists_to_override_file(self, tmp_path):
+        import risk_manager as rm_mod
+        original_path = rm_mod.RISK_CONFIG_OVERRIDE_PATH
+        original = dict(rm_mod.RISK_CONFIG)
+        rm_mod.RISK_CONFIG_OVERRIDE_PATH = str(tmp_path / "risk_config_override.json")
+        try:
+            rm_mod.save_risk_config_override({"kelly_fraction": 0.5})
+            with open(rm_mod.RISK_CONFIG_OVERRIDE_PATH) as f:
+                saved = json.load(f)
+            assert saved["kelly_fraction"] == 0.5
+        finally:
+            rm_mod.RISK_CONFIG_OVERRIDE_PATH = original_path
+            rm_mod.RISK_CONFIG.clear()
+            rm_mod.RISK_CONFIG.update(original)
 
 
 class TestPersistence:

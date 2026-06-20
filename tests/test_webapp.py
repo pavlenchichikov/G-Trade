@@ -228,6 +228,93 @@ def test_api_risk(client):
     assert "config" in data
 
 
+def test_api_risk_open_and_close_position(client, monkeypatch, tmp_path):
+    import risk_manager
+    monkeypatch.setattr(risk_manager, "RISK_STATE_PATH", str(tmp_path / "risk_state.json"))
+
+    r = client.post("/api/risk/position",
+                     json={"asset": "BTC", "direction": "BUY",
+                           "size_usd": 500, "entry_price": 100.0})
+    assert r.status_code == 200
+    assert "BTC" in r.json()["state"]["open_positions"]
+
+    r2 = client.post("/api/risk/position/BTC/close", json={"exit_price": 110.0})
+    assert r2.status_code == 200
+    body2 = r2.json()
+    assert body2["pnl"] > 0
+    assert "BTC" not in body2["state"]["open_positions"]
+
+
+def test_api_risk_open_position_unknown_asset_404(client, monkeypatch, tmp_path):
+    import risk_manager
+    monkeypatch.setattr(risk_manager, "RISK_STATE_PATH", str(tmp_path / "risk_state.json"))
+    r = client.post("/api/risk/position",
+                     json={"asset": "NOPE", "direction": "BUY",
+                           "size_usd": 500, "entry_price": 100.0})
+    assert r.status_code == 404
+
+
+def test_api_risk_open_position_bad_direction_400(client, monkeypatch, tmp_path):
+    import risk_manager
+    monkeypatch.setattr(risk_manager, "RISK_STATE_PATH", str(tmp_path / "risk_state.json"))
+    r = client.post("/api/risk/position",
+                     json={"asset": "BTC", "direction": "HOLD",
+                           "size_usd": 500, "entry_price": 100.0})
+    assert r.status_code == 400
+
+
+def test_api_risk_close_nonexistent_position_404(client, monkeypatch, tmp_path):
+    import risk_manager
+    monkeypatch.setattr(risk_manager, "RISK_STATE_PATH", str(tmp_path / "risk_state.json"))
+    r = client.post("/api/risk/position/BTC/close", json={"exit_price": 100.0})
+    assert r.status_code == 404
+
+
+def test_api_risk_config_update(client, monkeypatch, tmp_path):
+    import risk_manager
+    monkeypatch.setattr(risk_manager, "RISK_CONFIG_OVERRIDE_PATH",
+                         str(tmp_path / "risk_config_override.json"))
+    original = dict(risk_manager.RISK_CONFIG)
+    try:
+        r = client.post("/api/risk/config", json={"max_single_position": 0.2})
+        assert r.status_code == 200
+        assert r.json()["config"]["max_single_position"] == 0.2
+    finally:
+        risk_manager.RISK_CONFIG.clear()
+        risk_manager.RISK_CONFIG.update(original)
+
+
+def test_api_risk_config_unknown_key_400(client, monkeypatch, tmp_path):
+    import risk_manager
+    monkeypatch.setattr(risk_manager, "RISK_CONFIG_OVERRIDE_PATH",
+                         str(tmp_path / "risk_config_override.json"))
+    r = client.post("/api/risk/config", json={"not_a_key": 1})
+    assert r.status_code == 400
+
+
+def test_api_risk_config_out_of_range_400(client, monkeypatch, tmp_path):
+    import risk_manager
+    monkeypatch.setattr(risk_manager, "RISK_CONFIG_OVERRIDE_PATH",
+                         str(tmp_path / "risk_config_override.json"))
+    r = client.post("/api/risk/config", json={"max_portfolio_exposure": 1.5})
+    assert r.status_code == 400
+
+
+def test_api_risk_halt_and_resume(client, monkeypatch, tmp_path):
+    import risk_manager
+    monkeypatch.setattr(risk_manager, "RISK_STATE_PATH", str(tmp_path / "risk_state.json"))
+
+    r = client.post("/api/risk/halt")
+    assert r.status_code == 200
+    assert r.json()["manual_halt"] is True
+
+    r2 = client.get("/api/risk")
+    assert r2.json()["manual_halt"] is True
+
+    r3 = client.post("/api/risk/resume")
+    assert r3.json()["manual_halt"] is False
+
+
 def test_api_guru_recalculate(client, monkeypatch):
     import guru_report
     import guru_tracker

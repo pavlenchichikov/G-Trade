@@ -557,6 +557,18 @@ table.kv { border-collapse: collapse; margin: 6px 16px 14px; }
 
 .limits { padding: 14px 16px 4px; display: flex; flex-direction: column; gap: 12px; }
 
+.risk-status-actions { display: flex; align-items: center; gap: 10px; }
+
+.open-position-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  padding: 14px 16px;
+}
+
+.close-position-form { display: inline-flex; gap: 6px; align-items: center; }
+
 .limit-head {
   display: flex;
   justify-content: space-between;

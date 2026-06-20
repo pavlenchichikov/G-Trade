@@ -19,11 +19,10 @@ from fastapi.templating import Jinja2Templates
 from config import FULL_ASSET_MAP, RADAR_GROUPS, radar_category
 from core import track_record
 from core import dashboard
-from risk_manager import RISK_CONFIG
+from risk_manager import RISK_CONFIG, RiskManager, save_risk_config_override
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 MODEL_DIR = os.path.join(BASE_DIR, "models")
-RISK_STATE_PATH = os.path.join(MODEL_DIR, "risk_state.json")
 REGISTRY_PATH = os.path.join(MODEL_DIR, "champion_registry.json")
 QUALITY_PATH = os.path.join(MODEL_DIR, "quality_report.json")
 THRESHOLDS_PATH = os.path.join(MODEL_DIR, "tuned_thresholds.json")
@@ -43,8 +42,26 @@ def _load_json(path, default):
     return default
 
 
-def _risk_state():
-    return _load_json(RISK_STATE_PATH, None)
+def _risk_snapshot():
+    rm = RiskManager()
+    halted, halt_reason = rm.is_trading_halted()
+    return {
+        "state": {
+            "current_capital": rm.current_capital,
+            "peak_capital": rm.peak_capital,
+            "initial_capital": rm.initial_capital,
+            "open_positions": rm.open_positions,
+        },
+        "dd": rm.current_drawdown,
+        "halted": halted,
+        "halt_reason": halt_reason,
+        "manual_halt": rm.manual_halt,
+    }
+
+
+def _latest_price(asset):
+    series = track_record.price_series(asset, days=5)
+    return series[-1]["close"] if series else None
 
 
 def _spark(closes, w=110, h=26):
@@ -218,14 +235,9 @@ def models_page(request: Request):
 
 @app.get("/risk", response_class=HTMLResponse)
 def risk_page(request: Request):
-    state = _risk_state()
-    dd = None
-    if state:
-        cap = state.get("current_capital", 0.0)
-        peak = state.get("peak_capital", cap) or cap
-        dd = (peak - cap) / peak if peak else 0.0
     return templates.TemplateResponse(request, "risk.html", {
-        "state": state, "config": RISK_CONFIG, "dd": dd,
+        **_risk_snapshot(), "config": RISK_CONFIG,
+        "full_asset_map": sorted(FULL_ASSET_MAP),
     })
 
 
@@ -395,4 +407,86 @@ def api_track(name: str):
 
 @app.get("/api/risk")
 def api_risk():
-    return {"state": _risk_state(), "config": RISK_CONFIG}
+    return {**_risk_snapshot(), "config": RISK_CONFIG}
+
+
+@app.post("/api/risk/position")
+async def api_risk_open_position(request: Request):
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+
+    asset = str(body.get("asset", "")).upper()
+    direction = body.get("direction")
+    size_usd = body.get("size_usd")
+    entry_price = body.get("entry_price")
+
+    if asset not in FULL_ASSET_MAP:
+        raise HTTPException(404, f"Unknown asset: {asset}")
+    if direction not in ("BUY", "SELL"):
+        raise HTTPException(400, "direction must be BUY or SELL")
+    try:
+        size_usd = float(size_usd)
+    except (TypeError, ValueError):
+        raise HTTPException(400, "size_usd must be a number")
+    if size_usd <= 0:
+        raise HTTPException(400, "size_usd must be > 0")
+
+    if entry_price is None:
+        entry_price = _latest_price(asset)
+    if entry_price is None:
+        raise HTTPException(400, f"No price available for {asset} - supply entry_price")
+
+    rm = RiskManager()
+    rm.record_trade(asset, direction, size_usd, float(entry_price))
+    return _risk_snapshot()
+
+
+@app.post("/api/risk/position/{asset}/close")
+async def api_risk_close_position(asset: str, request: Request):
+    asset = asset.upper()
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    exit_price = body.get("exit_price")
+
+    rm = RiskManager()
+    if asset not in rm.open_positions:
+        raise HTTPException(404, f"No open position for {asset}")
+
+    if exit_price is None:
+        exit_price = _latest_price(asset)
+    if exit_price is None:
+        raise HTTPException(400, f"No price available for {asset} - supply exit_price")
+
+    pnl = rm.close_trade(asset, float(exit_price))
+    return {"pnl": pnl, **_risk_snapshot()}
+
+
+@app.post("/api/risk/config")
+async def api_risk_config(request: Request):
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    try:
+        save_risk_config_override(body)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    return {"config": RISK_CONFIG}
+
+
+@app.post("/api/risk/halt")
+def api_risk_halt():
+    rm = RiskManager()
+    rm.set_manual_halt(True)
+    return _risk_snapshot()
+
+
+@app.post("/api/risk/resume")
+def api_risk_resume():
+    rm = RiskManager()
+    rm.set_manual_halt(False)
+    return _risk_snapshot()

@@ -11,6 +11,7 @@ logger = logging.getLogger(__name__)
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 RISK_STATE_PATH = os.path.join(BASE_DIR, "models", "risk_state.json")
+RISK_CONFIG_OVERRIDE_PATH = os.path.join(BASE_DIR, "models", "risk_config_override.json")
 
 # -- Risk configuration --------------------------------------------------------
 RISK_CONFIG = {
@@ -31,6 +32,61 @@ RISK_CONFIG = {
     "default_avg_win":        0.025,  # 2.5 % average winning trade
     "default_avg_loss":       0.012,  # 1.2 % average losing trade
 }
+
+# Snapshot taken before any override is applied, so save_risk_config_override
+# always validates against the code's real defaults, not a previous override.
+_DEFAULT_RISK_CONFIG = dict(RISK_CONFIG)
+
+# Keys expressed as a fraction (0-1); everything else just needs to be >= 0.
+_FRACTION_KEYS = {
+    "max_portfolio_exposure", "max_single_position", "max_daily_loss",
+    "max_drawdown_halt", "kelly_fraction", "min_kelly_threshold",
+    "correlation_penalty", "default_avg_win", "default_avg_loss",
+}
+
+
+def _load_risk_config_override() -> None:
+    if not os.path.exists(RISK_CONFIG_OVERRIDE_PATH):
+        return
+    try:
+        with open(RISK_CONFIG_OVERRIDE_PATH, "r", encoding="utf-8") as fh:
+            override = json.load(fh)
+        RISK_CONFIG.update(override)
+    except Exception as exc:
+        logger.warning("Could not load risk config override: %s", exc)
+
+
+def save_risk_config_override(updates: dict) -> None:
+    """Validate and apply risk-limit overrides, then persist them to disk.
+
+    Raises ValueError (caller maps this to an HTTP 400) on an unknown key or
+    an out-of-range value; nothing is mutated until the whole batch validates.
+    """
+    for key, value in updates.items():
+        if key not in _DEFAULT_RISK_CONFIG:
+            raise ValueError(f"Unknown risk config key: {key}")
+        value = float(value)
+        if key in _FRACTION_KEYS and not (0.0 <= value <= 1.0):
+            raise ValueError(f"{key} must be between 0 and 1, got {value}")
+        if key not in _FRACTION_KEYS and value < 0.0:
+            raise ValueError(f"{key} must be >= 0, got {value}")
+
+    RISK_CONFIG.update(updates)
+
+    existing = {}
+    if os.path.exists(RISK_CONFIG_OVERRIDE_PATH):
+        try:
+            with open(RISK_CONFIG_OVERRIDE_PATH, "r", encoding="utf-8") as fh:
+                existing = json.load(fh)
+        except Exception:
+            existing = {}
+    existing.update(updates)
+    os.makedirs(os.path.dirname(RISK_CONFIG_OVERRIDE_PATH), exist_ok=True)
+    with open(RISK_CONFIG_OVERRIDE_PATH, "w", encoding="utf-8") as fh:
+        json.dump(existing, fh, indent=2)
+
+
+_load_risk_config_override()
 
 
 class RiskManager:
@@ -54,6 +110,7 @@ class RiskManager:
         # {asset: {"size_usd": float, "entry_price": float, "direction": str}}
         self.open_positions: dict = {}
         self.trade_history: list = []
+        self.manual_halt: bool = False
         self._load_state()
 
     # -- Persistence -----------------------------------------------------------
@@ -69,6 +126,7 @@ class RiskManager:
             self.daily_start_capital = float(state.get("daily_start_capital", self.initial_capital))
             self.daily_start_date = state.get("daily_start_date", date.today().isoformat())
             self.open_positions = state.get("open_positions", {})
+            self.manual_halt = bool(state.get("manual_halt", False))
             # Reset daily stats if it's a new day
             if self.daily_start_date != date.today().isoformat():
                 self.daily_start_capital = self.current_capital
@@ -86,6 +144,7 @@ class RiskManager:
             "daily_start_capital": self.daily_start_capital,
             "daily_start_date":    self.daily_start_date,
             "open_positions":      self.open_positions,
+            "manual_halt":         self.manual_halt,
             "last_updated":        datetime.now().isoformat(),
         }
         try:
@@ -123,11 +182,18 @@ class RiskManager:
 
     # -- Circuit breakers -----------------------------------------------------
 
+    def set_manual_halt(self, value: bool) -> None:
+        """Set or clear the manual halt flag (persists immediately)."""
+        self.manual_halt = value
+        self.save_state()
+
     def is_trading_halted(self) -> tuple:
         """
         Returns (halted: bool, reason: str).
         If halted is True, no new trades should be opened.
         """
+        if self.manual_halt:
+            return True, "MANUAL HALT - resume from the dashboard"
         if self.current_drawdown >= RISK_CONFIG["max_drawdown_halt"]:
             return True, (f"MAX DRAWDOWN REACHED "
                           f"({self.current_drawdown:.1%} >= "
