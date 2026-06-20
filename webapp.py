@@ -16,7 +16,7 @@ from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from config import FULL_ASSET_MAP, RADAR_GROUPS
+from config import FULL_ASSET_MAP, RADAR_GROUPS, radar_category
 from core import track_record
 from core import dashboard
 from risk_manager import RISK_CONFIG
@@ -93,6 +93,8 @@ def _grouped_signals(signals):
     groups = []
     for group, members in RADAR_GROUPS.items():
         rows = [sigs[a] for a in members if a in sigs]
+        for r in rows:
+            r["cat"] = radar_category(r["asset"])
         if rows:
             groups.append({"name": group, "rows": rows})
     return groups
@@ -156,6 +158,7 @@ def asset_page(request: Request, name: str):
         "asset": name,
         "ticker": FULL_ASSET_MAP[name],
         "group": group,
+        "cat": radar_category(name),
         "track": track,
         "acc": acc,
         "stats": stats,
@@ -164,6 +167,7 @@ def asset_page(request: Request, name: str):
         "thr": thr,
         "quality": quality,
         "markers_json": json.dumps(markers),
+        "guru": dashboard.guru_for_asset(name),
     })
 
 
@@ -308,6 +312,45 @@ def api_performance():
 def api_guru():
     return {"verdicts": dashboard.guru_latest(),
             "accuracy": dashboard.guru_accuracy()}
+
+
+@app.post("/api/guru/{asset}/recalculate")
+def api_guru_recalculate(asset: str):
+    """Live re-score of one asset, persisted as the new latest guru_log verdict.
+
+    Reuses guru_report.py's fundamentals resolution and core.guru's scoring
+    engine - the same logic the console report and app.py use - so this never
+    drifts into a second implementation of guru scoring.
+    """
+    asset = asset.upper()
+    if asset not in FULL_ASSET_MAP:
+        raise HTTPException(404, f"Unknown asset: {asset}")
+
+    import guru_report
+    import guru_tracker
+    from core.guru import get_guru_analysis
+
+    symbol = FULL_ASSET_MAP[asset]
+    smartlab = guru_report.fetch_smartlab_data()
+    fund = guru_report.resolve_fundamentals(asset, symbol, smartlab)
+    tech = guru_report.technical_context(guru_report.get_technical(asset))
+    analysis = get_guru_analysis(fund, tech)
+
+    price = (fund or {}).get('price') or (tech['close'] if tech else 0)
+    data_source = analysis['data_source']
+    council = analysis['council']
+    guru_tracker.log_guru_verdict(
+        asset,
+        analysis['lynch']['_score'], analysis['buffett']['_score'],
+        analysis['graham']['_score'], analysis['munger']['_score'],
+        council['pct'], council['verdict'], data_source, price,
+    )
+    return {
+        "asset": asset, "verdict": council['verdict'], "pct": council['pct'],
+        "source": data_source, "date": datetime.now().strftime("%Y-%m-%d"),
+        "lynch": analysis['lynch'], "buffett": analysis['buffett'],
+        "graham": analysis['graham'], "munger": analysis['munger'],
+    }
 
 
 @app.get("/api/news")

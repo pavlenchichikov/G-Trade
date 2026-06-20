@@ -1,15 +1,18 @@
 :root {
-  --bg: #0a0d12;
-  --panel: #10141c;
-  --panel-2: #141a24;
-  --line: #1e2632;
-  --line-soft: #182030;
+  --bg: #05060a;
+  --panel: #0c0f16;
+  --panel-2: #11151f;
+  --line: #1c2230;
+  --line-soft: #161c28;
   --text: #cdd7e4;
-  --dim: #5d6b80;
+  --dim: #7a8aa0;
   --amber: #e3a23a;
-  --green: #34b873;
-  --red: #e25c5c;
+  --green: #00ffa3;
+  --red: #ff3b5c;
   --blue: #4f8cc9;
+  --violet: #ff2fd0;
+  --cyan: #00d4ff;
+  --gold: #ffaa00;
   --mono: "IBM Plex Mono", Consolas, monospace;
   --sans: "IBM Plex Sans", "Segoe UI", sans-serif;
   --cond: "Barlow Condensed", "Arial Narrow", sans-serif;
@@ -197,6 +200,10 @@ h1 {
 .t-sell { color: var(--red); }
 .t-wait { color: var(--dim); }
 
+.glow-buy { text-shadow: 0 0 10px rgba(0, 255, 163, 0.55); }
+.glow-sell { text-shadow: 0 0 10px rgba(255, 59, 92, 0.55); }
+.glow-wait { text-shadow: 0 0 10px rgba(122, 138, 160, 0.4); }
+
 /* ---- panels ---- */
 
 .panel {
@@ -376,10 +383,34 @@ th.num, td.num { text-align: right; }
   border: 1px solid;
 }
 
-.chip-BUY { color: var(--green); border-color: rgba(52, 184, 115, 0.45); background: rgba(52, 184, 115, 0.08); }
-.chip-SELL { color: var(--red); border-color: rgba(226, 92, 92, 0.45); background: rgba(226, 92, 92, 0.08); }
+.chip-BUY { color: var(--green); border-color: rgba(0, 255, 163, 0.45); background: rgba(0, 255, 163, 0.08); }
+.chip-SELL { color: var(--red); border-color: rgba(255, 59, 92, 0.45); background: rgba(255, 59, 92, 0.08); }
 .chip-WAIT { color: var(--dim); border-color: var(--line); background: transparent; }
 .chip-lg { font-size: 15px; padding: 4px 14px; }
+
+.chip-BUY:hover { box-shadow: 0 0 8px rgba(0, 255, 163, 0.5); }
+.chip-SELL:hover { box-shadow: 0 0 8px rgba(255, 59, 92, 0.5); }
+
+/* ---- category accent chips ---- */
+
+.chip-cat {
+  display: inline-block;
+  font-family: var(--cond);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  padding: 1px 7px;
+  border-radius: 3px;
+  border: 1px solid;
+  margin-left: 8px;
+  vertical-align: middle;
+}
+
+.chip-cat-crypto { color: var(--violet); border-color: rgba(255, 47, 208, 0.45); background: rgba(255, 47, 208, 0.08); }
+.chip-cat-ru { color: var(--cyan); border-color: rgba(0, 212, 255, 0.45); background: rgba(0, 212, 255, 0.08); }
+.chip-cat-commodity { color: var(--gold); border-color: rgba(255, 170, 0, 0.45); background: rgba(255, 170, 0, 0.08); }
+.chip-cat-us { color: var(--amber); border-color: rgba(227, 162, 58, 0.45); background: rgba(227, 162, 58, 0.08); }
 
 /* ---- confidence bar ---- */
 
@@ -395,8 +426,8 @@ th.num, td.num { text-align: right; }
 }
 
 .probbar-fill { display: block; height: 100%; border-radius: 3px; }
-.pb-buy { background: linear-gradient(90deg, rgba(52, 184, 115, 0.5), var(--green)); }
-.pb-sell { background: linear-gradient(90deg, rgba(226, 92, 92, 0.5), var(--red)); }
+.pb-buy { background: linear-gradient(90deg, rgba(0, 255, 163, 0.5), var(--green)); }
+.pb-sell { background: linear-gradient(90deg, rgba(255, 59, 92, 0.5), var(--red)); }
 .pb-wait { background: #323d4d; }
 
 /* ---- accuracy ---- */
@@ -454,12 +485,12 @@ th.num, td.num { text-align: right; }
 .cl-down { stroke: var(--red); }
 
 .chart-area { stroke: none; }
-.ca-up { fill: rgba(52, 184, 115, 0.07); }
-.ca-down { fill: rgba(226, 92, 92, 0.07); }
+.ca-up { fill: rgba(0, 255, 163, 0.07); }
+.ca-down { fill: rgba(255, 59, 92, 0.07); }
 
 .marker { stroke-width: 1.5; }
-.m-BUY { fill: var(--green); stroke: #0a0d12; }
-.m-SELL { fill: var(--red); stroke: #0a0d12; }
+.m-BUY { fill: var(--green); stroke: var(--bg); }
+.m-SELL { fill: var(--red); stroke: var(--bg); }
 
 .chart-scale {
   display: flex;
@@ -549,7 +580,7 @@ table.kv { border-collapse: collapse; margin: 6px 16px 14px; }
   border-radius: 3px;
 }
 
-.limit-bar .lb-red { background: linear-gradient(90deg, rgba(226, 92, 92, 0.5), var(--red)); }
+.limit-bar .lb-red { background: linear-gradient(90deg, rgba(255, 59, 92, 0.5), var(--red)); }
 
 /* ---- market / command center ---- */
 
@@ -748,6 +779,53 @@ code {
 .cons-total { padding-top: 6px; border-top: 1px dashed var(--line-soft); }
 .cons-total .cons-name { color: var(--text); }
 
+/* ---- guru council panel ---- */
+
+.guru-verdict-banner {
+  padding: 14px 16px 8px;
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.guru-verdict-banner > span:first-child {
+  font-family: var(--cond);
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+
+.guru-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 10px;
+  padding: 6px 16px 16px;
+}
+
+.guru-card {
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.guru-card b {
+  font-family: var(--cond);
+  font-size: 12px;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+
+.guru-card .g-score { font-size: 16px; font-weight: 700; }
+.guru-card .g-status { font-size: 11px; }
+.guru-card .g-desc { font-size: 12px; color: var(--dim); }
+
 /* ---- live update ---- */
 
 .sync { font-size: 11px; color: var(--dim); margin-left: auto; }
@@ -758,6 +836,13 @@ code {
 }
 
 tr.flash td { animation: rowflash 1.6s ease-out; }
+
+@keyframes flashtext {
+  0% { color: var(--amber); text-shadow: 0 0 8px rgba(227, 162, 58, 0.6); }
+  100% { text-shadow: none; }
+}
+
+.flash-text { animation: flashtext 1.2s ease-out; }
 
 /* ---- table sorting ---- */
 

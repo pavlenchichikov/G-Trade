@@ -45,6 +45,28 @@ def test_asset_page_unknown_404(client):
     assert client.get("/asset/NOPE").status_code == 404
 
 
+def test_asset_page_shows_guru_verdict(client, monkeypatch):
+    import core.dashboard as dash
+    dash.cache_clear()
+    monkeypatch.setattr(dash, "guru_for_asset", lambda asset: {
+        "asset": "BTC", "date": "2026-06-12", "verdict": "AVOID", "pct": 37.5,
+        "lynch": 1, "buffett": 1, "graham": 0, "munger": 1,
+        "source": "yfinance_live", "correct_5d": 0})
+    r = client.get("/asset/BTC")
+    assert r.status_code == 200
+    assert "Guru Council" in r.text
+    assert "AVOID" in r.text
+
+
+def test_asset_page_guru_empty_state(client, monkeypatch):
+    import core.dashboard as dash
+    dash.cache_clear()
+    monkeypatch.setattr(dash, "guru_for_asset", lambda asset: None)
+    r = client.get("/asset/BTC")
+    assert r.status_code == 200
+    assert "No verdict yet" in r.text
+
+
 def test_risk_page(client):
     r = client.get("/risk")
     assert r.status_code == 200
@@ -204,6 +226,33 @@ def test_api_track(client):
 def test_api_risk(client):
     data = client.get("/api/risk").json()
     assert "config" in data
+
+
+def test_api_guru_recalculate(client, monkeypatch):
+    import guru_report
+    import guru_tracker
+    monkeypatch.setattr(guru_report, "fetch_smartlab_data", lambda: {})
+    monkeypatch.setattr(guru_report, "fetch_yf_deep", lambda symbol: None)
+    monkeypatch.setattr(guru_report, "get_technical", lambda name: None)
+    calls = {}
+
+    def fake_log(asset, lynch_score, buffett_score, graham_score, munger_score,
+                 council_pct, council_verdict, data_source, price):
+        calls["args"] = (asset, lynch_score, buffett_score, graham_score,
+                          munger_score, council_pct, council_verdict, data_source, price)
+
+    monkeypatch.setattr(guru_tracker, "log_guru_verdict", fake_log)
+
+    r = client.post("/api/guru/BTC/recalculate")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["asset"] == "BTC"
+    assert body["verdict"] in ("BUY", "HOLD", "AVOID")
+    assert calls["args"][0] == "BTC"
+
+
+def test_api_guru_recalculate_unknown_404(client):
+    assert client.post("/api/guru/NOPE/recalculate").status_code == 404
 
 
 def test_api_prices(client):

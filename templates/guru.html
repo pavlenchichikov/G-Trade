@@ -11,17 +11,17 @@
 <div class="statgrid">
   <div class="stat fade">
     <span class="stat-label">Council accuracy (5d)</span>
-    <span class="stat-value">{% if c and c.accuracy is not none %}{{ "%.0f"|format(c.accuracy * 100) }}<small>%</small>{% else %}-{% endif %}</span>
+    <span class="stat-value" id="guru-acc-val">{% if c and c.accuracy is not none %}{{ "%.0f"|format(c.accuracy * 100) }}<small>%</small>{% else %}-{% endif %}</span>
     <span class="stat-sub">{% if c and c.total %}{{ c.correct }} correct of {{ c.total }}{% else %}track record building{% endif %}</span>
   </div>
   <div class="stat fade">
     <span class="stat-label">Average move after signal</span>
-    <span class="stat-value">{% if c and c.avg_return is not none %}{{ "%+.2f"|format(c.avg_return) }}<small>%</small>{% else %}-{% endif %}</span>
+    <span class="stat-value" id="guru-move-val">{% if c and c.avg_return is not none %}{{ "%+.2f"|format(c.avg_return) }}<small>%</small>{% else %}-{% endif %}</span>
     <span class="stat-sub">over 5 days, non-HOLD verdicts</span>
   </div>
   <div class="stat fade">
     <span class="stat-label">Assets with a verdict</span>
-    <span class="stat-value">{{ verdicts | length }}</span>
+    <span class="stat-value" id="guru-count-val">{{ verdicts | length }}</span>
     <span class="stat-sub">latest assessment for each</span>
   </div>
 </div>
@@ -57,18 +57,18 @@
         <th class="num">Lynch</th><th class="num">Buffett</th><th class="num">Graham</th><th class="num">Munger</th>
         <th>Data</th><th class="num">Date</th></tr>
     </thead>
-    <tbody>
+    <tbody id="guru-tbody">
       {% for v in verdicts %}
-      <tr>
+      <tr data-asset="{{ v.asset }}">
         <td><a class="asset-link" href="/asset/{{ v.asset }}">{{ v.asset }}</a></td>
-        <td><span class="chip chip-{{ 'BUY' if v.verdict == 'BUY' else 'SELL' if v.verdict == 'AVOID' else 'WAIT' }}">{{ v.verdict }}</span></td>
-        <td class="num mono">{% if v.pct is not none %}{{ "%.0f%%"|format(v.pct) }}{% else %}-{% endif %}</td>
-        <td class="num mono dim">{{ v.lynch }}</td>
-        <td class="num mono dim">{{ v.buffett }}</td>
-        <td class="num mono dim">{{ v.graham }}</td>
-        <td class="num mono dim">{{ v.munger }}</td>
-        <td class="dim">{{ v.source }}</td>
-        <td class="num dim mono">{{ v.date }}</td>
+        <td class="c-verdict"><span class="chip chip-{{ 'BUY' if v.verdict == 'BUY' else 'SELL' if v.verdict == 'AVOID' else 'WAIT' }}">{{ v.verdict }}</span></td>
+        <td class="num mono c-pct">{% if v.pct is not none %}{{ "%.0f%%"|format(v.pct) }}{% else %}-{% endif %}</td>
+        <td class="num mono dim c-lynch">{{ v.lynch }}</td>
+        <td class="num mono dim c-buffett">{{ v.buffett }}</td>
+        <td class="num mono dim c-graham">{{ v.graham }}</td>
+        <td class="num mono dim c-munger">{{ v.munger }}</td>
+        <td class="dim c-source">{{ v.source }}</td>
+        <td class="num dim mono c-date">{{ v.date }}</td>
       </tr>
       {% endfor %}
     </tbody>
@@ -77,5 +77,36 @@
   <p class="empty">No verdicts - run <code>python guru_report.py</code> to assess assets.</p>
   {% endif %}
 </section>
+
+<script src="/static/js/live.js"></script>
+<script>
+gtPoll('/api/guru', 20000, function (d) {
+  document.getElementById('guru-acc-val').textContent =
+    (d.accuracy.council && d.accuracy.council.accuracy != null)
+      ? Math.round(d.accuracy.council.accuracy * 100) + '%' : '-';
+  document.getElementById('guru-move-val').textContent =
+    (d.accuracy.council && d.accuracy.council.avg_return != null)
+      ? (d.accuracy.council.avg_return >= 0 ? '+' : '') + d.accuracy.council.avg_return.toFixed(2) + '%' : '-';
+  document.getElementById('guru-count-val').textContent = d.verdicts.length;
+
+  for (const v of d.verdicts) {
+    const tr = document.querySelector('tr[data-asset="' + v.asset + '"]');
+    if (!tr) continue;
+    const chip = tr.querySelector('.c-verdict .chip');
+    const newVerdict = v.verdict === 'BUY' ? 'BUY' : (v.verdict === 'AVOID' ? 'SELL' : 'WAIT');
+    const changed = chip.textContent !== v.verdict;
+    chip.textContent = v.verdict;
+    chip.className = 'chip chip-' + newVerdict;
+    tr.querySelector('.c-pct').textContent = v.pct != null ? Math.round(v.pct) + '%' : '-';
+    tr.querySelector('.c-lynch').textContent = v.lynch;
+    tr.querySelector('.c-buffett').textContent = v.buffett;
+    tr.querySelector('.c-graham').textContent = v.graham;
+    tr.querySelector('.c-munger').textContent = v.munger;
+    tr.querySelector('.c-source').textContent = v.source;
+    tr.querySelector('.c-date').textContent = v.date;
+    if (changed) gtFlash(tr);
+  }
+});
+</script>
 
 {% endblock %}

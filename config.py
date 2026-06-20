@@ -187,6 +187,18 @@ RADAR_GROUPS = {
     "FOREX":           _merge_types("FOREX MAJORS", "FOREX CROSSES", "FOREX EXOTIC"),
 }
 
+# RADAR_GROUPS key -> webapp.py chip-cat-* CSS suffix (style.css). Anything not
+# listed here (US sectors, indices, forex) falls back to "us" in radar_category().
+_CATEGORY_CSS = {"CRYPTO": "crypto", "MOEX": "ru", "COMMODITIES": "commodity"}
+
+
+def radar_category(asset: str) -> str:
+    """Coarse category for the webapp's chip-cat accent color: crypto/ru/commodity/us."""
+    for group, members in RADAR_GROUPS.items():
+        if asset in members:
+            return _CATEGORY_CSS.get(group, "us")
+    return "us"
+
 
 # --- 4. ENVIRONMENT VALIDATION ---
 # Importing config.py must not fail when secrets are unset: most scripts

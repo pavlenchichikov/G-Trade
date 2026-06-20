@@ -144,7 +144,7 @@
     <tbody>
       {% for s in g.rows %}
       <tr data-asset="{{ s.asset }}" data-signal="{{ s.signal }}">
-        <td><a class="asset-link" href="/asset/{{ s.asset }}">{{ s.asset }}</a></td>
+        <td><a class="asset-link" href="/asset/{{ s.asset }}">{{ s.asset }}</a><span class="chip-cat chip-cat-{{ s.cat }}">{{ s.cat }}</span></td>
         <td class="c-sig"><span class="chip chip-{{ s.signal }}">{{ s.signal }}</span></td>
         <td class="num mono c-prob">{{ "%.2f"|format(s.probability) }}</td>
         <td class="cell-prob">

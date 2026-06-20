@@ -98,6 +98,46 @@ def test_gauge_zone():
     assert dash.gauge_zone(20) == "g-bad"   # red / bearish / fear
 
 
+def _make_guru_log(path):
+    import sqlite3
+    con = sqlite3.connect(path)
+    con.execute("""
+        CREATE TABLE guru_log (
+            date TEXT, asset TEXT, lynch_score INTEGER, buffett_score INTEGER,
+            graham_score INTEGER, munger_score INTEGER, council_pct REAL,
+            council_verdict TEXT, data_source TEXT, price_at_signal REAL,
+            ret_1d REAL, ret_5d REAL, ret_20d REAL,
+            correct_1d INTEGER, correct_5d INTEGER, correct_20d INTEGER
+        )
+    """)
+    con.execute("INSERT INTO guru_log (date, asset, lynch_score, buffett_score, "
+                "graham_score, munger_score, council_pct, council_verdict, "
+                "data_source, correct_5d) VALUES "
+                "('2026-06-10','BTC',2,1,1,2,75.0,'BUY','yfinance_live',1)")
+    con.execute("INSERT INTO guru_log (date, asset, lynch_score, buffett_score, "
+                "graham_score, munger_score, council_pct, council_verdict, "
+                "data_source, correct_5d) VALUES "
+                "('2026-06-12','BTC',1,1,0,1,37.5,'AVOID','smartlab',NULL)")
+    con.commit()
+    con.close()
+
+
+def test_guru_for_asset_returns_latest(tmp_path):
+    path = str(tmp_path / "market.db")
+    _make_guru_log(path)
+    v = dash.guru_for_asset("BTC", db_path=path)
+    assert v["verdict"] == "AVOID"      # latest by date, not the first row
+    assert v["date"] == "2026-06-12"
+    assert v["pct"] == 37.5
+
+
+def test_guru_for_asset_missing_returns_none(tmp_path):
+    import sqlite3
+    path = str(tmp_path / "empty.db")
+    sqlite3.connect(path).close()
+    assert dash.guru_for_asset("NOPE", db_path=path) is None
+
+
 def test_sector_momentum_records(monkeypatch):
     dash.cache_clear()
     import sector_rotation as sr

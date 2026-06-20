@@ -7,6 +7,7 @@
   <div>
     <h1>{{ asset }}</h1>
     <span class="asset-meta mono">{{ ticker }}{% if group %} | {{ group }}{% endif %}</span>
+    <span class="chip-cat chip-cat-{{ cat }}">{{ cat }}</span>
   </div>
   {% if current %}
   <div class="asset-signal">
@@ -137,6 +138,29 @@ fetch("/api/ohlc/{{ asset }}?days=120")
   </section>
 </div>
 {% endif %}
+
+<section class="panel fade">
+  <div class="panel-head">
+    <h2>Guru Council</h2>
+    <button class="fbtn" id="guru-recalc-btn">Recalculate</button>
+  </div>
+  <div id="guru-body">
+    {% if guru %}
+    <div class="guru-verdict-banner">
+      <span class="t-{{ 'buy' if guru.verdict == 'BUY' else 'sell' if guru.verdict == 'AVOID' else 'wait' }} glow-{{ 'buy' if guru.verdict == 'BUY' else 'sell' if guru.verdict == 'AVOID' else 'wait' }}">{{ guru.verdict }} ({% if guru.pct is not none %}{{ "%.0f"|format(guru.pct) }}{% else %}0{% endif %}%)</span>
+      <span class="dim mono">{{ guru.source }} | {{ guru.date }}</span>
+    </div>
+    <div class="guru-grid">
+      <div class="guru-card"><b>Lynch</b><span class="g-score mono">{{ guru.lynch }}/2</span></div>
+      <div class="guru-card"><b>Buffett</b><span class="g-score mono">{{ guru.buffett }}/2</span></div>
+      <div class="guru-card"><b>Graham</b><span class="g-score mono">{{ guru.graham }}/2</span></div>
+      <div class="guru-card"><b>Munger</b><span class="g-score mono">{{ guru.munger }}/2</span></div>
+    </div>
+    {% else %}
+    <p class="empty">No verdict yet - click Recalculate, or run <code>python guru_report.py {{ asset }}</code>.</p>
+    {% endif %}
+  </div>
+</section>
 
 <section class="panel fade">
   <div class="panel-head"><h2>Signal journal</h2></div>
@@ -288,6 +312,54 @@ document.querySelectorAll('.rbtn').forEach(b => b.addEventListener('click', () =
 }));
 
 load(90);
+</script>
+
+<script src="/static/js/live.js"></script>
+<script>
+const recalcBtn = document.getElementById('guru-recalc-btn');
+const guruBody = document.getElementById('guru-body');
+
+function guruTone(verdict) {
+  return verdict === 'BUY' ? 'buy' : (verdict === 'AVOID' ? 'sell' : 'wait');
+}
+
+function renderGuruBody(g) {
+  const tone = guruTone(g.verdict);
+  const cards = ['lynch', 'buffett', 'graham', 'munger'].map(function (key) {
+    const info = g[key];
+    return '<div class="guru-card"><b>' + key.charAt(0).toUpperCase() + key.slice(1) + '</b>' +
+      '<span class="g-score mono">' + info._score + '/2</span>' +
+      '<span class="g-status mono dim">' + info.status + '</span>' +
+      '<span class="g-desc">' + info.desc + '</span></div>';
+  }).join('');
+  guruBody.innerHTML =
+    '<div class="guru-verdict-banner">' +
+    '<span class="t-' + tone + ' glow-' + tone + '">' + g.verdict + ' (' + Math.round(g.pct) + '%)</span>' +
+    '<span class="dim mono">' + g.source + ' | ' + g.date + '</span>' +
+    '</div><div class="guru-grid">' + cards + '</div>';
+  gtFlash(guruBody);
+}
+
+if (recalcBtn) {
+  recalcBtn.addEventListener('click', async function () {
+    recalcBtn.disabled = true;
+    const prevLabel = recalcBtn.textContent;
+    recalcBtn.textContent = 'Recalculating...';
+    try {
+      const r = await fetch('/api/guru/' + ASSET + '/recalculate', { method: 'POST' });
+      if (!r.ok) throw new Error('recalculate failed');
+      renderGuruBody(await r.json());
+    } catch (e) {
+      const msg = document.createElement('p');
+      msg.className = 'empty';
+      msg.textContent = 'Recalculate failed - try again.';
+      guruBody.appendChild(msg);
+    } finally {
+      recalcBtn.disabled = false;
+      recalcBtn.textContent = prevLabel;
+    }
+  });
+}
 </script>
 
 {% endblock %}

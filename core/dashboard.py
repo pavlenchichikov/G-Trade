@@ -305,6 +305,32 @@ def guru_latest(limit=200, db_path=None):
     return out
 
 
+@ttl_cache(60)
+def guru_for_asset(asset, db_path=None):
+    """Latest Guru Council verdict for a single asset from guru_log; None if absent."""
+    import sqlite3
+    path = db_path or os.path.join(os.path.dirname(__file__), os.pardir, "market.db")
+    try:
+        con = sqlite3.connect(path)
+        try:
+            row = con.execute(
+                "SELECT asset, date, council_verdict, council_pct, "
+                "lynch_score, buffett_score, graham_score, munger_score, "
+                "data_source, correct_5d FROM guru_log WHERE asset = ? "
+                "ORDER BY date DESC LIMIT 1",
+                (asset,)
+            ).fetchone()
+        finally:
+            con.close()
+    except Exception:
+        return None
+    if not row:
+        return None
+    return {"asset": row[0], "date": row[1], "verdict": row[2], "pct": row[3],
+            "lynch": row[4], "buffett": row[5], "graham": row[6], "munger": row[7],
+            "source": row[8], "correct_5d": row[9]}
+
+
 @ttl_cache(600)
 def guru_accuracy(days=30, horizon="5d"):
     """Council + per-guru forward accuracy from the guru_log track record."""

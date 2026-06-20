@@ -264,6 +264,63 @@ def fetch_smartlab_data():
         return {}
 
 
+def resolve_fundamentals(name, symbol, smartlab):
+    """Resolve one asset's fundamentals dict: smartlab -> yfinance -> backup -> None.
+
+    `name` is the G-Trade asset code (used for the MOEX_ASSETS/GLOBAL_BACKUP
+    lookups, via the same ticker_map remap used elsewhere in this module);
+    `symbol` is the actual fetch ticker (FULL_ASSET_MAP value, e.g. BTC ->
+    BTC-USD). Shared by main() and webapp.py's live recalculate endpoint so
+    both use the exact same fundamentals resolution.
+    """
+    clean_name = name.split('.')[0]
+    ticker_map = {'YNDX': 'YDEX', 'TCSG': 'T'}
+    search = ticker_map.get(clean_name, clean_name)
+
+    if search in smartlab:
+        d = smartlab[search]
+        return {
+            'pe': d.get('pe', 99), 'roe': d.get('roe', 0),
+            'debt_equity': d.get('debt', 0), 'dividend_yield': d.get('div', 0),
+            'growth': 0, 'profit_margin': 0, 'fcf': 0, 'book_value': 0,
+            'eps': 0, 'beta': 1.0, 'current_ratio': 0, 'price': 0,
+            'fwd_pe': 0, 'gross_margin': 0, 'operating_margin': 0,
+            'peg_ratio': 0, 'quick_ratio': 0, 'payout_ratio': 0,
+            'shares': 0, 'market_cap': 0,
+            '_source': 'smartlab',
+        }
+
+    if name not in MOEX_ASSETS:
+        yf_data = fetch_yf_deep(symbol)
+        if yf_data:
+            return yf_data
+        bk = GLOBAL_BACKUP.get(search) or GLOBAL_BACKUP.get(clean_name)
+        if bk:
+            return {
+                'pe': bk.get('pe', 99), 'roe': bk.get('roe', 0),
+                'debt_equity': bk.get('debt', 0), 'dividend_yield': bk.get('div', 0),
+                'growth': 0, 'profit_margin': 0, 'fcf': 0, 'book_value': 0,
+                'eps': 0, 'price': 0, 'gross_margin': 0, 'operating_margin': 0,
+                'peg_ratio': 0, 'quick_ratio': 0, 'payout_ratio': 0,
+                'shares': 0, 'market_cap': 0, 'beta': 1.0, 'current_ratio': 0,
+                'fwd_pe': 0, '_source': 'backup',
+            }
+        return None
+
+    bk = GLOBAL_BACKUP.get(search) or GLOBAL_BACKUP.get(clean_name)
+    if bk:
+        return {
+            'pe': bk.get('pe', 99), 'roe': bk.get('roe', 0),
+            'debt_equity': bk.get('debt', 0), 'dividend_yield': bk.get('div', 0),
+            'growth': 0, 'profit_margin': 0, 'fcf': 0, 'book_value': 0,
+            'eps': 0, 'price': 0, 'gross_margin': 0, 'operating_margin': 0,
+            'peg_ratio': 0, 'quick_ratio': 0, 'payout_ratio': 0,
+            'shares': 0, 'market_cap': 0, 'beta': 1.0, 'current_ratio': 0,
+            'fwd_pe': 0, '_source': 'backup',
+        }
+    return None
+
+
 def get_technical(name):
     """Load technical data from SQLite."""
     table = name.lower().replace("^", "").replace(".", "").replace("-", "")
@@ -597,52 +654,7 @@ def main():
             print(f"\r  [{idx}/{total}] {name}...", end="", flush=True)
 
         # Get fundamentals
-        fund = None
-        clean_name = name.split('.')[0]
-        ticker_map = {'YNDX': 'YDEX', 'TCSG': 'T'}
-        search = ticker_map.get(clean_name, clean_name)
-
-        if search in smartlab:
-            d = smartlab[search]
-            fund = {
-                'pe': d.get('pe', 99), 'roe': d.get('roe', 0),
-                'debt_equity': d.get('debt', 0), 'dividend_yield': d.get('div', 0),
-                'growth': 0, 'profit_margin': 0, 'fcf': 0, 'book_value': 0,
-                'eps': 0, 'beta': 1.0, 'current_ratio': 0, 'price': 0,
-                'fwd_pe': 0, 'gross_margin': 0, 'operating_margin': 0,
-                'peg_ratio': 0, 'quick_ratio': 0, 'payout_ratio': 0,
-                'shares': 0, 'market_cap': 0,
-                '_source': 'smartlab',
-            }
-        elif name not in MOEX_ASSETS:
-            # Try yfinance for non-MOEX
-            yf_data = fetch_yf_deep(symbol)
-            if yf_data:
-                fund = yf_data
-            else:
-                bk = GLOBAL_BACKUP.get(search) or GLOBAL_BACKUP.get(clean_name)
-                if bk:
-                    fund = {
-                        'pe': bk.get('pe', 99), 'roe': bk.get('roe', 0),
-                        'debt_equity': bk.get('debt', 0), 'dividend_yield': bk.get('div', 0),
-                        'growth': 0, 'profit_margin': 0, 'fcf': 0, 'book_value': 0,
-                        'eps': 0, 'price': 0, 'gross_margin': 0, 'operating_margin': 0,
-                        'peg_ratio': 0, 'quick_ratio': 0, 'payout_ratio': 0,
-                        'shares': 0, 'market_cap': 0, 'beta': 1.0, 'current_ratio': 0,
-                        'fwd_pe': 0, '_source': 'backup',
-                    }
-        else:
-            bk = GLOBAL_BACKUP.get(search) or GLOBAL_BACKUP.get(clean_name)
-            if bk:
-                fund = {
-                    'pe': bk.get('pe', 99), 'roe': bk.get('roe', 0),
-                    'debt_equity': bk.get('debt', 0), 'dividend_yield': bk.get('div', 0),
-                    'growth': 0, 'profit_margin': 0, 'fcf': 0, 'book_value': 0,
-                    'eps': 0, 'price': 0, 'gross_margin': 0, 'operating_margin': 0,
-                    'peg_ratio': 0, 'quick_ratio': 0, 'payout_ratio': 0,
-                    'shares': 0, 'market_cap': 0, 'beta': 1.0, 'current_ratio': 0,
-                    'fwd_pe': 0, '_source': 'backup',
-                }
+        fund = resolve_fundamentals(name, symbol, smartlab)
 
         # Technical
         tech = technical_context(get_technical(name))

@@ -14,19 +14,19 @@
         {% set pct = 1.0 if pct > 1 else pct %}
         <svg viewBox="0 0 120 70" class="gauge">
           <path d="M 10 65 A 50 50 0 0 1 110 65" class="gauge-track"/>
-          <path d="M 10 65 A 50 50 0 0 1 110 65" class="gauge-fill {% if pct > 0.66 %}g-bad{% elif pct > 0.33 %}g-warn{% endif %}"
+          <path id="risk-fill" d="M 10 65 A 50 50 0 0 1 110 65" class="gauge-fill {% if pct > 0.66 %}g-bad{% elif pct > 0.33 %}g-warn{% endif %}"
                 style="stroke-dasharray: {{ (pct * 157) | round(1) }} 157"/>
         </svg>
         <div class="gauge-text">
-          <b class="mono">{{ "%.1f"|format(dd * 100) }}%</b>
+          <b class="mono" id="risk-dd-val">{{ "%.1f"|format(dd * 100) }}%</b>
           <span>drawdown from peak<br>(halt at {{ "%.0f"|format(config.max_drawdown_halt * 100) }}%)</span>
         </div>
       </div>
       <table class="kv">
-        <tr><td>Capital</td><td class="mono">${{ "{:,.2f}".format(state.current_capital) }}</td></tr>
-        <tr><td>Peak</td><td class="mono">${{ "{:,.2f}".format(state.peak_capital) }}</td></tr>
+        <tr><td>Capital</td><td class="mono" id="risk-capital-val">${{ "{:,.2f}".format(state.current_capital) }}</td></tr>
+        <tr><td>Peak</td><td class="mono" id="risk-peak-val">${{ "{:,.2f}".format(state.peak_capital) }}</td></tr>
         <tr><td>Initial</td><td class="mono">${{ "{:,.2f}".format(state.initial_capital) }}</td></tr>
-        <tr><td>Open positions</td><td class="mono">{{ state.open_positions | length }}</td></tr>
+        <tr><td>Open positions</td><td class="mono" id="risk-positions-val">{{ state.open_positions | length }}</td></tr>
       </table>
     </div>
     {% if state.open_positions %}
@@ -79,5 +79,29 @@
     </table>
   </section>
 </div>
+
+<script src="/static/js/live.js"></script>
+<script>
+const MAX_DD_HALT = {{ config.max_drawdown_halt }};
+gtPoll('/api/risk', 20000, function (r) {
+  const ddEl = document.getElementById('risk-dd-val');
+  if (!r.state || !ddEl) return;
+  const cap = r.state.current_capital || 0;
+  const peak = r.state.peak_capital || cap;
+  const dd = peak ? (peak - cap) / peak : 0;
+  let pct = MAX_DD_HALT ? dd / MAX_DD_HALT : 0;
+  if (pct > 1) pct = 1.0;
+
+  const fill = document.getElementById('risk-fill');
+  fill.setAttribute('style', 'stroke-dasharray: ' + (pct * 157).toFixed(1) + ' 157');
+  fill.className = 'gauge-fill ' + (pct > 0.66 ? 'g-bad' : pct > 0.33 ? 'g-warn' : '');
+
+  const ddText = (dd * 100).toFixed(1) + '%';
+  if (ddEl.textContent !== ddText) { ddEl.textContent = ddText; gtFlash(ddEl, 'flash-text'); }
+  document.getElementById('risk-capital-val').textContent = '$' + cap.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+  document.getElementById('risk-peak-val').textContent = '$' + peak.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+  document.getElementById('risk-positions-val').textContent = Object.keys(r.state.open_positions || {}).length;
+});
+</script>
 
 {% endblock %}

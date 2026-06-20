@@ -14,24 +14,24 @@
       <div class="gauge-wrap">
         <svg viewBox="0 0 120 70" class="gauge">
           <path d="M 10 65 A 50 50 0 0 1 110 65" class="gauge-track"/>
-          <path d="M 10 65 A 50 50 0 0 1 110 65" class="gauge-fill {{ zone }}"
+          <path id="regime-fill" d="M 10 65 A 50 50 0 0 1 110 65" class="gauge-fill {{ zone }}"
                 style="stroke-dasharray: {{ (score / 100 * 157) | round(1) }} 157"/>
         </svg>
         <div class="gauge-text">
-          <b class="mono">{{ score }}</b>
+          <b class="mono" id="regime-score-val">{{ score }}</b>
           <span>0 bearish - 100 bullish</span>
         </div>
       </div>
       <div class="ind-desc">
-        <p class="ind-status {{ 't-buy' if score >= 60 else 't-sell' if score < 35 else 't-wait' }}">{{ regime.status }}</p>
-        <p class="dim">{{ regime.description }}</p>
+        <p class="ind-status {{ 't-buy' if score >= 60 else 't-sell' if score < 35 else 't-wait' }}" id="regime-status-val">{{ regime.status }}</p>
+        <p class="dim" id="regime-desc-val">{{ regime.description }}</p>
       </div>
     </div>
     <table class="kv">
-      <tr><td>VIX (volatility)</td><td class="mono">{{ regime.vix_level }}{% if regime.vix_value is not none %} ({{ "%.1f"|format(regime.vix_value) }}){% endif %}</td></tr>
-      <tr><td>S&amp;P 500 (trend)</td><td class="mono">{{ regime.sp500_trend }}</td></tr>
-      <tr><td>S&amp;P 500 (detail)</td><td class="mono dim">{{ regime.sp500_detail }}</td></tr>
-      <tr><td>Dollar (DXY)</td><td class="mono">{{ regime.dxy_trend }} - {{ regime.dxy_label }}</td></tr>
+      <tr id="regime-row-vix"><td>VIX (volatility)</td><td class="mono" id="regime-vix-val">{{ regime.vix_level }}{% if regime.vix_value is not none %} ({{ "%.1f"|format(regime.vix_value) }}){% endif %}</td></tr>
+      <tr id="regime-row-sp500"><td>S&amp;P 500 (trend)</td><td class="mono" id="regime-sp500-val">{{ regime.sp500_trend }}</td></tr>
+      <tr id="regime-row-sp500-detail"><td>S&amp;P 500 (detail)</td><td class="mono dim" id="regime-sp500-detail-val">{{ regime.sp500_detail }}</td></tr>
+      <tr id="regime-row-dxy"><td>Dollar (DXY)</td><td class="mono" id="regime-dxy-val">{{ regime.dxy_trend }} - {{ regime.dxy_label }}</td></tr>
     </table>
   </section>
 
@@ -62,5 +62,37 @@
     </table>
   </section>
 </div>
+
+<script src="/static/js/live.js"></script>
+<script>
+function zoneClass(score) {
+  if (score >= 60) return '';
+  if (score >= 35) return 'g-warn';
+  return 'g-bad';
+}
+function toneClass(score) {
+  if (score >= 60) return 't-buy';
+  if (score < 35) return 't-sell';
+  return 't-wait';
+}
+gtPoll('/api/regime', 20000, function (r) {
+  const fill = document.getElementById('regime-fill');
+  fill.setAttribute('style', 'stroke-dasharray: ' + (r.score / 100 * 157).toFixed(1) + ' 157');
+  fill.className = 'gauge-fill ' + zoneClass(r.score);
+  document.getElementById('regime-score-val').textContent = r.score;
+  const statusEl = document.getElementById('regime-status-val');
+  if (statusEl.textContent !== r.status) {
+    statusEl.textContent = r.status;
+    statusEl.className = 'ind-status ' + toneClass(r.score);
+    gtFlash(statusEl, 'flash-text');
+  }
+  document.getElementById('regime-desc-val').textContent = r.description;
+  document.getElementById('regime-vix-val').textContent = r.vix_value != null
+    ? r.vix_level + ' (' + r.vix_value.toFixed(1) + ')' : r.vix_level;
+  document.getElementById('regime-sp500-val').textContent = r.sp500_trend;
+  document.getElementById('regime-sp500-detail-val').textContent = r.sp500_detail;
+  document.getElementById('regime-dxy-val').textContent = r.dxy_trend + ' - ' + r.dxy_label;
+});
+</script>
 
 {% endblock %}
