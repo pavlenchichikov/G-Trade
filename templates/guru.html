@@ -3,21 +3,22 @@
 {% block content %}
 
 <h1 class="fade">Council of Legends</h1>
-<p class="lead fade">Fundamental verdicts from the council (Lynch, Buffett, Graham, Munger)
-  per asset, plus their track record. Munger is the risk veto: a DANGER blocks a BUY.
-  Each guru scores 0-2, the result is a weighted consensus.</p>
+<p class="lead fade">Long-term <b>value</b> verdicts from the council (Lynch, Buffett, Graham, Munger),
+  shown only for assets with real fundamentals. This is a value overlay, not a short-term
+  signal - the ML column is the primary trade signal and is always shown. Accuracy is
+  tracked at the 60-day value horizon.</p>
 
 {% set c = accuracy.council %}
 <div class="statgrid">
   <div class="stat fade">
-    <span class="stat-label">Council accuracy (5d)</span>
+    <span class="stat-label">Council accuracy (60d)</span>
     <span class="stat-value" id="guru-acc-val">{% if c and c.accuracy is not none %}{{ "%.0f"|format(c.accuracy * 100) }}<small>%</small>{% else %}-{% endif %}</span>
-    <span class="stat-sub">{% if c and c.total %}{{ c.correct }} correct of {{ c.total }}{% else %}track record building{% endif %}</span>
+    <span class="stat-sub">{% if c and c.total %}{{ c.correct }} correct of {{ c.total }}{% else %}value horizon - fills slowly{% endif %}</span>
   </div>
   <div class="stat fade">
     <span class="stat-label">Average move after signal</span>
     <span class="stat-value" id="guru-move-val">{% if c and c.avg_return is not none %}{{ "%+.2f"|format(c.avg_return) }}<small>%</small>{% else %}-{% endif %}</span>
-    <span class="stat-sub">over 5 days, non-HOLD verdicts</span>
+    <span class="stat-sub">over 60 days, non-HOLD verdicts</span>
   </div>
   <div class="stat fade">
     <span class="stat-label">Assets with a verdict</span>
@@ -28,7 +29,7 @@
 
 {% if accuracy.individual %}
 <section class="panel fade">
-  <div class="panel-head"><h2>Per-guru accuracy (5d)</h2></div>
+  <div class="panel-head"><h2>Per-guru accuracy (60d)</h2></div>
   <table class="grid">
     <thead>
       <tr><th>Guru</th><th class="num">Accuracy</th><th class="num">Bullish calls</th><th class="num">Correct</th><th class="num">Move when bullish</th></tr>
@@ -53,14 +54,19 @@
   {% if verdicts %}
   <table class="grid">
     <thead>
-      <tr><th>Asset</th><th>Verdict</th><th class="num">Consensus</th>
+      <tr><th>Asset</th><th>ML signal</th><th>Guru verdict</th><th class="num">Consensus</th>
         <th class="num">Lynch</th><th class="num">Buffett</th><th class="num">Graham</th><th class="num">Munger</th>
         <th>Data</th><th class="num">Date</th></tr>
     </thead>
     <tbody id="guru-tbody">
       {% for v in verdicts %}
-      <tr data-asset="{{ v.asset }}">
+      <tr data-asset="{{ v.asset }}"{% if v.divergent %} title="ML and guru disagree"{% endif %}>
         <td><a class="asset-link" href="/asset/{{ v.asset }}">{{ v.asset }}</a></td>
+        <td>
+          {% if v.ml_signal %}<span class="chip chip-{{ v.ml_signal }}">{{ v.ml_signal }}</span>{% if v.ml_prob is not none %} <span class="mono dim">{{ "%.2f"|format(v.ml_prob) }}</span>{% endif %}
+          {% else %}<span class="dim">-</span>{% endif %}
+          {% if v.divergent %}<span class="chip chip-WAIT" title="ML and guru disagree">diverge</span>{% endif %}
+        </td>
         <td class="c-verdict"><span class="chip chip-{{ 'BUY' if v.verdict == 'BUY' else 'SELL' if v.verdict == 'AVOID' else 'WAIT' }}">{{ v.verdict }}</span></td>
         <td class="num mono c-pct">{% if v.pct is not none %}{{ "%.0f%%"|format(v.pct) }}{% else %}-{% endif %}</td>
         <td class="num mono dim c-lynch">{{ v.lynch }}</td>

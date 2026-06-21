@@ -1,7 +1,9 @@
 """
 guru_tracker.py - Track Guru Council recommendations vs actual outcomes.
 Logs each guru's verdict + council vote, then compares with price movement
-after 1, 5, and 20 trading days.
+after 1, 5, 20, and 60 trading days. 60d is the headline horizon: the Guru
+Council is long-term value analysis, which predicts fair value over months, not
+days, so 1d/5d are kept for reference only.
 """
 
 import os
@@ -44,11 +46,18 @@ def _ensure_table(cur):
             ret_1d REAL,
             ret_5d REAL,
             ret_20d REAL,
+            ret_60d REAL,
             correct_1d INTEGER,
             correct_5d INTEGER,
-            correct_20d INTEGER
+            correct_20d INTEGER,
+            correct_60d INTEGER
         )
     """)
+    # Migrate tables created before the 60-day value horizon was added.
+    existing = {r[1] for r in cur.execute("PRAGMA table_info(guru_log)")}
+    for col, decl in (("ret_60d", "REAL"), ("correct_60d", "INTEGER")):
+        if col not in existing:
+            cur.execute(f"ALTER TABLE guru_log ADD COLUMN {col} {decl}")
 
 
 def log_guru_verdict(asset, lynch_score, buffett_score, graham_score, munger_score,
@@ -91,7 +100,9 @@ def update_actuals():
         _ensure_table(cur)
         rows = cur.execute(
             """SELECT rowid, date, asset, council_verdict
-               FROM guru_log WHERE ret_1d IS NULL OR ret_5d IS NULL OR ret_20d IS NULL"""
+               FROM guru_log
+               WHERE ret_1d IS NULL OR ret_5d IS NULL OR ret_20d IS NULL
+                  OR ret_60d IS NULL"""
         ).fetchall()
 
         for rowid, date_str, asset, verdict in rows:
@@ -142,6 +153,18 @@ def update_actuals():
                         updates["correct_20d"] = 1 if ret_20 < 0 else 0
                     else:
                         updates["correct_20d"] = None
+
+                # 60-day return - the value horizon (the headline accuracy metric;
+                # PEG/Graham#/ROE predict fair value over months, not days).
+                if idx + 60 < len(df):
+                    ret_60 = (df["close"].iloc[idx + 60] - price_0) / price_0
+                    updates["ret_60d"] = ret_60
+                    if verdict == "BUY":
+                        updates["correct_60d"] = 1 if ret_60 > 0 else 0
+                    elif verdict == "AVOID":
+                        updates["correct_60d"] = 1 if ret_60 < 0 else 0
+                    else:
+                        updates["correct_60d"] = None
 
                 if updates:
                     set_clause = ", ".join(f"{k}=?" for k in updates)
@@ -268,8 +291,8 @@ if __name__ == "__main__":
     print("Updating guru actuals...")
     update_actuals()
 
-    for horizon in ["1d", "5d", "20d"]:
-        acc = get_guru_accuracy(days=60, horizon=horizon)
+    for horizon in ["1d", "5d", "20d", "60d"]:
+        acc = get_guru_accuracy(days=180, horizon=horizon)
         if acc["accuracy"] is not None:
             print(f"\n=== COUNCIL ACCURACY ({horizon}, last 60 days) ===")
             print(f"  Accuracy: {acc['accuracy']:.1%} ({acc['correct']}/{acc['total']})")

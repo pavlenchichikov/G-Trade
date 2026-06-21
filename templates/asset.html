@@ -336,6 +336,13 @@ function guruTone(verdict) {
 }
 
 function renderGuruBody(g) {
+  if (g.no_fundamentals) {
+    guruBody.innerHTML = '<p class="empty">N/A - no fundamentals for this asset ' +
+      '(not a stock, or fundamental data unavailable). The Model recommendation ' +
+      'above is the trade signal.</p>';
+    gtFlash(guruBody);
+    return;
+  }
   const tone = guruTone(g.verdict);
   const cards = ['lynch', 'buffett', 'graham', 'munger'].map(function (key) {
     const info = g[key];

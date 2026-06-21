@@ -312,8 +312,19 @@ def performance_page(request: Request):
 
 @app.get("/guru", response_class=HTMLResponse)
 def guru_page(request: Request):
+    verdicts = dashboard.guru_latest()
+    # Overlay the ML signal so it is always visible next to the value verdict;
+    # flag divergence (ML bullish vs guru bearish or vice versa) as advisory.
+    ml = {s["asset"]: s for s in track_record.latest_signals()}
+    for v in verdicts:
+        sig = ml.get(v["asset"])
+        v["ml_signal"] = sig["signal"] if sig else None
+        v["ml_prob"] = sig.get("probability") if sig else None
+        v["divergent"] = bool(sig and (
+            (sig["signal"] == "BUY" and v["verdict"] == "AVOID") or
+            (sig["signal"] == "SELL" and v["verdict"] == "BUY")))
     return templates.TemplateResponse(request, "guru.html", {
-        "verdicts": dashboard.guru_latest(),
+        "verdicts": verdicts,
         "accuracy": dashboard.guru_accuracy(),
     })
 
@@ -373,6 +384,18 @@ def api_guru_recalculate(asset: str):
     price = (fund or {}).get('price') or (tech['close'] if tech else 0)
     data_source = analysis['data_source']
     council = analysis['council']
+
+    # Guru is a fundamentals-based value verdict. Without real fundamentals
+    # (crypto/forex/indices/commodities, or a stock whose data failed to load)
+    # the "verdict" would just be a shaved momentum read mislabeled as guru - so
+    # report an honest N/A and do NOT pollute the accuracy track record. The ML
+    # signal for this asset is shown separately and is unaffected.
+    if data_source in ("technical", "backup"):
+        return {
+            "asset": asset, "verdict": "N/A", "no_fundamentals": True,
+            "source": data_source, "date": datetime.now().strftime("%Y-%m-%d"),
+        }
+
     guru_tracker.log_guru_verdict(
         asset,
         analysis['lynch']['_score'], analysis['buffett']['_score'],

@@ -341,27 +341,57 @@ def test_api_risk_halt_and_resume(client, monkeypatch, tmp_path):
     assert r3.json()["manual_halt"] is False
 
 
-def test_api_guru_recalculate(client, monkeypatch):
+def test_api_guru_recalculate_no_fundamentals_na(client, monkeypatch):
+    """No real fundamentals -> honest N/A, and nothing enters the track record."""
     import guru_report
     import guru_tracker
     monkeypatch.setattr(guru_report, "fetch_smartlab_data", lambda: {})
     monkeypatch.setattr(guru_report, "fetch_yf_deep", lambda symbol: None)
     monkeypatch.setattr(guru_report, "get_technical", lambda name: None)
     calls = {}
-
-    def fake_log(asset, lynch_score, buffett_score, graham_score, munger_score,
-                 council_pct, council_verdict, data_source, price):
-        calls["args"] = (asset, lynch_score, buffett_score, graham_score,
-                          munger_score, council_pct, council_verdict, data_source, price)
-
-    monkeypatch.setattr(guru_tracker, "log_guru_verdict", fake_log)
+    monkeypatch.setattr(guru_tracker, "log_guru_verdict",
+                        lambda *a, **k: calls.setdefault("logged", True))
 
     r = client.post("/api/guru/BTC/recalculate")
     assert r.status_code == 200
     body = r.json()
-    assert body["asset"] == "BTC"
-    assert body["verdict"] in ("BUY", "HOLD", "AVOID")
-    assert calls["args"][0] == "BTC"
+    assert body["verdict"] == "N/A"
+    assert body["no_fundamentals"] is True
+    assert "logged" not in calls  # not logged to the accuracy track record
+
+
+def test_api_guru_recalculate_with_fundamentals_logs(client, monkeypatch):
+    """Real fundamentals -> a value verdict that IS logged."""
+    import core.guru as cg
+    import guru_report
+    import guru_tracker
+    monkeypatch.setattr(guru_report, "fetch_smartlab_data", lambda: {})
+    monkeypatch.setattr(guru_report, "resolve_fundamentals",
+                        lambda *a: {"_source": "yfinance_live", "price": 100.0})
+    monkeypatch.setattr(guru_report, "get_technical", lambda name: None)
+    fake = {"data_source": "yfinance_live",
+            "council": {"pct": 75.0, "verdict": "BUY"},
+            "lynch": {"_score": 2, "status": "x", "desc": "y"},
+            "buffett": {"_score": 1, "status": "x", "desc": "y"},
+            "graham": {"_score": 2, "status": "x", "desc": "y"},
+            "munger": {"_score": 1, "status": "x", "desc": "y"}}
+    monkeypatch.setattr(cg, "get_guru_analysis", lambda fund, tech: fake)
+    calls = {}
+    monkeypatch.setattr(guru_tracker, "log_guru_verdict",
+                        lambda *a, **k: calls.setdefault("logged", True))
+
+    r = client.post("/api/guru/AAPL/recalculate")
+    assert r.status_code == 200
+    assert r.json()["verdict"] == "BUY"
+    assert calls.get("logged") is True
+
+
+def test_guru_page_value_overlay(client):
+    """Guru page renders the 60d value-horizon labels (overlay redesign)."""
+    r = client.get("/guru")
+    assert r.status_code == 200
+    assert "Council accuracy (60d)" in r.text
+    assert "ML signal" in r.text or "value overlay" in r.text
 
 
 def test_api_guru_recalculate_unknown_404(client):

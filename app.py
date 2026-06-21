@@ -755,8 +755,10 @@ with tab2:
             st.markdown(f":{_guru_color(res['status'])}[**{res['status']}**]")
             st.write(res['desc'])
 
-        # Auto-log guru verdict
-        if GURU_TRACKER and council:
+        # Auto-log guru verdict - only when real fundamentals were found. Without
+        # them (technical/backup source) the verdict is a shaved momentum read,
+        # not a value call, so it must not enter the accuracy track record.
+        if GURU_TRACKER and council and src not in ("technical", "backup"):
             try:
                 _gt.log_guru_verdict(
                     asset=selected_asset,

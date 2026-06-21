@@ -332,8 +332,12 @@ def guru_for_asset(asset, db_path=None):
 
 
 @ttl_cache(600)
-def guru_accuracy(days=30, horizon="5d"):
-    """Council + per-guru forward accuracy from the guru_log track record."""
+def guru_accuracy(days=180, horizon="60d"):
+    """Council + per-guru forward accuracy from the guru_log track record.
+
+    Defaults to the 60-day value horizon (and a wide window): the Guru Council is
+    long-term value analysis, so 1d/5d accuracy measures the wrong thing.
+    """
     res = {"council": None, "individual": {}}
     try:
         import guru_tracker as gt
