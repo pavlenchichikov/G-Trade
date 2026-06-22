@@ -496,9 +496,11 @@ def _train_one_asset(asset, candidate_features, prev_registry_entry):
         _max_seq = max((len(p['X_seq_train']) for p in precomputed), default=0)
         if _ADAPTIVE_NETS and _max_seq > 0:
             _u1 = adaptive_units(_max_seq, lo=32, hi=128, divisor=16)
+            # No recurrent_dropout: it forces Keras off the fused LSTM kernel and
+            # is ~1.4x slower on CPU. L2 + the data-adaptive (smaller) size carry
+            # the regularization instead.
             _lstm_kw = dict(units1=_u1, units2=max(16, _u1 // 2),
-                            head_dim=max(16, _u1 // 2),
-                            recurrent_dropout=0.10, l2_reg=1e-5)
+                            head_dim=max(16, _u1 // 2), l2_reg=1e-5)
             _tf_kw = dict(num_heads=2,
                           ff_dim=adaptive_units(_max_seq, lo=32, hi=96, divisor=24),
                           dropout=0.15)
