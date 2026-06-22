@@ -26,7 +26,7 @@ except ImportError:
 engine = create_engine(f"sqlite:///{DB_PATH}")
 
 KEY_ASSETS = ["BTC", "ETH", "SP500", "NASDAQ", "GOLD", "OIL", "VIX", "DXY",
-              "SBER", "IMOEX", "NVDA", "TSLA", "EURUSD", "JPM", "XOM"]
+              "SBER", "IMOEX", "NVDA", "TSLA", "EURUSD", "JPM", "XOM", "ESTOXX50"]
 
 KEY_PAIRS = [
     ("BTC", "ETH"), ("BTC", "SP500"), ("BTC", "GOLD"),
@@ -35,6 +35,7 @@ KEY_PAIRS = [
     ("EURUSD", "DXY"), ("NASDAQ", "SP500"), ("TSLA", "NASDAQ"),
     ("JPM", "BAC"), ("XOM", "OIL"), ("AVAX", "SOL"),
     ("EURCHF", "EURUSD"), ("GBPAUD", "AUDUSD"), ("USDTRY", "DXY"),
+    ("ESTOXX50", "SP500"),  # European equity vs US
 ]
 
 SECTOR_GROUPS = {

@@ -23,7 +23,11 @@ SECTORS = {
     "US Consumer": ["WMT", "KO", "PEP", "MCD", "NKE", "DIS", "NFLX", "SBUX"],
     "US Industrial": ["BA", "CAT", "XOM", "CVX", "COP", "INTC", "QCOM", "AVGO", "MU",
                       "CRM", "ORCL", "ADBE", "UBER", "PYPL"],
-    "Indices": ["SP500", "NASDAQ", "DOW"],
+    "Indices": ["SP500", "NASDAQ", "DOW",
+                "DAX", "CAC40", "ESTOXX50", "FTSE100", "IBEX35", "FTSEMIB", "AEX", "SMI"],
+    "Europe": ["ASML", "LVMH", "SAP", "NESTLE", "NOVO", "AZN", "SHELL", "TOTAL",
+               "SIEMENS", "AIRBUS", "LOREAL", "ALLIANZ", "HERMES", "SCHNEIDER",
+               "SANTANDER", "BNP", "ENEL", "IBERDROLA"],
     "Commodities": ["GOLD", "SILVER", "OIL", "GAS"],
     "Macro": ["VIX", "DXY", "TNX"],
     "MOEX": [
