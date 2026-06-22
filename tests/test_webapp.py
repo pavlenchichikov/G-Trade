@@ -411,3 +411,66 @@ def test_api_prices_unknown_404(client):
 def test_models_page(client):
     r = client.get("/models")
     assert r.status_code == 200
+
+
+def test_portfolio_page_empty(client, monkeypatch, tmp_path):
+    """No positions -> page renders with empty analytics (pm unavailable too)."""
+    import core.dashboard as dash
+    import risk_manager
+    monkeypatch.setattr(risk_manager, "RISK_STATE_PATH", str(tmp_path / "risk_state.json"))
+    monkeypatch.setattr(dash, "portfolio_manager", lambda: None)
+    r = client.get("/portfolio")
+    assert r.status_code == 200
+    assert "Diversification" in r.text and "Sector exposure" in r.text
+    d = client.get("/api/portfolio").json()
+    assert d["holdings"] == [] and d["diversification"] == 100.0
+
+
+def test_portfolio_analytics_with_positions(client, monkeypatch, tmp_path):
+    """Positions + a stub manager -> holdings, sector heat, diversification,
+    and correlated-open warnings are all surfaced."""
+    import json
+
+    import pandas as pd
+
+    import core.dashboard as dash
+    import risk_manager
+    rs = tmp_path / "risk_state.json"
+    rs.write_text(json.dumps({"current_capital": 10000, "open_positions": {
+        "BTC": {"size_usd": 1000, "direction": "BUY", "entry_price": 50000},
+        "ETH": {"size_usd": 500, "direction": "BUY", "entry_price": 3000}}}))
+    monkeypatch.setattr(risk_manager, "RISK_STATE_PATH", str(rs))
+
+    class StubPM:
+        def get_sector(self, a):
+            return "CRYPTO"
+
+        def get_correlated_assets(self, a, open_only=None):
+            return ["ETH"] if a == "BTC" else ["BTC"]
+
+        def get_diversification_score(self, fractions):
+            return 42.0
+
+        def get_portfolio_heat(self, fractions):
+            return {"CRYPTO": sum(fractions.values())}
+
+        def get_correlation_matrix(self):
+            return pd.DataFrame([[1.0, 0.8], [0.8, 1.0]],
+                                index=["BTC", "ETH"], columns=["BTC", "ETH"])
+
+    monkeypatch.setattr(dash, "portfolio_manager", lambda: StubPM())
+
+    d = client.get("/api/portfolio").json()
+    assert len(d["holdings"]) == 2
+    assert d["diversification"] == 42.0
+    # 1500 / 10000 = 0.15 CRYPTO exposure, under the 0.35 limit
+    crypto = next(h for h in d["heat"] if h["sector"] == "CRYPTO")
+    assert round(crypto["exposure"], 3) == 0.15 and crypto["over"] is False
+    btc = next(h for h in d["holdings"] if h["asset"] == "BTC")
+    assert "ETH" in btc["correlated_open"]
+
+    # render the HTML too - exercises the sector-heat bar + correlation heatmap
+    # template paths (not just the JSON snapshot)
+    html = client.get("/portfolio")
+    assert html.status_code == 200
+    assert "CRYPTO" in html.text and "BTC" in html.text

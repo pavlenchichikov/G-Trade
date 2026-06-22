@@ -1,0 +1,146 @@
+{% extends "base.html" %}
+{% block title %}Portfolio - G-Trade{% endblock %}
+{% block content %}
+
+<h1 class="fade">Portfolio</h1>
+<p class="lead fade">Your open positions (shared with the Risk page) plus portfolio-level
+  analytics: diversification, sector exposure, hidden correlation, and per-position warnings.</p>
+
+<div class="statgrid">
+  <div class="stat fade">
+    <span class="stat-label">Diversification</span>
+    <span class="stat-value" id="pf-div">{{ "%.0f"|format(diversification) }}<small>/100</small></span>
+    <span class="stat-sub">HHI over sectors (100 = perfectly spread)</span>
+  </div>
+  <div class="stat fade">
+    <span class="stat-label">Total exposure</span>
+    <span class="stat-value" id="pf-exp">{{ "%.0f"|format(total_exposure * 100) }}<small>%</small></span>
+    <span class="stat-sub">of capital across {{ holdings | length }} position(s)</span>
+  </div>
+  <div class="stat fade">
+    <span class="stat-label">Capital</span>
+    <span class="stat-value mono">${{ "{:,.0f}".format(capital or 0) }}</span>
+    <span class="stat-sub">from risk state</span>
+  </div>
+</div>
+
+<div class="risk-layout">
+  <section class="panel fade">
+    <div class="panel-head"><h2>Sector exposure</h2></div>
+    <div class="limits" id="pf-heat">
+      {% for h in heat %}
+      <div class="limit">
+        <div class="limit-head"><span>{{ h.sector }}{% if h.over %} <span class="taleb-extreme">over limit</span>{% endif %}</span>
+          <b class="mono limit-val {{ 'taleb-extreme' if h.over else '' }}">{{ "%.0f"|format(h.exposure * 100) }}% / {{ "%.0f"|format(h.limit * 100) }}%</b></div>
+        <div class="limit-bar"><i class="{{ 'lb-red' if h.over else '' }}" style="width: {{ [h.exposure / h.limit * 100, 100] | min if h.limit else 0 }}%"></i></div>
+      </div>
+      {% else %}
+      <p class="empty">No positions - sector exposure is empty.</p>
+      {% endfor %}
+    </div>
+  </section>
+
+  <section class="panel fade">
+    <div class="panel-head"><h2>Held-asset correlation</h2></div>
+    <p class="dim" style="padding:0 16px">Red = highly correlated holdings (hidden concentration).</p>
+    {% if held and corr_rows %}
+    <div style="overflow-x:auto; padding:0 16px 16px">
+      <table class="grid corr-mini">
+        <thead><tr><th></th>{% for a in held %}<th class="num">{{ a }}</th>{% endfor %}</tr></thead>
+        <tbody id="pf-corr-body">
+          {% for row in corr_rows %}
+          <tr><td class="mono">{{ row.asset }}</td>
+            {% for c in row.vals %}
+            <td class="num mono" style="background: rgba(255,59,92,{{ (c | abs * 0.7) if c is not none else 0 }})">{% if c is not none %}{{ "%.2f"|format(c) }}{% else %}-{% endif %}</td>
+            {% endfor %}
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <p class="empty">Add 2+ positions to see their correlation.</p>
+    {% endif %}
+  </section>
+</div>
+
+<section class="panel fade">
+  <div class="panel-head"><h2>Holdings</h2></div>
+  <form id="pf-open-form" class="open-position-form">
+    <input type="text" list="pf-asset-list" name="asset" placeholder="asset" required class="search mono" style="width:90px">
+    <datalist id="pf-asset-list">
+      {% for a in full_asset_map %}<option value="{{ a }}">{% endfor %}
+    </datalist>
+    <select name="direction" class="fbtn"><option value="BUY">BUY</option><option value="SELL">SELL</option></select>
+    <input type="number" name="size_usd" placeholder="size USD" required min="0.01" step="0.01" class="search mono" style="width:100px">
+    <input type="number" name="entry_price" placeholder="entry (auto)" min="0" step="0.000001" class="search mono" style="width:130px">
+    <button type="submit" class="fbtn">Add / update</button>
+  </form>
+  <p class="empty" id="pf-open-error" hidden></p>
+  <table class="grid" id="pf-table" {% if not holdings %}hidden{% endif %}>
+    <thead><tr><th>Asset</th><th>Dir</th><th class="num">Size</th><th class="num">Weight</th>
+      <th>Sector</th><th class="num">Entry</th><th class="num">Price</th><th class="num">P&L</th><th>Warnings</th><th>Close</th></tr></thead>
+    <tbody id="pf-tbody">
+      {% for h in holdings %}
+      <tr data-asset="{{ h.asset }}">
+        <td><a class="asset-link" href="/asset/{{ h.asset }}">{{ h.asset }}</a></td>
+        <td>{{ h.direction }}</td>
+        <td class="num mono">${{ "{:,.0f}".format(h.size_usd) }}</td>
+        <td class="num mono">{{ "%.1f"|format(h.weight * 100) }}%</td>
+        <td class="dim">{{ h.sector }}</td>
+        <td class="num mono">{% if h.entry is not none %}{{ h.entry }}{% else %}-{% endif %}</td>
+        <td class="num mono">{% if h.price is not none %}{{ "%.4f"|format(h.price) }}{% else %}-{% endif %}</td>
+        <td class="num mono {% if h.pnl is not none %}{{ 't-buy' if h.pnl >= 0 else 't-sell' }}{% endif %}">{% if h.pnl is not none %}{{ "%+,.0f"|format(h.pnl) }}{% else %}-{% endif %}</td>
+        <td>{% if h.correlated_open %}<span class="taleb-elevated" title="highly correlated with held: {{ h.correlated_open | join(', ') }}">corr: {{ h.correlated_open | join(', ') }}</span>{% else %}<span class="dim">-</span>{% endif %}</td>
+        <td><button class="fbtn pf-close-btn" data-asset="{{ h.asset }}">Close</button></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% if not holdings %}<p class="empty" id="pf-empty">No open positions. Add one above (it is the same book as the Risk page).</p>{% endif %}
+</section>
+
+<script src="/static/js/live.js"></script>
+<script>
+function pfReload() { location.reload(); }
+
+document.getElementById('pf-open-form').addEventListener('submit', async function (ev) {
+  ev.preventDefault();
+  const form = ev.target;
+  const errEl = document.getElementById('pf-open-error');
+  errEl.hidden = true;
+  const body = { asset: form.asset.value.toUpperCase(), direction: form.direction.value,
+                 size_usd: parseFloat(form.size_usd.value) };
+  if (form.entry_price.value) body.entry_price = parseFloat(form.entry_price.value);
+  try {
+    const r = await fetch('/api/risk/position', {
+      method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body),
+    });
+    if (!r.ok) throw new Error(await r.text());
+    pfReload();
+  } catch (e) {
+    errEl.textContent = 'Add failed - check the asset and values, then try again.';
+    errEl.hidden = false;
+  }
+});
+
+function wirePfClose() {
+  document.querySelectorAll('.pf-close-btn').forEach(function (btn) {
+    btn.onclick = async function () {
+      const r = await fetch('/api/risk/position/' + btn.dataset.asset + '/close', {
+        method: 'POST', headers: {'Content-Type': 'application/json'}, body: '{}',
+      });
+      if (r.ok) pfReload();
+    };
+  });
+}
+wirePfClose();
+
+// Light auto-refresh of the headline numbers (full re-render happens on edits).
+gtPoll('/api/portfolio', 30000, function (d) {
+  document.getElementById('pf-div').innerHTML = Math.round(d.diversification) + '<small>/100</small>';
+  document.getElementById('pf-exp').innerHTML = Math.round(d.total_exposure * 100) + '<small>%</small>';
+});
+</script>
+
+{% endblock %}

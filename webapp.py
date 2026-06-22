@@ -64,6 +64,77 @@ def _latest_price(asset):
     return series[-1]["close"] if series else None
 
 
+def _portfolio_snapshot():
+    """Portfolio view over the risk-manager positions (the same book as /risk):
+    holdings + diversification / sector heat / held-asset correlation / per-
+    position warnings (portfolio.py analytics on the current positions)."""
+    rm = RiskManager()
+    cap = rm.current_capital or 1.0
+    pm = dashboard.portfolio_manager()
+    positions = rm.open_positions
+    # weights as a fraction of capital
+    fractions = {a: (p.get("size_usd", 0) / cap) for a, p in positions.items()}
+    held = list(positions.keys())
+
+    holdings = []
+    for a, p in positions.items():
+        price = _latest_price(a)
+        size = p.get("size_usd", 0)
+        entry = p.get("entry_price")
+        direction = p.get("direction", "BUY")
+        pnl = None
+        if price and entry:
+            ret = (price - entry) / entry if direction == "BUY" else (entry - price) / entry
+            pnl = ret * size
+        corr_open = []
+        if pm is not None:
+            corr_open = [x for x in pm.get_correlated_assets(a, open_only=held) if x != a]
+        holdings.append({
+            "asset": a, "direction": direction, "size_usd": size,
+            "weight": fractions[a], "sector": pm.get_sector(a) if pm else "OTHER",
+            "entry": entry, "price": price, "pnl": pnl,
+            "correlated_open": corr_open,
+        })
+    holdings.sort(key=lambda h: h["weight"], reverse=True)
+
+    heat = []
+    diversification = 100.0
+    corr_rows = []
+    if pm is not None and fractions:
+        from portfolio import SECTOR_LIMITS
+        diversification = pm.get_diversification_score(fractions)
+        for sector, exp in pm.get_portfolio_heat(fractions).items():
+            if exp <= 0:
+                continue
+            limit = SECTOR_LIMITS.get(sector, 0.20)
+            heat.append({"sector": sector, "exposure": exp, "limit": limit,
+                         "over": exp > limit})
+        heat.sort(key=lambda h: h["exposure"], reverse=True)
+        corr = pm.get_correlation_matrix()
+        if held and not corr.empty:
+            for a in held:
+                vals = []
+                for b in held:
+                    c = None
+                    if a in corr.index and b in corr.columns:
+                        try:
+                            c = float(corr.loc[a, b])
+                        except Exception:
+                            c = None
+                    vals.append(c)
+                corr_rows.append({"asset": a, "vals": vals})
+
+    return {
+        "holdings": holdings,
+        "held": held,
+        "total_exposure": sum(fractions.values()),
+        "diversification": diversification,
+        "heat": heat,
+        "corr_rows": corr_rows,
+        "capital": rm.current_capital,
+    }
+
+
 def _spark(closes, w=110, h=26):
     """Points for an svg sparkline from a list of closes."""
     if len(closes) < 2:
@@ -261,6 +332,19 @@ def risk_page(request: Request):
         "full_asset_map": sorted(FULL_ASSET_MAP),
         "taleb_top": _taleb_top(),
     })
+
+
+@app.get("/portfolio", response_class=HTMLResponse)
+def portfolio_page(request: Request):
+    return templates.TemplateResponse(request, "portfolio.html", {
+        **_portfolio_snapshot(),
+        "full_asset_map": sorted(FULL_ASSET_MAP),
+    })
+
+
+@app.get("/api/portfolio")
+def api_portfolio():
+    return _portfolio_snapshot()
 
 
 @app.get("/market", response_class=HTMLResponse)

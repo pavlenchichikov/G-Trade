@@ -434,3 +434,22 @@ def taleb_index():
         except Exception:
             out[asset] = None
     return out
+
+
+@ttl_cache(300)
+def portfolio_manager():
+    """Cached PortfolioManager with its correlation matrix pre-warmed.
+
+    Building the correlation matrix reads every asset's recent returns from
+    market.db (read-only - safe while training runs, which never writes there),
+    so it is cached 5 min instead of recomputed per request. Returns None if the
+    manager cannot be built.
+    """
+    try:
+        from config import FULL_ASSET_MAP
+        from portfolio import PortfolioManager
+        pm = PortfolioManager(FULL_ASSET_MAP)
+        pm.get_correlation_matrix()  # warm the cache once
+        return pm
+    except Exception:
+        return None

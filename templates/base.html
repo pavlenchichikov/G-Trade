@@ -23,6 +23,7 @@
         <a href="/guru" {% if request.url.path == '/guru' %}class="active"{% endif %}>Guru</a>
         <a href="/models" {% if request.url.path == '/models' %}class="active"{% endif %}>Models</a>
         <a href="/risk" {% if request.url.path == '/risk' %}class="active"{% endif %}>Risk</a>
+        <a href="/portfolio" {% if request.url.path == '/portfolio' %}class="active"{% endif %}>Portfolio</a>
       </nav>
       <div class="topbar-right">
         <span class="live"><span class="live-dot"></span>{% block topright %}terminal{% endblock %}</span>
