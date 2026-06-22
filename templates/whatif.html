@@ -1,0 +1,201 @@
+{% extends "base.html" %}
+{% block title %}What-If - G-Trade{% endblock %}
+{% block content %}
+
+<h1 class="fade">What-If Simulator</h1>
+<p class="lead fade">Hypothetical backtest: what if you had invested $X, N days ago, following the
+  model's CatBoost signals? Read-only, uses the existing trained models.</p>
+
+<section class="panel fade">
+  <div class="panel-head"><h2>Setup</h2></div>
+  <div class="wf-form">
+    <div class="wf-modes">
+      <button type="button" class="fbtn active" data-mode="assets">Pick assets</button>
+      <button type="button" class="fbtn" data-mode="top">Top N by score</button>
+    </div>
+
+    <div id="wf-assets-block">
+      <div class="open-position-form" style="padding:0">
+        <input type="text" list="wf-asset-list" id="wf-asset-input" placeholder="add asset"
+               class="search mono" style="width:120px">
+        <datalist id="wf-asset-list">
+          {% for a in full_asset_map %}<option value="{{ a }}">{% endfor %}
+        </datalist>
+        <button type="button" class="fbtn" id="wf-add">Add</button>
+      </div>
+      <div class="wf-chips" id="wf-chips"></div>
+    </div>
+
+    <div id="wf-top-block" hidden>
+      <label class="wf-field">Top N
+        <input type="number" id="wf-topn" value="5" min="1" max="12" class="search mono" style="width:64px">
+      </label>
+    </div>
+
+    <div class="wf-params">
+      <label class="wf-field">Capital $
+        <input type="number" id="wf-capital" value="10000" min="1" step="100" class="search mono" style="width:110px">
+      </label>
+      <label class="wf-field">Days back
+        <input type="number" id="wf-days" value="90" min="10" max="365" class="search mono" style="width:80px">
+      </label>
+      <label class="wf-field">Strategy
+        <select id="wf-strategy" class="fbtn"><option value="equal">equal</option><option value="kelly">kelly</option></select>
+      </label>
+      <button type="button" class="fbtn wf-run" id="wf-run">Run simulation</button>
+      <span class="wf-status" id="wf-status"></span>
+    </div>
+  </div>
+</section>
+
+<p class="empty" id="wf-error" hidden></p>
+
+<div id="wf-results" hidden>
+  <div class="statgrid">
+    <div class="stat fade"><span class="stat-label">Initial</span><span class="stat-value mono" id="wf-initial">-</span></div>
+    <div class="stat fade"><span class="stat-label">Final</span><span class="stat-value mono" id="wf-final">-</span></div>
+    <div class="stat fade"><span class="stat-label">Return</span><span class="stat-value mono" id="wf-return">-</span></div>
+    <div class="stat fade"><span class="stat-label">Max drawdown</span><span class="stat-value mono" id="wf-dd">-</span></div>
+    <div class="stat fade"><span class="stat-label">Sharpe</span><span class="stat-value mono" id="wf-sharpe">-</span></div>
+    <div class="stat fade"><span class="stat-label">Trades</span><span class="stat-value mono" id="wf-trades">-</span></div>
+  </div>
+
+  <section class="panel fade">
+    <div class="panel-head"><h2>Equity curve</h2></div>
+    <div class="wf-chart-host" id="wf-chart"></div>
+  </section>
+
+  <section class="panel fade">
+    <div class="panel-head"><h2>Per asset</h2></div>
+    <table class="grid">
+      <thead><tr><th>Asset</th><th class="num">Return</th><th class="num">Trades</th><th class="num">Max DD</th></tr></thead>
+      <tbody id="wf-per-asset"></tbody>
+    </table>
+  </section>
+</div>
+
+<script>
+(function () {
+  var assets = [];
+  var mode = "assets";
+  var $ = function (id) { return document.getElementById(id); };
+
+  function renderChips() {
+    $("wf-chips").innerHTML = assets.map(function (a) {
+      return '<span class="wf-chip"><b>' + a + '</b><button type="button" data-rm="' + a + '">x</button></span>';
+    }).join("");
+  }
+  function addAsset(a) {
+    a = (a || "").trim().toUpperCase();
+    if (!a || assets.indexOf(a) !== -1 || assets.length >= 12) return;
+    assets.push(a); renderChips(); $("wf-asset-input").value = "";
+  }
+  $("wf-add").addEventListener("click", function () { addAsset($("wf-asset-input").value); });
+  $("wf-asset-input").addEventListener("keydown", function (e) {
+    if (e.key === "Enter") { e.preventDefault(); addAsset(this.value); }
+  });
+  $("wf-chips").addEventListener("click", function (e) {
+    var rm = e.target.getAttribute("data-rm");
+    if (rm) { assets = assets.filter(function (a) { return a !== rm; }); renderChips(); }
+  });
+
+  document.querySelectorAll(".wf-modes .fbtn").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      mode = btn.getAttribute("data-mode");
+      document.querySelectorAll(".wf-modes .fbtn").forEach(function (b) { b.classList.remove("active"); });
+      btn.classList.add("active");
+      $("wf-assets-block").hidden = mode !== "assets";
+      $("wf-top-block").hidden = mode !== "top";
+    });
+  });
+
+  function fnum(v, dec) {
+    return v.toFixed(dec).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  }
+  function drawEquity(curve, initial) {
+    var host = $("wf-chart");
+    if (!curve || curve.length < 2) { host.innerHTML = '<p class="empty">Not enough data to chart.</p>'; return; }
+    var vals = curve.map(function (p) { return p[1]; });
+    var min = Math.min.apply(null, vals.concat([initial]));
+    var max = Math.max.apply(null, vals.concat([initial]));
+    var pad = (max - min) * 0.08 || 1; min -= pad; max += pad;
+    var W = 1000, H = 240;
+    var x = function (i) { return (i / (curve.length - 1)) * W; };
+    var y = function (v) { return H - ((v - min) / (max - min)) * H; };
+    var line = curve.map(function (p, i) { return x(i).toFixed(1) + "," + y(p[1]).toFixed(1); }).join(" ");
+    var up = vals[vals.length - 1] >= initial;
+    var col = up ? "var(--green)" : "var(--red)";
+    var fill = up ? "rgba(0,255,163,0.22)" : "rgba(255,59,92,0.22)";
+    var baseY = y(initial).toFixed(1);
+    host.innerHTML =
+      '<svg viewBox="0 0 ' + W + ' ' + H + '" class="wf-svg" preserveAspectRatio="none">' +
+        '<defs><linearGradient id="wfg" x1="0" y1="0" x2="0" y2="1">' +
+          '<stop offset="0" stop-color="' + fill + '"/><stop offset="1" stop-color="rgba(0,0,0,0)"/>' +
+        '</linearGradient></defs>' +
+        '<line x1="0" y1="' + baseY + '" x2="' + W + '" y2="' + baseY + '" class="wf-base"/>' +
+        '<path d="M0,' + H + ' L' + line.replace(/ /g, " L") + ' L' + W + ',' + H + ' Z" fill="url(#wfg)"/>' +
+        '<polyline points="' + line + '" fill="none" stroke="' + col + '" stroke-width="2" ' +
+          'style="color:' + col + '" class="wf-line"/>' +
+      '</svg>';
+    var pl = host.querySelector(".wf-line");
+    try {
+      var len = pl.getTotalLength();
+      pl.style.strokeDasharray = len; pl.style.strokeDashoffset = len;
+      pl.style.transition = "stroke-dashoffset 1.1s ease";
+      requestAnimationFrame(function () {
+        requestAnimationFrame(function () { pl.style.strokeDashoffset = "0"; });
+      });
+    } catch (e) { /* no animation if length unavailable */ }
+  }
+
+  function render(d) {
+    $("wf-initial").textContent = "$" + fnum(d.initial, 0);
+    $("wf-final").textContent = "$" + fnum(d.final, 0);
+    var rt = $("wf-return");
+    rt.textContent = (d.return_pct >= 0 ? "+" : "") + d.return_pct.toFixed(2) + "%";
+    rt.className = "stat-value mono " + (d.return_pct >= 0 ? "t-buy" : "t-sell");
+    $("wf-dd").textContent = d.max_drawdown.toFixed(2) + "%";
+    $("wf-sharpe").textContent = d.sharpe.toFixed(2);
+    $("wf-trades").textContent = d.trades;
+    drawEquity(d.equity_curve, d.initial);
+    var pa = d.per_asset || {};
+    $("wf-per-asset").innerHTML = Object.keys(pa).map(function (a) {
+      var r = pa[a], cls = r.return_pct >= 0 ? "t-buy" : "t-sell";
+      return '<tr><td><a class="asset-link" href="/asset/' + a + '">' + a + '</a></td>' +
+        '<td class="num mono ' + cls + '">' + (r.return_pct >= 0 ? "+" : "") + r.return_pct.toFixed(2) + '%</td>' +
+        '<td class="num mono">' + r.trades + '</td>' +
+        '<td class="num mono">' + r.max_dd.toFixed(2) + '%</td></tr>';
+    }).join("");
+    $("wf-results").hidden = false;
+  }
+
+  $("wf-run").addEventListener("click", function () {
+    var body = {
+      mode: mode,
+      capital: parseFloat($("wf-capital").value) || 10000,
+      days_back: parseInt($("wf-days").value, 10) || 90,
+      strategy: $("wf-strategy").value,
+    };
+    if (mode === "top") body.top_n = parseInt($("wf-topn").value, 10) || 5;
+    else {
+      if (!assets.length) { $("wf-error").textContent = "Add at least one asset."; $("wf-error").hidden = false; return; }
+      body.assets = assets;
+    }
+    $("wf-error").hidden = true;
+    $("wf-run").disabled = true;
+    $("wf-status").textContent = "running (this can take a few seconds)...";
+    fetch("/api/whatif", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+    }).then(function (r) { return r.json(); }).then(function (d) {
+      $("wf-run").disabled = false; $("wf-status").textContent = "";
+      if (d.error) { $("wf-error").textContent = d.error; $("wf-error").hidden = false; $("wf-results").hidden = true; return; }
+      render(d);
+    }).catch(function () {
+      $("wf-run").disabled = false; $("wf-status").textContent = "";
+      $("wf-error").textContent = "Request failed. Try fewer assets or a shorter window."; $("wf-error").hidden = false;
+    });
+  });
+})();
+</script>
+
+{% endblock %}

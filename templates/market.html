@@ -16,6 +16,7 @@
           <path d="M 10 65 A 50 50 0 0 1 110 65" class="gauge-track"/>
           <path id="regime-fill" d="M 10 65 A 50 50 0 0 1 110 65" class="gauge-fill {{ zone }}"
                 style="stroke-dasharray: {{ (score / 100 * 157) | round(1) }} 157"/>
+          <circle id="regime-marker" class="gauge-marker {{ zone }}" cx="10" cy="65" r="3.5"/>
         </svg>
         <div class="gauge-text">
           <b class="mono" id="regime-score-val">{{ score }}</b>
@@ -41,24 +42,25 @@
       <div class="gauge-wrap">
         <svg viewBox="0 0 120 70" class="gauge">
           <path d="M 10 65 A 50 50 0 0 1 110 65" class="gauge-track"/>
-          <path d="M 10 65 A 50 50 0 0 1 110 65" class="gauge-fill {{ sent_zone }}"
+          <path id="sent-fill" d="M 10 65 A 50 50 0 0 1 110 65" class="gauge-fill {{ sent_zone }}"
                 style="stroke-dasharray: {{ (sentiment.score / 100 * 157) | round(1) }} 157"/>
+          <circle id="sent-marker" class="gauge-marker {{ sent_zone }}" cx="10" cy="65" r="3.5"/>
         </svg>
         <div class="gauge-text">
-          <b class="mono">{{ sentiment.score }}</b>
+          <b class="mono" id="sent-score-val">{{ sentiment.score }}</b>
           <span>0 fear - 100 greed</span>
         </div>
       </div>
       <div class="ind-desc">
-        <p class="ind-status {{ 't-buy' if sentiment.score >= 60 else 't-sell' if sentiment.score < 35 else 't-wait' }}">{{ sentiment.label }}</p>
+        <p class="ind-status {{ 't-buy' if sentiment.score >= 60 else 't-sell' if sentiment.score < 35 else 't-wait' }}" id="sent-status-val">{{ sentiment.label }}</p>
         <p class="dim">Low volatility, a rising market and a BUY skew push the index toward
           greed; a VIX spike and a SELL skew push it toward fear.</p>
       </div>
     </div>
     <table class="kv">
-      <tr><td>Volatility</td><td class="mono">{{ sentiment.vix_level }}{% if sentiment.vix is not none %} ({{ "%.1f"|format(sentiment.vix) }}){% endif %}</td></tr>
-      <tr><td>S&amp;P 500 momentum</td><td class="mono">{{ sentiment.sp500_trend }}</td></tr>
-      <tr><td>Signal breadth</td><td class="mono"><span class="t-buy">{{ sentiment.buy }} BUY</span> / <span class="t-sell">{{ sentiment.sell }} SELL</span></td></tr>
+      <tr><td>Volatility</td><td class="mono" id="sent-vix-val">{{ sentiment.vix_level }}{% if sentiment.vix is not none %} ({{ "%.1f"|format(sentiment.vix) }}){% endif %}</td></tr>
+      <tr><td>S&amp;P 500 momentum</td><td class="mono" id="sent-sp500-val">{{ sentiment.sp500_trend }}</td></tr>
+      <tr><td>Signal breadth</td><td class="mono" id="sent-breadth-val"><span class="t-buy">{{ sentiment.buy }} BUY</span> / <span class="t-sell">{{ sentiment.sell }} SELL</span></td></tr>
     </table>
   </section>
 </div>
@@ -75,10 +77,22 @@ function toneClass(score) {
   if (score < 35) return 't-sell';
   return 't-wait';
 }
+function gaugeMarker(id, score) {
+  const m = document.getElementById(id);
+  if (!m) return;
+  const f = Math.max(0, Math.min(1, score / 100));
+  const ang = Math.PI * (1 - f);  // left end = fear, right end = greed
+  m.setAttribute('cx', (60 + 50 * Math.cos(ang)).toFixed(2));
+  m.setAttribute('cy', (65 - 50 * Math.sin(ang)).toFixed(2));
+  m.setAttribute('class', 'gauge-marker ' + zoneClass(score));
+}
+gaugeMarker('regime-marker', {{ score }});
+gaugeMarker('sent-marker', {{ sentiment.score }});
 gtPoll('/api/regime', 20000, function (r) {
   const fill = document.getElementById('regime-fill');
   fill.setAttribute('style', 'stroke-dasharray: ' + (r.score / 100 * 157).toFixed(1) + ' 157');
   fill.className = 'gauge-fill ' + zoneClass(r.score);
+  gaugeMarker('regime-marker', r.score);
   document.getElementById('regime-score-val').textContent = r.score;
   const statusEl = document.getElementById('regime-status-val');
   if (statusEl.textContent !== r.status) {
@@ -92,6 +106,24 @@ gtPoll('/api/regime', 20000, function (r) {
   document.getElementById('regime-sp500-val').textContent = r.sp500_trend;
   document.getElementById('regime-sp500-detail-val').textContent = r.sp500_detail;
   document.getElementById('regime-dxy-val').textContent = r.dxy_trend + ' - ' + r.dxy_label;
+});
+gtPoll('/api/sentiment', 20000, function (s) {
+  const fill = document.getElementById('sent-fill');
+  fill.setAttribute('style', 'stroke-dasharray: ' + (s.score / 100 * 157).toFixed(1) + ' 157');
+  fill.className = 'gauge-fill ' + zoneClass(s.score);
+  gaugeMarker('sent-marker', s.score);
+  document.getElementById('sent-score-val').textContent = s.score;
+  const statusEl = document.getElementById('sent-status-val');
+  if (statusEl.textContent !== s.label) {
+    statusEl.textContent = s.label;
+    statusEl.className = 'ind-status ' + toneClass(s.score);
+    gtFlash(statusEl, 'flash-text');
+  }
+  document.getElementById('sent-vix-val').textContent = s.vix != null
+    ? s.vix_level + ' (' + s.vix.toFixed(1) + ')' : s.vix_level;
+  document.getElementById('sent-sp500-val').textContent = s.sp500_trend;
+  document.getElementById('sent-breadth-val').innerHTML =
+    '<span class="t-buy">' + s.buy + ' BUY</span> / <span class="t-sell">' + s.sell + ' SELL</span>';
 });
 </script>
 

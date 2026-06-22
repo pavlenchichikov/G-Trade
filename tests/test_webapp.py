@@ -474,3 +474,51 @@ def test_portfolio_analytics_with_positions(client, monkeypatch, tmp_path):
     html = client.get("/portfolio")
     assert html.status_code == 200
     assert "CRYPTO" in html.text and "BTC" in html.text
+
+
+def test_whatif_page_renders(client):
+    r = client.get("/whatif")
+    assert r.status_code == 200
+    assert "What-If Simulator" in r.text
+
+
+def test_api_whatif_assets_mode(client, monkeypatch):
+    """Assets mode forwards only known tickers and the chosen strategy."""
+    import whatif_simulator
+    captured = {}
+
+    def fake_simulate(assets, capital=10000.0, days_back=90, strategy="equal"):
+        captured["assets"] = list(assets)
+        captured["strategy"] = strategy
+        return {"initial": 1000, "final": 1100, "return_pct": 10.0, "max_drawdown": 2.0,
+                "sharpe": 1.2, "trades": 3,
+                "equity_curve": [["2026-01-01", 1000], ["2026-01-02", 1100]],
+                "per_asset": {"BTC": {"return_pct": 10.0, "trades": 3, "max_dd": 2.0}}}
+
+    monkeypatch.setattr(whatif_simulator, "simulate", fake_simulate)
+    r = client.post("/api/whatif", json={
+        "mode": "assets", "assets": ["BTC", "NOPE"], "capital": 1000,
+        "days_back": 90, "strategy": "kelly"})
+    assert r.status_code == 200
+    d = r.json()
+    assert d["final"] == 1100
+    assert captured["assets"] == ["BTC"]      # NOPE filtered out
+    assert captured["strategy"] == "kelly"
+
+
+def test_api_whatif_top_mode(client, monkeypatch):
+    import whatif_simulator
+
+    def fake_top(n=5, capital=10000.0, days_back=90):
+        return {"initial": 5000, "final": 5500, "return_pct": 10.0, "max_drawdown": 1.0,
+                "sharpe": 1.0, "trades": 5, "equity_curve": [["d", 5000], ["e", 5500]],
+                "per_asset": {}}
+
+    monkeypatch.setattr(whatif_simulator, "simulate_top_n", fake_top)
+    r = client.post("/api/whatif", json={"mode": "top", "top_n": 3, "capital": 5000, "days_back": 60})
+    assert r.status_code == 200 and r.json()["final"] == 5500
+
+
+def test_api_whatif_no_valid_assets(client):
+    r = client.post("/api/whatif", json={"mode": "assets", "assets": ["NOPE"], "capital": 1000})
+    assert r.status_code == 200 and "error" in r.json()

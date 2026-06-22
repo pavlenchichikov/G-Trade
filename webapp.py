@@ -347,6 +347,67 @@ def api_portfolio():
     return _portfolio_snapshot()
 
 
+@app.get("/api/ticker")
+def api_ticker():
+    return {"movers": dashboard.top_movers()}
+
+
+@app.get("/api/health")
+def api_health():
+    return dashboard.health()
+
+
+@app.get("/api/palette")
+def api_palette():
+    pages = [
+        ["Radar", "/"], ["Market", "/market"], ["Sectors", "/sectors"],
+        ["Correlations", "/correlations"], ["Accuracy", "/performance"],
+        ["News", "/news"], ["Guru", "/guru"], ["Models", "/models"],
+        ["Risk", "/risk"], ["Portfolio", "/portfolio"], ["What-If", "/whatif"],
+    ]
+    return {"pages": pages, "assets": sorted(FULL_ASSET_MAP)}
+
+
+@app.get("/whatif", response_class=HTMLResponse)
+def whatif_page(request: Request):
+    return templates.TemplateResponse(request, "whatif.html", {
+        "full_asset_map": sorted(FULL_ASSET_MAP),
+    })
+
+
+@app.post("/api/whatif")
+async def api_whatif(request: Request):
+    """Run a hypothetical CatBoost-signal backtest. The simulation is CPU-bound,
+    so it runs in a threadpool to avoid blocking the event loop. Assets are
+    capped and days bounded to keep a single request responsive."""
+    from starlette.concurrency import run_in_threadpool
+
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    try:
+        capital = max(1.0, float(body.get("capital") or 10000))
+        days_back = max(10, min(365, int(body.get("days_back") or 90)))
+    except (TypeError, ValueError):
+        return {"error": "capital and days must be numbers"}
+    strategy = body.get("strategy") if body.get("strategy") in ("equal", "kelly") else "equal"
+
+    import whatif_simulator as wf
+    try:
+        if body.get("mode") == "top":
+            n = max(1, min(12, int(body.get("top_n") or 5)))
+            return await run_in_threadpool(
+                wf.simulate_top_n, n=n, capital=capital, days_back=days_back)
+        assets = [a for a in (body.get("assets") or []) if a in FULL_ASSET_MAP][:12]
+        if not assets:
+            return {"error": "No valid assets selected"}
+        return await run_in_threadpool(
+            wf.simulate, assets, capital=capital, days_back=days_back, strategy=strategy)
+    except Exception as exc:
+        return {"error": "Simulation failed: " + str(exc)[:140]}
+
+
 @app.get("/market", response_class=HTMLResponse)
 def market_page(request: Request):
     regime = dashboard.global_regime()
@@ -417,6 +478,11 @@ def guru_page(request: Request):
 def api_regime():
     regime = dashboard.global_regime()
     return {**regime, "score": dashboard.regime_score(regime)}
+
+
+@app.get("/api/sentiment")
+def api_sentiment():
+    return dashboard.market_sentiment()
 
 
 @app.get("/api/sectors")

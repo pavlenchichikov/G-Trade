@@ -40,16 +40,16 @@
     <h3>Market breadth</h3>
     {% set tot = breadth.total or 1 %}
     <div class="breadth">
-      <div class="breadth-seg"><span>BUY</span><b class="t-buy">{{ breadth.BUY }}</b></div>
-      <div class="breadth-seg"><span>SELL</span><b class="t-sell">{{ breadth.SELL }}</b></div>
-      <div class="breadth-seg"><span>WAIT</span><b class="t-wait">{{ breadth.WAIT }}</b></div>
+      <div class="breadth-seg"><span>BUY</span><b class="t-buy" id="breadth-buy">{{ breadth.BUY }}</b></div>
+      <div class="breadth-seg"><span>SELL</span><b class="t-sell" id="breadth-sell">{{ breadth.SELL }}</b></div>
+      <div class="breadth-seg"><span>WAIT</span><b class="t-wait" id="breadth-wait">{{ breadth.WAIT }}</b></div>
     </div>
     <div class="breadth-bar">
       <i class="bb-buy" style="width: {{ (breadth.BUY / tot * 100) | round(1) }}%"></i>
       <i class="bb-sell" style="width: {{ (breadth.SELL / tot * 100) | round(1) }}%"></i>
       <i class="bb-wait" style="width: {{ (breadth.WAIT / tot * 100) | round(1) }}%"></i>
     </div>
-    <span class="cc-sub dim">{{ breadth.actionable }} actionable of {{ breadth.total }}</span>
+    <span class="cc-sub dim" id="breadth-sub">{{ breadth.actionable }} actionable of {{ breadth.total }}</span>
   </div>
 
   <div class="cc-card">
@@ -211,6 +211,26 @@ function fmtAcc(acc) {
          `<span class="acc-n mono">${acc.correct}/${acc.n}</span>`;
 }
 
+function flashEl(el) {
+  if (!el) return;
+  el.classList.remove('flash-text'); void el.offsetWidth; el.classList.add('flash-text');
+}
+function updateBreadth(sigs) {
+  const c = { BUY: 0, SELL: 0, WAIT: 0 };
+  for (const s of sigs) { if (c[s.signal] !== undefined) c[s.signal]++; }
+  const tot = sigs.length || 1;
+  [['breadth-buy', c.BUY], ['breadth-sell', c.SELL], ['breadth-wait', c.WAIT]].forEach(([id, v]) => {
+    const el = document.getElementById(id);
+    if (el && el.textContent != v) { el.textContent = v; flashEl(el); }
+  });
+  const setW = (sel, v) => { const i = document.querySelector(sel); if (i) i.style.width = (v / tot * 100).toFixed(1) + '%'; };
+  setW('.breadth-bar .bb-buy', c.BUY);
+  setW('.breadth-bar .bb-sell', c.SELL);
+  setW('.breadth-bar .bb-wait', c.WAIT);
+  const sub = document.getElementById('breadth-sub');
+  if (sub) sub.textContent = (c.BUY + c.SELL) + ' actionable of ' + sigs.length;
+}
+
 async function refresh() {
   if (document.hidden) return;
   let sigs;
@@ -234,6 +254,7 @@ async function refresh() {
     tr.querySelector('.c-date').textContent = s.date;
     if (changed) { tr.classList.remove('flash'); void tr.offsetWidth; tr.classList.add('flash'); }
   }
+  updateBreadth(sigs);
   lastSync = Date.now();
   apply();
 }

@@ -93,13 +93,219 @@
   }
   function odometers() {
     if (reduce) return;
-    document.querySelectorAll(".stat-value").forEach(function (el) {
+    document.querySelectorAll(".stat-value, .gauge-text b, .breadth-seg b").forEach(function (el) {
       var tn = el.firstChild;
       if (tn && tn.nodeType === 3 && /\d/.test(tn.nodeValue)) countUp(tn);
     });
   }
 
-  function run() { boot(); crosshair(); regimeTint(); odometers(); }
+  // ---- Add a pulsing needle marker to any gauge that lacks one ----
+  // Pages with live gauges (Market) ship their own marker + keep it in sync;
+  // this only decorates the static gauges (Radar cards, stress) for parity.
+  function gaugeMarkers() {
+    document.querySelectorAll("svg.gauge").forEach(function (svg) {
+      var fill = svg.querySelector(".gauge-fill");
+      if (!fill || svg.querySelector(".gauge-marker")) return;
+      var m = (fill.style.strokeDasharray || "").match(/([\d.]+)/);
+      if (!m) return;
+      var f = Math.max(0, Math.min(1, parseFloat(m[1]) / 157));
+      var pos = function (frac) {
+        var a = Math.PI * (1 - frac);
+        return [(60 + 50 * Math.cos(a)).toFixed(2), (65 - 50 * Math.sin(a)).toFixed(2)];
+      };
+      var cls = fill.getAttribute("class") || "";
+      var zone = cls.indexOf("g-bad") !== -1 ? "g-bad" : (cls.indexOf("g-warn") !== -1 ? "g-warn" : "");
+      var dot = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+      dot.setAttribute("r", "3.5");
+      dot.setAttribute("class", "gauge-marker " + zone);
+      var target = pos(f);
+      if (reduce) {
+        dot.setAttribute("cx", target[0]); dot.setAttribute("cy", target[1]);
+        svg.appendChild(dot);
+      } else {
+        var start = pos(0);
+        dot.setAttribute("cx", start[0]); dot.setAttribute("cy", start[1]);
+        svg.appendChild(dot);
+        requestAnimationFrame(function () {
+          requestAnimationFrame(function () {
+            dot.setAttribute("cx", target[0]); dot.setAttribute("cy", target[1]);
+          });
+        });
+      }
+    });
+  }
+
+  // ---- Gauges draw in from zero on load (uses the CSS dasharray transition) ----
+  function gauges() {
+    if (reduce) return;
+    document.querySelectorAll(".gauge-fill").forEach(function (p) {
+      var target = p.style.strokeDasharray;
+      if (!target) return;
+      var total = target.split(/[ ,]+/)[1] || "157";
+      p.style.strokeDasharray = "0 " + total;
+      void p.getBoundingClientRect();  // force a reflow so the reset is committed
+      requestAnimationFrame(function () {
+        requestAnimationFrame(function () { p.style.strokeDasharray = target; });
+      });
+    });
+  }
+
+  // ---- Ticker tape of top movers (duplicated content for a seamless loop) ----
+  function ticker() {
+    var bar = document.getElementById("ticker");
+    var track = document.getElementById("ticker-track");
+    if (!bar || !track) return;
+    fetch("/api/ticker").then(function (r) { return r.json(); }).then(function (d) {
+      var m = (d && d.movers) || [];
+      if (!m.length) { bar.style.display = "none"; return; }
+      var html = m.map(function (x) {
+        var pct = x.chg * 100;
+        var cls = pct >= 0 ? "up" : "down";
+        return '<span class="tk"><b>' + x.asset + '</b>' +
+          '<span class="tk-sig ' + x.signal + '">' + x.signal + '</span>' +
+          '<span class="' + cls + '">' + (pct >= 0 ? "+" : "") + pct.toFixed(1) + '%</span>' +
+          '<span class="tk-sep">|</span></span>';
+      }).join("");
+      track.innerHTML = html + html;
+      track.style.animationDuration = Math.max(30, m.length * 3.2) + "s";
+    }).catch(function () { bar.style.display = "none"; });
+  }
+
+  // ---- Header status LEDs from data freshness ----
+  function leds() {
+    fetch("/api/health").then(function (r) { return r.json(); }).then(function (d) {
+      var dataLed = document.querySelector('.led[data-led="data"]');
+      var modelsLed = document.querySelector('.led[data-led="models"]');
+      if (dataLed) {
+        var age = (d && typeof d.age_days === "number") ? d.age_days : null;
+        dataLed.className = "led " + (age === null ? "off" : (age <= 5 ? "on" : "warn"));
+        if (d && d.data_date) dataLed.title = "Latest data: " + d.data_date;
+      }
+      if (modelsLed) {
+        var n = (d && d.models) || 0;
+        modelsLed.className = "led " + (n > 0 ? "on" : "off");
+        modelsLed.title = n + " trained models";
+      }
+    }).catch(function () {});
+  }
+
+  // ---- Command palette (Cmd/Ctrl-K) ----
+  function palette() {
+    var pal = document.getElementById("palette");
+    var input = document.getElementById("palette-input");
+    var list = document.getElementById("palette-list");
+    if (!pal || !input || !list) return;
+    var items = [], sel = 0;
+    fetch("/api/palette").then(function (r) { return r.json(); }).then(function (d) {
+      (d.pages || []).forEach(function (p) { items.push({ label: p[0], url: p[1], tag: "page" }); });
+      (d.assets || []).forEach(function (a) { items.push({ label: a, url: "/asset/" + a, tag: "asset" }); });
+    }).catch(function () {});
+
+    function open() { pal.hidden = false; input.value = ""; render(""); input.focus(); }
+    function close() { pal.hidden = true; }
+    function render(q) {
+      q = q.toLowerCase();
+      var matches = items.filter(function (it) {
+        return it.label.toLowerCase().indexOf(q) !== -1;
+      }).slice(0, 40);
+      sel = 0;
+      list.innerHTML = matches.map(function (it, i) {
+        return '<li data-url="' + it.url + '" class="' + (i === 0 ? "sel" : "") + '">' +
+          '<span class="pk">' + (it.tag === "asset" ? ">" : "#") + '</span>' +
+          '<span>' + it.label + '</span><span class="tag">' + it.tag + '</span></li>';
+      }).join("") || '<li class="tag" style="padding:12px">no match</li>';
+    }
+    function move(dir) {
+      var lis = list.querySelectorAll("li[data-url]");
+      if (!lis.length) return;
+      if (lis[sel]) lis[sel].classList.remove("sel");
+      sel = (sel + dir + lis.length) % lis.length;
+      lis[sel].classList.add("sel");
+      lis[sel].scrollIntoView({ block: "nearest" });
+    }
+    function go() {
+      var cur = list.querySelector("li.sel[data-url]");
+      if (cur) location.href = cur.getAttribute("data-url");
+    }
+    document.addEventListener("keydown", function (e) {
+      if ((e.metaKey || e.ctrlKey) && (e.key === "k" || e.key === "K")) {
+        e.preventDefault();
+        if (pal.hidden) open(); else close();
+        return;
+      }
+      if (pal.hidden) return;
+      if (e.key === "Escape") close();
+      else if (e.key === "ArrowDown") { e.preventDefault(); move(1); }
+      else if (e.key === "ArrowUp") { e.preventDefault(); move(-1); }
+      else if (e.key === "Enter") { e.preventDefault(); go(); }
+    });
+    input.addEventListener("input", function () { render(input.value); });
+    list.addEventListener("click", function (e) {
+      var li = e.target.closest("li[data-url]");
+      if (li) location.href = li.getAttribute("data-url");
+    });
+    pal.addEventListener("click", function (e) { if (e.target === pal) close(); });
+  }
+
+  // ---- Sparklines draw in from the left with a glowing leading dot ----
+  function sparklines() {
+    if (reduce) return;
+    document.querySelectorAll(".spark polyline").forEach(function (pl) {
+      var len;
+      try { len = pl.getTotalLength(); } catch (e) { return; }
+      if (!len) return;
+      pl.style.strokeDasharray = len;
+      pl.style.strokeDashoffset = len;
+      void pl.getBoundingClientRect();
+      requestAnimationFrame(function () {
+        requestAnimationFrame(function () { pl.style.strokeDashoffset = "0"; });
+      });
+      var pts = (pl.getAttribute("points") || "").trim().split(/\s+/);
+      var last = pts[pts.length - 1];
+      if (last && last.indexOf(",") !== -1 && pl.ownerSVGElement) {
+        var xy = last.split(",");
+        var dot = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+        dot.setAttribute("cx", xy[0]);
+        dot.setAttribute("cy", xy[1]);
+        dot.setAttribute("r", "1.6");
+        dot.setAttribute("class", "spark-dot");
+        dot.style.color = getComputedStyle(pl).stroke;
+        pl.ownerSVGElement.appendChild(dot);
+      }
+    });
+  }
+
+  // ---- Live number flip on radar probability / tail-risk cells ----
+  function liveFlips() {
+    if (reduce || typeof MutationObserver === "undefined") return;
+    document.querySelectorAll('tr[data-asset] .c-prob, tr[data-asset] .c-taleb').forEach(function (cell) {
+      var prev = parseFloat(cell.textContent);
+      new MutationObserver(function () {
+        var now = parseFloat(cell.textContent);
+        if (isNaN(now) || isNaN(prev) || now === prev) { prev = now; return; }
+        cell.classList.remove("flip", "flip-up", "flip-down");
+        void cell.offsetWidth;
+        cell.classList.add("flip", now > prev ? "flip-up" : "flip-down");
+        setTimeout(function () { cell.classList.remove("flip-up", "flip-down"); }, 700);
+        prev = now;
+      }).observe(cell, { childList: true, characterData: true, subtree: true });
+    });
+  }
+
+  // ---- Radar sweep motif, Radar page only ----
+  function radarSweep() {
+    if (reduce || location.pathname !== "/") return;
+    var h1 = document.querySelector("main h1");
+    if (!h1 || h1.querySelector(".radar-sweep")) return;
+    var s = document.createElement("span");
+    s.className = "radar-sweep";
+    h1.appendChild(s);
+  }
+
+  function run() {
+    boot(); crosshair(); regimeTint(); odometers(); gaugeMarkers(); gauges();
+    ticker(); leds(); palette(); sparklines(); liveFlips(); radarSweep();
+  }
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", run);
   } else {

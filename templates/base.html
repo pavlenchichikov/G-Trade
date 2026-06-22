@@ -26,7 +26,7 @@
 
   <header class="topbar">
     <div class="topbar-inner">
-      <a class="brand" href="/">G-TRADE<span class="brand-dot"></span></a>
+      <a class="brand" href="/"><span class="brand-mark">G</span><span class="brand-word">TRADE</span><span class="brand-dot"></span></a>
       <nav>
         <a href="/" {% if request.url.path == '/' %}class="active"{% endif %}>Radar</a>
         <a href="/market" {% if request.url.path == '/market' %}class="active"{% endif %}>Market</a>
@@ -38,18 +38,33 @@
         <a href="/models" {% if request.url.path == '/models' %}class="active"{% endif %}>Models</a>
         <a href="/risk" {% if request.url.path == '/risk' %}class="active"{% endif %}>Risk</a>
         <a href="/portfolio" {% if request.url.path == '/portfolio' %}class="active"{% endif %}>Portfolio</a>
+        <a href="/whatif" {% if request.url.path == '/whatif' %}class="active"{% endif %}>What-If</a>
       </nav>
       <div class="topbar-right">
+        <span class="leds" id="leds" aria-hidden="true">
+          <span class="led" data-led="data"><i></i>DATA</span>
+          <span class="led" data-led="models"><i></i>MODELS</span>
+          <span class="led on" data-led="live"><i></i>LIVE</span>
+        </span>
         <span class="live"><span class="live-dot"></span>{% block topright %}terminal{% endblock %}</span>
       </div>
     </div>
   </header>
+  <div class="ticker" id="ticker" aria-hidden="true"><div class="ticker-track" id="ticker-track"></div></div>
   <main>
     {% block content %}{% endblock %}
   </main>
   <footer>
     <span>G-Trade | signals are not investment advice</span>
   </footer>
+  <div id="palette" class="palette" hidden>
+    <div class="palette-box">
+      <input id="palette-input" class="palette-input mono" type="text"
+             placeholder="Jump to asset or page..." autocomplete="off" spellcheck="false">
+      <ul id="palette-list" class="palette-list"></ul>
+      <div class="palette-hint mono">enter to open<span>esc to close</span></div>
+    </div>
+  </div>
   <script src="/static/js/fx.js"></script>
 </body>
 </html>

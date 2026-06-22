@@ -453,3 +453,54 @@ def portfolio_manager():
         return pm
     except Exception:
         return None
+
+
+@ttl_cache(180)
+def top_movers(n=24):
+    """Largest absolute 1-bar movers among assets that have a live signal, for
+    the ticker tape: [{asset, signal, chg}]. Cached 3 min (reads recent prices
+    per asset, read-only)."""
+    try:
+        from core import track_record
+    except Exception:
+        return []
+    out = []
+    for s in track_record.latest_signals():
+        try:
+            ps = track_record.price_series(s["asset"], days=4)
+            if len(ps) >= 2 and ps[-2]["close"]:
+                chg = (ps[-1]["close"] - ps[-2]["close"]) / ps[-2]["close"]
+                out.append({"asset": s["asset"], "signal": s.get("signal", "WAIT"),
+                            "chg": round(chg, 4)})
+        except Exception:
+            continue
+    out.sort(key=lambda x: abs(x["chg"]), reverse=True)
+    return out[:n]
+
+
+@ttl_cache(120)
+def health():
+    """Lightweight data-freshness snapshot for the header status LEDs:
+    {data_date, age_days, models, live}. Cached 2 min."""
+    import glob
+    import os
+    from datetime import datetime
+    info = {"data_date": None, "age_days": None, "models": 0, "live": True}
+    try:
+        from core import track_record
+        dates = [s.get("date") for s in track_record.latest_signals() if s.get("date")]
+        if dates:
+            info["data_date"] = max(dates)
+            try:
+                d = datetime.strptime(info["data_date"][:10], "%Y-%m-%d")
+                info["age_days"] = (datetime.utcnow() - d).days
+            except Exception:
+                pass
+    except Exception:
+        pass
+    try:
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        info["models"] = len(glob.glob(os.path.join(root, "models", "*_cb.cbm")))
+    except Exception:
+        pass
+    return info
