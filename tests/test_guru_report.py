@@ -25,7 +25,7 @@ def test_resolve_fundamentals_backup_fallback_non_moex(monkeypatch):
 
 
 def test_resolve_fundamentals_moex_backup():
-    fund = gr.resolve_fundamentals("SBER", "SBER", {})  # smartlab empty -> MOEX backup branch
+    fund = gr.resolve_fundamentals("SBER", "SBER", {})  # smartlab empty, MOEX backup branch
     assert fund["_source"] == "backup"
     assert fund["pe"] == 4.2  # GLOBAL_BACKUP['SBER']['pe']
 

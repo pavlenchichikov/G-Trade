@@ -70,7 +70,7 @@ class TestMacroFeatures:
         return create_engine(f"sqlite:///{tmp_path / 'macro_test.db'}")
 
     def test_missing_tables_fill_zero(self, tmp_path):
-        """No tnx/vix/dxy tables -> all macro columns present and 0.0."""
+        """No tnx/vix/dxy tables: all macro columns present and 0.0."""
         eng = self._engine(tmp_path)
         df = pd.DataFrame({"Date": pd.date_range("2024-01-01", periods=5),
                            "close": [1, 2, 3, 4, 5]})
@@ -88,7 +88,7 @@ class TestMacroFeatures:
                       "close": [13.0, 20.0]}).to_sql("vix", eng, index=False)
         pd.DataFrame({"Date": ["2024-01-01", "2024-01-10"],
                       "close": [100.0, 101.0]}).to_sql("dxy", eng, index=False)
-        # asset bar on 2024-01-05 is between the two dates -> takes the 01-01 value
+        # asset bar on 2024-01-05 is between the two dates, so it takes the 01-01 value
         df = pd.DataFrame({"Date": pd.to_datetime(["2024-01-05", "2024-01-11"]),
                            "close": [10.0, 11.0]})
         out = add_macro_features(df, eng).set_index("Date")

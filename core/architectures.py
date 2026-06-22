@@ -127,7 +127,7 @@ def build_lstm_multitask(input_shape, n_train_samples=500,
 
     Capacity (units1/units2/head_dim) and regularization (recurrent_dropout,
     l2_reg) are caller-tunable so the net can be right-sized to an asset's data.
-    The defaults reproduce the original flat 192->96 unit network exactly.
+    The defaults reproduce the original flat 192/96 unit network exactly.
     """
     reg = tf.keras.regularizers.l2(l2_reg) if l2_reg else None
     inputs = Input(shape=input_shape)

@@ -342,7 +342,7 @@ def test_api_risk_halt_and_resume(client, monkeypatch, tmp_path):
 
 
 def test_api_guru_recalculate_no_fundamentals_na(client, monkeypatch):
-    """No real fundamentals -> honest N/A, and nothing enters the track record."""
+    """No real fundamentals: honest N/A, and nothing enters the track record."""
     import guru_report
     import guru_tracker
     monkeypatch.setattr(guru_report, "fetch_smartlab_data", lambda: {})
@@ -361,7 +361,7 @@ def test_api_guru_recalculate_no_fundamentals_na(client, monkeypatch):
 
 
 def test_api_guru_recalculate_with_fundamentals_logs(client, monkeypatch):
-    """Real fundamentals -> a value verdict that IS logged."""
+    """Real fundamentals: a value verdict that IS logged."""
     import core.guru as cg
     import guru_report
     import guru_tracker
@@ -414,7 +414,7 @@ def test_models_page(client):
 
 
 def test_portfolio_page_empty(client, monkeypatch, tmp_path):
-    """No positions -> page renders with empty analytics (pm unavailable too)."""
+    """No positions: page renders with empty analytics (pm unavailable too)."""
     import core.dashboard as dash
     import risk_manager
     monkeypatch.setattr(risk_manager, "RISK_STATE_PATH", str(tmp_path / "risk_state.json"))
@@ -427,7 +427,7 @@ def test_portfolio_page_empty(client, monkeypatch, tmp_path):
 
 
 def test_portfolio_analytics_with_positions(client, monkeypatch, tmp_path):
-    """Positions + a stub manager -> holdings, sector heat, diversification,
+    """Positions + a stub manager: holdings, sector heat, diversification,
     and correlated-open warnings are all surfaced."""
     import json
 

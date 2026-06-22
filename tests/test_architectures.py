@@ -18,12 +18,12 @@ INPUT_SHAPE = (20, 8)  # 20 time steps, 8 features
 
 class TestAdaptiveSizing:
     def test_adaptive_units_clamps(self):
-        assert adaptive_units(100, lo=32, hi=128, divisor=16) == 32   # 6 -> floor
+        assert adaptive_units(100, lo=32, hi=128, divisor=16) == 32   # 6, clamped up to the floor
         assert adaptive_units(1100, lo=32, hi=128, divisor=16) == 68  # 1100//16
         assert adaptive_units(99999, lo=32, hi=128, divisor=16) == 128  # ceil
 
     def test_lstm_defaults_reproduce_original(self):
-        """Default args must keep the original 192->96 param count (back-compat)."""
+        """Default args must keep the original 192/96 param count (back-compat)."""
         m = build_lstm_multitask(INPUT_SHAPE)
         # 192 units layer 1, 96 layer 2 is the historical network
         assert m.count_params() > 200_000

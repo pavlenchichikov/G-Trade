@@ -390,9 +390,9 @@ def news_digest(lang="all", category="all", limit=40):
 def taleb_regime(value, soft_cap, hard_cap):
     """Tail-risk band for a Taleb index value, mirroring risk_manager's gates.
 
-    normal   -> below the soft cap (full size)
-    elevated -> above the soft cap (risk_manager shrinks position size)
-    extreme  -> above the hard cap (risk_manager blocks new BUYs)
+    normal:   below the soft cap (full size)
+    elevated: above the soft cap (risk_manager shrinks position size)
+    extreme:  above the hard cap (risk_manager blocks new BUYs)
     """
     if value is None:
         return "na"

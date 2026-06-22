@@ -108,7 +108,7 @@ _print_lock = threading.Lock()
 
 # CatBoost device. CatBoost bundles its own CUDA and runs on native Windows
 # (unlike TF, whose Windows wheel is CPU-only), so this is independent of TF's
-# _HAS_GPU. Default CPU: on the small per-asset datasets here the host<->device
+# _HAS_GPU. Default CPU: on the small per-asset datasets here the host-device
 # transfer overhead can make GPU SLOWER than CPU, so benchmark before keeping it
 # on. Set GTRADE_CB_DEVICE=GPU to enable. Only the heavy champion fit (700 iters)
 # moves to GPU; the tiny helper fits (adversarial validation, feature selection)
@@ -118,9 +118,9 @@ _CB_TASK_TYPE = "GPU" if (os.getenv("GTRADE_CB_DEVICE") or "").strip().upper() =
 _cb_gpu_lock = threading.Semaphore(_env_int("GTRADE_CB_GPU_SLOTS", 1))
 
 # Data-adaptive net right-sizing (see docs/.../adaptive-net-rightsizing-design.md).
-# OFF by default -> the builders use their original flat 192/128/64 sizes, exactly
-# reproducing the current models. ON -> nets are sized once per asset to its data
-# volume (less overfit on small assets, fewer params -> faster). Warm-start reuses
+# OFF by default: the builders use their original flat 192/128/64 sizes, exactly
+# reproducing the current models. ON: nets are sized once per asset to its data
+# volume (less overfit on small assets, fewer params so faster). Warm-start reuses
 # the previous fold's weights (shapes are constant per asset); it defaults to
 # following the adaptive flag but can be toggled on its own.
 _ADAPTIVE_NETS = (os.getenv("GTRADE_ADAPTIVE_NETS") or "").strip() in ("1", "true", "True")
@@ -492,7 +492,7 @@ def _train_one_asset(asset, candidate_features, prev_registry_entry):
 
         # Right-size the nets to this asset's data ONCE (from the largest fold),
         # so the architecture is constant across folds and warm-start can reuse
-        # weights. Flag off -> empty kwargs -> builders keep their flat defaults.
+        # weights. Flag off means empty kwargs, so builders keep their flat defaults.
         _max_seq = max((len(p['X_seq_train']) for p in precomputed), default=0)
         if _ADAPTIVE_NETS and _max_seq > 0:
             _u1 = adaptive_units(_max_seq, lo=32, hi=128, divisor=16)
@@ -957,7 +957,7 @@ def train_system():
             print("\n  RETRAIN FROZEN: every asset already has a saved scaler - nothing to do.\n")
             return
     # Subset filter for A/B validation: GTRADE_ASSETS=AAPL,SP500,BTC trains only
-    # those (comma-separated keys, case-insensitive). Empty -> all.
+    # those (comma-separated keys, case-insensitive). Empty means all.
     _subset = [a.strip().upper() for a in (os.getenv("GTRADE_ASSETS") or "").split(",") if a.strip()]
     if _subset:
         asset_list = [a for a in asset_list if a.upper() in _subset]

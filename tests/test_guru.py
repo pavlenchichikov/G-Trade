@@ -147,7 +147,7 @@ class TestGetGuruAnalysis:
 
     def test_priced_but_no_fundamentals_is_technical(self):
         """yfinance returns a priced .info for forex/crypto too - with no real
-        fundamentals it must count as technical (-> N/A in the UI)."""
+        fundamentals it must count as technical (shows N/A in the UI)."""
         fund = {'price': 1.14, 'pe': 0, 'roe': 0, 'eps': 0, 'book_value': 0,
                 'sector': '', '_source': 'yfinance_live'}
         res = get_guru_analysis(fund, None)

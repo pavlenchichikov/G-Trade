@@ -13,56 +13,23 @@ import numpy as np
 import pandas as pd
 from sqlalchemy import create_engine
 
+from config import SECTOR_MAP  # canonical asset-to-sector map (single source)
+
 logger = logging.getLogger(__name__)
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-# -- Sector definitions --------------------------------------------------------
-SECTOR_MAP: Dict[str, List[str]] = {
-    "CRYPTO":      ["BTC", "ETH", "SOL", "XRP", "TON", "DOGE", "BNB",
-                    "ADA", "AVAX", "DOT", "LINK", "SHIB", "ATOM", "UNI", "NEAR"],
-    "US_TECH":     ["NVDA", "TSLA", "AAPL", "MSFT", "GOOGL", "AMZN",
-                    "META", "AMD", "PLTR", "COIN", "MSTR"],
-    "US_HEALTH":   ["JNJ", "UNH", "PFE", "LLY", "ABBV", "MRK"],
-    "US_FINANCE":  ["JPM", "BAC", "GS", "V", "MA", "WFC"],
-    "US_CONSUMER": ["WMT", "KO", "PEP", "MCD", "NKE", "DIS", "NFLX", "SBUX"],
-    "US_INDUSTRY": ["BA", "CAT", "XOM", "CVX", "COP", "INTC", "QCOM", "AVGO",
-                    "MU", "CRM", "ORCL", "ADBE", "UBER", "PYPL"],
-    "COMMODITIES": ["GOLD", "SILVER", "OIL", "GAS"],
-    "INDICES":     ["SP500", "NASDAQ", "DOW",
-                    "DAX", "CAC40", "ESTOXX50", "FTSE100", "IBEX35", "FTSEMIB", "AEX", "SMI"],
-    "MACRO":       ["VIX", "DXY", "TNX"],
-    "RUS":         ["IMOEX", "SBER", "GAZP", "LKOH", "ROSN", "NVTK",
-                    "TATN", "SNGS", "PLZL", "SIBN", "MGNT",
-                    "TCSG", "VTBR", "BSPB", "MOEX_EX", "CBOM",
-                    "YNDX", "OZON", "VKCO", "POSI", "MTSS", "RTKM",
-                    "HHRU", "SOFL", "ASTR", "WUSH",
-                    "CHMF", "NLMK", "MAGN", "RUAL", "ALRS", "TRMK", "MTLR", "RASP",
-                    "IRAO", "HYDR", "FLOT", "AFLT", "PIKK",
-                    "FEES", "UPRO", "MSNG", "NMTP",
-                    "PHOR", "SGZH", "FIVE", "FIXP", "LENT", "MVID",
-                    "SMLT", "LSRG"],
-    "FOREX":       ["EURUSD", "GBPUSD", "USDJPY", "USDCHF", "AUDUSD", "USDCAD", "NZDUSD", "USDRUB",
-                    "EURGBP", "EURJPY", "EURCHF", "EURAUD", "EURCAD", "EURNZD",
-                    "GBPJPY", "GBPAUD", "GBPCAD", "GBPCHF", "GBPNZD",
-                    "AUDCAD", "AUDCHF", "AUDJPY", "AUDNZD", "CADJPY", "CHFJPY", "NZDJPY",
-                    "USDTRY", "USDMXN", "USDZAR", "USDSGD", "USDNOK", "USDSEK", "USDPLN", "USDCNH"],
-    # Regional bucket (like RUS): the EU stocks. EU indices go to INDICES above.
-    "EU":          ["ASML", "LVMH", "SAP", "NESTLE", "NOVO", "AZN", "SHELL", "TOTAL",
-                    "SIEMENS", "AIRBUS", "LOREAL", "ALLIANZ", "HERMES", "SCHNEIDER",
-                    "SANTANDER", "BNP", "ENEL", "IBERDROLA"],
-}
-
-# Maximum fraction of portfolio per sector
+# Maximum fraction of portfolio per sector (keys must match config.SECTOR_MAP).
+# Sectors without an entry default to 0.50 in check_sector_limit.
 SECTOR_LIMITS: Dict[str, float] = {
-    "CRYPTO":      0.35,
-    "US_TECH":     0.40,
-    "COMMODITIES": 0.25,
-    "INDICES":     0.30,
-    "MACRO":       0.15,
-    "RUS":         0.35,
-    "EU":          0.30,
-    "FOREX":       0.30,
+    "Crypto":      0.35,
+    "US Tech":     0.40,
+    "Commodities": 0.25,
+    "Indices":     0.30,
+    "Macro":       0.15,
+    "Russia":      0.35,
+    "Europe":      0.30,
+    "Forex":       0.30,
     "OTHER":       0.20,
 }
 

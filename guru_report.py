@@ -300,11 +300,11 @@ def fetch_smartlab_data():
 
 
 def resolve_fundamentals(name, symbol, smartlab):
-    """Resolve one asset's fundamentals dict: smartlab -> yfinance -> backup -> None.
+    """Resolve one asset's fundamentals dict: smartlab, then yfinance, then backup, else None.
 
     `name` is the G-Trade asset code (used for the MOEX_ASSETS/GLOBAL_BACKUP
     lookups, via the same ticker_map remap used elsewhere in this module);
-    `symbol` is the actual fetch ticker (FULL_ASSET_MAP value, e.g. BTC ->
+    `symbol` is the actual fetch ticker (FULL_ASSET_MAP value, e.g. BTC becomes
     BTC-USD). Shared by main() and webapp.py's live recalculate endpoint so
     both use the exact same fundamentals resolution.
     """

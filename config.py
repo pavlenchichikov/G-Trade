@@ -76,7 +76,7 @@ FULL_ASSET_MAP = {
     'DAX': '^GDAXI', 'CAC40': '^FCHI', 'ESTOXX50': '^STOXX50E', 'FTSE100': '^FTSE',
     'IBEX35': '^IBEX', 'FTSEMIB': 'FTSEMIB.MI', 'AEX': '^AEX', 'SMI': '^SSMI',
 
-    # EU STOCKS - top European large caps (key -> native EU listing on Yahoo)
+    # EU STOCKS - top European large caps (key is the native EU listing on Yahoo)
     'ASML': 'ASML.AS', 'LVMH': 'MC.PA', 'SAP': 'SAP.DE', 'NESTLE': 'NESN.SW',
     'NOVO': 'NOVO-B.CO', 'AZN': 'AZN.L', 'SHELL': 'SHEL.L', 'TOTAL': 'TTE.PA',
     'SIEMENS': 'SIE.DE', 'AIRBUS': 'AIR.PA', 'LOREAL': 'OR.PA', 'ALLIANZ': 'ALV.DE',
@@ -203,7 +203,7 @@ RADAR_GROUPS = {
     "FOREX":           _merge_types("FOREX MAJORS", "FOREX CROSSES", "FOREX EXOTIC"),
 }
 
-# RADAR_GROUPS key -> webapp.py chip-cat-* CSS suffix (style.css). Anything not
+# RADAR_GROUPS key maps to a webapp.py chip-cat-* CSS suffix (style.css). Anything not
 # listed here (US sectors, indices, forex) falls back to "us" in radar_category().
 _CATEGORY_CSS = {"CRYPTO": "crypto", "MOEX": "ru", "COMMODITIES": "commodity", "EUROPE": "eu"}
 
@@ -214,6 +214,29 @@ def radar_category(asset: str) -> str:
         if asset in members:
             return _CATEGORY_CSS.get(group, "us")
     return "us"
+
+
+# --- 3c. CANONICAL SECTOR MAP ---
+# Single source of coarse asset-to-sector membership, DERIVED from ASSET_TYPES so
+# adding an asset to its ASSET_TYPES category flows everywhere automatically.
+# Consumed by portfolio.py (exposure limits) and sector_rotation.py (rotation),
+# replacing the per-module copies they used to keep. Names are display-friendly.
+SECTOR_MAP = {
+    "Crypto":        ASSET_TYPES["CRYPTO"],
+    "US Tech":       ASSET_TYPES["US TECH"],
+    "US Health":     ASSET_TYPES["US HEALTHCARE"],
+    "US Finance":    ASSET_TYPES["US FINANCE"],
+    "US Consumer":   ASSET_TYPES["US CONSUMER"],
+    "US Industrial": _merge_types("US INDUSTRIAL", "US SEMI", "US SOFTWARE"),
+    "Indices":       ["SP500", "NASDAQ", "DOW"] + ASSET_TYPES["EU INDICES"],
+    "Macro":         ["VIX", "DXY", "TNX"],
+    "Commodities":   ASSET_TYPES["COMMODITIES"],
+    "Europe":        ASSET_TYPES["EU STOCKS"],
+    "Russia":        ["IMOEX"] + _merge_types(
+        "RUS BLUE CHIPS", "RUS FINANCE", "RUS TECH", "RUS METALS",
+        "RUS INFRA", "RUS CONSUMER", "RUS PROPERTY"),
+    "Forex":         _merge_types("FOREX MAJORS", "FOREX CROSSES", "FOREX EXOTIC"),
+}
 
 
 # --- 4. ENVIRONMENT VALIDATION ---

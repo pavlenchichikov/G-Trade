@@ -9,43 +9,12 @@ import pandas as pd
 import numpy as np
 from sqlalchemy import create_engine, inspect
 
+from config import SECTOR_MAP as SECTORS  # canonical asset-to-sector map (single source)
+
 warnings.filterwarnings("ignore")
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(BASE_DIR, "market.db")
-
-SECTORS = {
-    "Crypto": ["BTC", "ETH", "SOL", "XRP", "DOGE", "BNB", "TON",
-               "ADA", "AVAX", "DOT", "LINK", "SHIB", "ATOM", "UNI", "NEAR"],
-    "US Tech": ["NVDA", "TSLA", "AAPL", "MSFT", "GOOGL", "AMZN", "META", "AMD", "PLTR", "COIN", "MSTR"],
-    "US Healthcare": ["JNJ", "UNH", "PFE", "LLY", "ABBV", "MRK"],
-    "US Finance": ["JPM", "BAC", "GS", "V", "MA", "WFC"],
-    "US Consumer": ["WMT", "KO", "PEP", "MCD", "NKE", "DIS", "NFLX", "SBUX"],
-    "US Industrial": ["BA", "CAT", "XOM", "CVX", "COP", "INTC", "QCOM", "AVGO", "MU",
-                      "CRM", "ORCL", "ADBE", "UBER", "PYPL"],
-    "Indices": ["SP500", "NASDAQ", "DOW",
-                "DAX", "CAC40", "ESTOXX50", "FTSE100", "IBEX35", "FTSEMIB", "AEX", "SMI"],
-    "Europe": ["ASML", "LVMH", "SAP", "NESTLE", "NOVO", "AZN", "SHELL", "TOTAL",
-               "SIEMENS", "AIRBUS", "LOREAL", "ALLIANZ", "HERMES", "SCHNEIDER",
-               "SANTANDER", "BNP", "ENEL", "IBERDROLA"],
-    "Commodities": ["GOLD", "SILVER", "OIL", "GAS"],
-    "Macro": ["VIX", "DXY", "TNX"],
-    "MOEX": [
-        "IMOEX", "SBER", "GAZP", "LKOH", "ROSN", "NVTK", "TATN", "SNGS", "PLZL", "SIBN", "MGNT",
-        "TCSG", "VTBR", "BSPB", "MOEX_EX", "CBOM",
-        "YNDX", "OZON", "VKCO", "POSI", "MTSS", "RTKM", "HHRU", "SOFL", "ASTR", "WUSH",
-        "CHMF", "NLMK", "MAGN", "RUAL", "ALRS", "TRMK", "MTLR", "RASP",
-        "IRAO", "HYDR", "FLOT", "AFLT", "PIKK", "FEES", "UPRO", "MSNG", "NMTP",
-        "PHOR", "SGZH", "FIVE", "FIXP", "LENT", "MVID", "SMLT", "LSRG",
-    ],
-    "Forex": [
-        "EURUSD", "GBPUSD", "USDJPY", "USDCHF", "AUDUSD", "USDCAD", "NZDUSD", "USDRUB",
-        "EURGBP", "EURJPY", "EURCHF", "EURAUD", "EURCAD", "EURNZD",
-        "GBPJPY", "GBPAUD", "GBPCAD", "GBPCHF", "GBPNZD",
-        "AUDCAD", "AUDCHF", "AUDJPY", "AUDNZD", "CADJPY", "CHFJPY", "NZDJPY",
-        "USDTRY", "USDMXN", "USDZAR", "USDSGD", "USDNOK", "USDSEK", "USDPLN", "USDCNH",
-    ],
-}
 
 
 # ---------------------------------------------------------------------------
