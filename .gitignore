@@ -45,6 +45,10 @@ reports/
 # Scheduler state
 scheduler_state.json
 
+# Self-maintaining loop runtime artifacts (generated at deploy time, not code)
+loop_state.json
+_loop.lock
+
 # Internal docs (outdated)
 PLAN.md
 
@@ -59,6 +63,12 @@ Thumbs.db
 
 # Local validation / scratch scripts (not part of the pipeline)
 ab_validate.py
+train_chunked.py
+_chunk_progress.txt
+_chunk_quality.json
 
 # batfiles
 train_adaptive.bat
+
+# subagent-driven scratch
+.superpowers/

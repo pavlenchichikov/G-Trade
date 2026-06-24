@@ -522,3 +522,28 @@ def test_api_whatif_top_mode(client, monkeypatch):
 def test_api_whatif_no_valid_assets(client):
     r = client.post("/api/whatif", json={"mode": "assets", "assets": ["NOPE"], "capital": 1000})
     assert r.status_code == 200 and "error" in r.json()
+
+
+def test_loop_page_and_api(client, monkeypatch, tmp_path):
+    import json
+    import webapp
+    p = tmp_path / "loop_state.json"
+    p.write_text(json.dumps({
+        "last_run": "2026-06-24T10:00:00", "steps": {"predict": {"status": "ok", "msg": ""}},
+        "assets": [{"asset": "AAPL", "status": "propose", "reasons": ["acc 0.40 below floor 0.50"],
+                    "acc": 0.40, "baseline_acc": 0.62, "age_days": 5, "stale": False,
+                    "miss_streak": 3, "acc_trend": -0.2}],
+        "proposed": ["AAPL"], "approved": [], "history": []}))
+    monkeypatch.setattr(webapp, "LOOP_STATE_PATH", str(p))
+
+    r = client.get("/loop")
+    assert r.status_code == 200 and "AAPL" in r.text
+
+    d = client.get("/api/loop").json()
+    assert d["proposed"] == ["AAPL"]
+
+    a = client.post("/api/loop/approve", json={"assets": ["AAPL"]})
+    assert a.status_code == 200 and a.json()["approved"] == ["AAPL"]
+
+    dz = client.post("/api/loop/dismiss", json={"asset": "AAPL"})
+    assert dz.status_code == 200 and dz.json()["proposed"] == []

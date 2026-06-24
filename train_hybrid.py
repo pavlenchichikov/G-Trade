@@ -127,6 +127,14 @@ _ADAPTIVE_NETS = (os.getenv("GTRADE_ADAPTIVE_NETS") or "").strip() in ("1", "tru
 _warmstart_env = (os.getenv("GTRADE_NET_WARMSTART") or "").strip()
 _NET_WARMSTART = (_warmstart_env in ("1", "true", "True")) if _warmstart_env else _ADAPTIVE_NETS
 
+# Capacity / epoch knobs (defaults reproduce the historical config exactly, so
+# behaviour is unchanged unless these are set). Lowering GTRADE_NET_CAP shrinks
+# the LSTM on data-rich assets, the main speed/RAM lever for the heavy tickers.
+_NET_CAP = _env_int("GTRADE_NET_CAP", 128)
+_EP_LSTM = _env_int("GTRADE_EPOCHS_LSTM", 160)
+_EP_TF = _env_int("GTRADE_EPOCHS_TF", 100)
+_EP_TCN = _env_int("GTRADE_EPOCHS_TCN", 80)
+
 
 def _ws_load(model, key, store):
     """Warm-start: load the previous fold's weights when shapes match (best effort)."""
@@ -495,7 +503,7 @@ def _train_one_asset(asset, candidate_features, prev_registry_entry):
         # weights. Flag off means empty kwargs, so builders keep their flat defaults.
         _max_seq = max((len(p['X_seq_train']) for p in precomputed), default=0)
         if _ADAPTIVE_NETS and _max_seq > 0:
-            _u1 = adaptive_units(_max_seq, lo=32, hi=128, divisor=16)
+            _u1 = adaptive_units(_max_seq, lo=32, hi=_NET_CAP, divisor=16)
             # No recurrent_dropout: it forces Keras off the fused LSTM kernel and
             # is ~1.4x slower on CPU. L2 + the data-adaptive (smaller) size carry
             # the regularization instead.
@@ -602,9 +610,9 @@ def _train_one_asset(asset, candidate_features, prev_registry_entry):
                     # 'val_direction_loss' and raises without an explicit mode.
                     es_lstm = EarlyStopping(monitor='val_direction_loss', patience=10,
                                             mode='min', restore_best_weights=True)
-                    _lstm_cb = EpochStateCallback(asset, k, 160,
+                    _lstm_cb = EpochStateCallback(asset, k, _EP_LSTM,
                                                  label="LSTM", val_metric="val_direction_loss")
-                    lstm_mt.fit(train_ds, validation_data=val_ds, epochs=160,
+                    lstm_mt.fit(train_ds, validation_data=val_ds, epochs=_EP_LSTM,
                                 callbacks=[es_lstm, _lstm_cb], verbose=0)
                     _ws_save(lstm_mt, 'lstm', _warm)
                     lstm_test_prob = lstm_mt.predict(
@@ -629,9 +637,9 @@ def _train_one_asset(asset, candidate_features, prev_registry_entry):
                     ).batch(BATCH).prefetch(tf.data.AUTOTUNE)
                     es_tf = EarlyStopping(monitor='val_loss', patience=8,
                                           mode='min', restore_best_weights=True)
-                    _tf_cb = EpochStateCallback(asset, k, 100,
+                    _tf_cb = EpochStateCallback(asset, k, _EP_TF,
                                                label="TF", val_metric="val_loss")
-                    tf_enc.fit(train_ds_tf, validation_data=val_ds_tf, epochs=100,
+                    tf_enc.fit(train_ds_tf, validation_data=val_ds_tf, epochs=_EP_TF,
                                callbacks=[es_tf, _tf_cb], verbose=0)
                     _ws_save(tf_enc, 'tf', _warm)
                     tf_test_prob = tf_enc.predict(
@@ -652,9 +660,9 @@ def _train_one_asset(asset, candidate_features, prev_registry_entry):
                     ).batch(BATCH).prefetch(tf.data.AUTOTUNE)
                     es_tcn = EarlyStopping(monitor='val_loss', patience=7,
                                            mode='min', restore_best_weights=True)
-                    _tcn_cb = EpochStateCallback(asset, k, 80,
+                    _tcn_cb = EpochStateCallback(asset, k, _EP_TCN,
                                                  label="TCN", val_metric="val_loss")
-                    tcn_model.fit(train_ds_tcn, validation_data=val_ds_tcn, epochs=80,
+                    tcn_model.fit(train_ds_tcn, validation_data=val_ds_tcn, epochs=_EP_TCN,
                                   callbacks=[es_tcn, _tcn_cb], verbose=0)
                     _ws_save(tcn_model, 'tcn', _warm)
                     tcn_test_prob = tcn_model.predict(

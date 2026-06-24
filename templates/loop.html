@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block title %}Loop - G-Trade{% endblock %}
+{% block content %}
+
+<h1 class="fade">Self-Maintaining Loop</h1>
+<p class="lead fade">Daily cycle status and drift proposals. Approve a retrain to
+  challenge the current champion; it is replaced only if the new model beats it.</p>
+
+<div class="statgrid">
+  <div class="stat fade"><span class="stat-label">Last run</span>
+    <span class="stat-value mono" style="font-size:18px">{{ last_run or "never" }}</span></div>
+  <div class="stat fade"><span class="stat-label">Proposed retrains</span>
+    <span class="stat-value mono">{{ proposed | length }}</span></div>
+  <div class="stat fade"><span class="stat-label">Approved</span>
+    <span class="stat-value mono">{{ approved | length }}</span></div>
+</div>
+
+<section class="panel fade">
+  <div class="panel-head"><h2>Pipeline steps</h2></div>
+  <table class="grid"><tbody>
+    {% for name, s in steps.items() %}
+    <tr><td>{{ name }}</td>
+      <td class="{{ 't-buy' if s.status == 'ok' else 't-sell' }}">{{ s.status }}</td>
+      <td class="dim">{{ s.msg }}</td></tr>
+    {% else %}<tr><td class="empty">No cycle has run yet.</td></tr>{% endfor %}
+  </tbody></table>
+</section>
+
+<section class="panel fade">
+  <div class="panel-head"><h2>Drift proposals</h2></div>
+  <p class="empty" id="loop-msg" hidden></p>
+  <table class="grid" id="loop-table">
+    <thead><tr><th>Asset</th><th class="num">Acc</th><th class="num">Baseline</th>
+      <th class="num">Age</th><th class="num">Miss streak</th><th>Reasons</th><th></th></tr></thead>
+    <tbody>
+      {% for a in assets if a.status == 'propose' %}
+      <tr data-asset="{{ a.asset }}">
+        <td><a class="asset-link" href="/asset/{{ a.asset }}">{{ a.asset }}</a></td>
+        <td class="num mono">{% if a.acc is not none %}{{ "%.2f"|format(a.acc) }}{% else %}-{% endif %}</td>
+        <td class="num mono">{% if a.baseline_acc is not none %}{{ "%.2f"|format(a.baseline_acc) }}{% else %}-{% endif %}</td>
+        <td class="num mono">{% if a.age_days is not none %}{{ a.age_days }}d{% else %}-{% endif %}</td>
+        <td class="num mono {{ 't-sell' if a.miss_streak >= 3 else '' }}">{{ a.miss_streak }}</td>
+        <td class="dim">{{ a.reasons | join('; ') }}</td>
+        <td>
+          <button class="fbtn loop-approve" data-asset="{{ a.asset }}">Approve</button>
+          <button class="fbtn loop-dismiss" data-asset="{{ a.asset }}">Dismiss</button>
+        </td>
+      </tr>
+      {% else %}<tr><td class="empty" colspan="7">No drift proposals. All models healthy.</td></tr>{% endfor %}
+    </tbody>
+  </table>
+</section>
+
+<script>
+function loopPost(url, body, ok) {
+  fetch(url, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)})
+    .then(function (r) { return r.json(); }).then(ok)
+    .catch(function () {
+      var m = document.getElementById("loop-msg");
+      m.textContent = "Action failed. Try again."; m.hidden = false;
+    });
+}
+document.querySelectorAll(".loop-approve").forEach(function (b) {
+  b.onclick = function () { loopPost("/api/loop/approve", {assets: [b.dataset.asset]}, function () { location.reload(); }); };
+});
+document.querySelectorAll(".loop-dismiss").forEach(function (b) {
+  b.onclick = function () { loopPost("/api/loop/dismiss", {asset: b.dataset.asset}, function () { location.reload(); }); };
+});
+</script>
+
+{% endblock %}

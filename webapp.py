@@ -31,6 +31,8 @@ app = FastAPI(title="G-Trade")
 templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
 app.mount("/static", StaticFiles(directory=os.path.join(BASE_DIR, "static")), name="static")
 
+LOOP_STATE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "loop_state.json")
+
 
 def _load_json(path, default):
     if os.path.exists(path):
@@ -366,6 +368,39 @@ def api_palette():
         ["Risk", "/risk"], ["Portfolio", "/portfolio"], ["What-If", "/whatif"],
     ]
     return {"pages": pages, "assets": sorted(FULL_ASSET_MAP)}
+
+
+@app.get("/loop", response_class=HTMLResponse)
+def loop_page(request: Request):
+    from core import loop_state
+    return templates.TemplateResponse(request, "loop.html", loop_state.load_state(LOOP_STATE_PATH))
+
+
+@app.get("/api/loop")
+def api_loop():
+    from core import loop_state
+    return loop_state.load_state(LOOP_STATE_PATH)
+
+
+@app.post("/api/loop/approve")
+async def api_loop_approve(request: Request):
+    from core import loop_state
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    assets = [str(a).upper() for a in (body.get("assets") or [])]
+    return loop_state.approve(LOOP_STATE_PATH, assets)
+
+
+@app.post("/api/loop/dismiss")
+async def api_loop_dismiss(request: Request):
+    from core import loop_state
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    return loop_state.dismiss(LOOP_STATE_PATH, str(body.get("asset", "")).upper())
 
 
 @app.get("/whatif", response_class=HTMLResponse)
