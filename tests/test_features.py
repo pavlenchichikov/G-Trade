@@ -186,3 +186,76 @@ class TestEngineerFeatures:
         result = engineer_features(df)
         # With only 10 rows, after SMA200 warmup removal, result should be empty
         assert len(result) == 0
+
+
+def test_candidate_lists_base_and_ext():
+    import core.features as F
+    # base: has close/volume, no macro
+    assert "close" in F.CANDIDATE_FEATURES and "volume" in F.CANDIDATE_FEATURES
+    assert not any(c.startswith("macro_") for c in F.CANDIDATE_FEATURES)
+    assert len(F.CANDIDATE_FEATURES) == 24
+    # ext: no close/volume, has macro + new features, keeps sma
+    assert "close" not in F.CANDIDATE_FEATURES_EXT
+    assert "volume" not in F.CANDIDATE_FEATURES_EXT
+    assert "sma_20" in F.CANDIDATE_FEATURES_EXT
+    for c in ("macro_tnx", "ret_1_vn", "lead_sp500_ret", "cal_dow"):
+        assert c in F.CANDIDATE_FEATURES_EXT
+    assert len(F.CANDIDATE_FEATURES_EXT) == 34
+
+
+def test_active_candidate_features_flag(monkeypatch):
+    import core.features as F
+    monkeypatch.delenv("GTRADE_FEATURE_SET", raising=False)
+    assert F.active_candidate_features() == F.CANDIDATE_FEATURES
+    monkeypatch.setenv("GTRADE_FEATURE_SET", "ext")
+    assert F.active_candidate_features() == F.CANDIDATE_FEATURES_EXT
+
+
+def test_feature_version_differs_by_set(monkeypatch):
+    import core.features as F
+    monkeypatch.delenv("GTRADE_FEATURE_SET", raising=False)
+    base_v = F.feature_version()
+    monkeypatch.setenv("GTRADE_FEATURE_SET", "ext")
+    assert F.feature_version() != base_v
+
+
+def test_engineer_features_has_vn_and_calendar(sample_ohlcv):
+    from core.features import engineer_features
+    df = engineer_features(sample_ohlcv)
+    for c in ("ret_1_vn", "ret_5_vn", "cal_dow", "cal_mpos"):
+        assert c in df.columns
+        assert df[c].notna().all()
+    assert df["cal_dow"].between(0.0, 1.0).all()
+    assert df["cal_mpos"].between(0.0, 1.0).all()
+
+
+def test_add_cross_lag_features_asof_and_missing(tmp_path):
+    import pandas as pd
+    from sqlalchemy import create_engine
+    from core.features import add_cross_lag_features
+    eng = create_engine(f"sqlite:///{tmp_path / 'lead.db'}")
+    pd.DataFrame({"Date": ["2024-01-01", "2024-01-10"], "Close": [100.0, 110.0]}).to_sql("sp500", eng, index=False)
+    pd.DataFrame({"Date": ["2024-01-01", "2024-01-10"], "Close": [13.0, 20.0]}).to_sql("vix", eng, index=False)
+    # btc table intentionally missing, so lead_btc_ret must be 0.0
+    df = pd.DataFrame({"Date": pd.to_datetime(["2024-01-05", "2024-01-11"]), "close": [1.0, 2.0]})
+    out = add_cross_lag_features(df, eng)
+    for c in ("lead_sp500_ret", "lead_vix_ret", "lead_btc_ret"):
+        assert c in out.columns and out[c].notna().all()
+    assert (out["lead_btc_ret"] == 0.0).all()
+    # the 2024-01-11 bar sees the 2024-01-10 leader values (the prior known move)
+    assert out.set_index("Date").loc["2024-01-11", "lead_vix_ret"] != 0.0
+
+
+def test_ab_features_compare():
+    import importlib.util
+    import os
+    spec = importlib.util.spec_from_file_location("ab_features", os.path.join(os.path.dirname(os.path.dirname(__file__)), "ab_features.py"))
+    abf = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(abf)
+    base = [{"Asset": "BTC", "Score": 2.0, "LSTM_Acc": 0.50}]
+    ext = [{"Asset": "BTC", "Score": 2.5, "LSTM_Acc": 0.56}]
+    rows = abf.compare(base, ext)
+    r = rows[0]
+    assert r["asset"] == "BTC"
+    assert round(r["score_delta"], 2) == 0.5
+    assert round(r["lstm_delta"], 2) == 0.06

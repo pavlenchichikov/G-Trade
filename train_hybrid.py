@@ -170,7 +170,7 @@ from core.profiles import (
     FOREX,
     get_profile,
 )
-from core.features import engineer_features, add_weekly_features, add_crossasset_features, add_macro_features
+from core.features import engineer_features, add_weekly_features, add_crossasset_features, add_macro_features, add_cross_lag_features, active_candidate_features
 from core.backtesting import (
     adaptive_split_params, make_walk_forward_splits,
     pnl_from_signals, max_drawdown_from_returns, score_strategy,
@@ -409,6 +409,7 @@ def _train_one_asset(asset, candidate_features, prev_registry_entry):
         df = add_weekly_features(df, table, engine)
         df = add_crossasset_features(df, table, engine)
         df = add_macro_features(df, engine)
+        df = add_cross_lag_features(df, engine)
         sp = adaptive_split_params(len(df))
         if sp is None:
             _safe_print(f"  [SKIP] {asset:<12} insufficient rows ({len(df)})")
@@ -1059,13 +1060,7 @@ def train_system():
     completed_assets = 0
     _results_lock = threading.Lock()
 
-    candidate_features = [
-        'close', 'volume', 'vol_z', 'taleb_risk', 'ret_skew', 'var_5',
-        'ret_1', 'ret_5', 'ret_10', 'ret_20', 'trend_strength', 'rsi',
-        'sma_20', 'sma_50', 'macd_hist', 'bb_pos', 'atr', 'vol_ratio',
-        'w_ret', 'w_rsi', 'w_trend',
-        'corr_btc', 'corr_sp500', 'corr_dxy',
-    ]
+    candidate_features = active_candidate_features()
 
     # --- LIVE PROGRESS BAR (direct \r for Tkinter launcher) ---
     t_train = time.time()

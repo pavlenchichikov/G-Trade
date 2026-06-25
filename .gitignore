@@ -63,6 +63,7 @@ Thumbs.db
 
 # Local validation / scratch scripts (not part of the pipeline)
 ab_validate.py
+ab_features.py
 train_chunked.py
 _chunk_progress.txt
 _chunk_quality.json

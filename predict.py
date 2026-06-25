@@ -37,7 +37,7 @@ except ImportError:
     sys.exit("config.py not found!")
 
 from core.logger import get_logger
-from core.features import engineer_features, add_weekly_features, add_crossasset_features, add_macro_features
+from core.features import engineer_features, add_weekly_features, add_crossasset_features, add_macro_features, active_candidate_features
 from core.ensemble import build_stacking_features
 from core.scaling import load_or_fit_scaler
 from core.calibration import load_calibrator, apply_calibrator
@@ -105,9 +105,7 @@ def _predict_asset(name, registry, thresholds):
     if reg_entry and 'features' in reg_entry:
         features = [f for f in reg_entry['features'] if f in df.columns]
     else:
-        features = ["close", "volume", "vol_z", "taleb_risk", "ret_1",
-                    "ret_5", "trend_strength", "rsi", "sma_20", "sma_50"]
-        features = [f for f in features if f in df.columns]
+        features = [f for f in active_candidate_features() if f in df.columns]
 
     if len(features) < 3:
         return None

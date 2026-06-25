@@ -1,6 +1,7 @@
 """OHLCV features: indicators, weekly, and cross-asset."""
 
 import hashlib
+import os
 
 import numpy as np
 import pandas as pd
@@ -108,6 +109,25 @@ def engineer_features(df: pd.DataFrame) -> pd.DataFrame:
 
     # Volume ratio
     df['vol_ratio'] = df['volume'] / (df['volume'].rolling(20).mean() + 1)
+
+    # Volatility-normalized returns (stationary scale across regimes)
+    df['ret_1_vn'] = (df['ret_1'] / (df['ret_1'].rolling(20).std() + 1e-9)).fillna(0.0)
+    df['ret_5_vn'] = (df['ret_5'] / (df['ret_5'].rolling(20).std() + 1e-9)).fillna(0.0)
+
+    # Calendar encodings (weekday, position in month). Prefer a 'date' column;
+    # fall back to a DatetimeIndex when there is no 'date' column (the common
+    # case here, since the index still carries the dates at this point).
+    if 'date' not in df.columns and isinstance(df.index, pd.DatetimeIndex):
+        _idx = pd.to_datetime(df.index)
+        df['cal_dow'] = (_idx.dayofweek / 6.0)
+        df['cal_mpos'] = (_idx.day / _idx.days_in_month)
+    elif 'date' in df.columns:
+        _d = pd.to_datetime(df['date'])
+        df['cal_dow'] = (_d.dt.dayofweek / 6.0).values
+        df['cal_mpos'] = (_d.dt.day / _d.dt.days_in_month).values
+    else:
+        df['cal_dow'] = 0.0
+        df['cal_mpos'] = 0.0
 
     # Target: next bar direction
     df['target'] = (df['close'].shift(-1) > df['close']).astype(int)
@@ -276,17 +296,84 @@ def add_macro_features(df: pd.DataFrame, engine) -> pd.DataFrame:
     return df
 
 
+_CROSS_LAG_FEATURES = ['lead_sp500_ret', 'lead_vix_ret', 'lead_btc_ret']
+
+
+def add_cross_lag_features(df: pd.DataFrame, engine) -> pd.DataFrame:
+    """Merge leader (SP500, VIX, BTC) recent moves as features, aligned with an
+    as-of forward-fill (last value known on or before each bar, so no leakage).
+    A missing leader table leaves its feature at 0.0 to keep a stable shape."""
+    date_col = 'Date' if 'Date' in df.columns else ('date' if 'date' in df.columns else None)
+    if date_col is None:
+        for c in _CROSS_LAG_FEATURES:
+            df[c] = 0.0
+        return df
+    df = df.set_index(date_col)
+    df.index = pd.to_datetime(df.index)
+    df = df.sort_index()
+
+    def _close(table):
+        try:
+            ref = pd.read_sql(f"SELECT Date, Close FROM {table}", engine,
+                              index_col="Date", parse_dates=["Date"])
+            ref.index = pd.to_datetime(ref.index).normalize()
+            ref.columns = [c.lower() for c in ref.columns]
+            ref = ref[~ref.index.duplicated(keep='last')].sort_index()
+            return ref['close']
+        except Exception:
+            return None
+
+    cols = {}
+    sp = _close('sp500')
+    if sp is not None:
+        cols['lead_sp500_ret'] = sp.pct_change(1)
+    vx = _close('vix')
+    if vx is not None:
+        cols['lead_vix_ret'] = vx.diff(1)
+    bt = _close('btc')
+    if bt is not None:
+        cols['lead_btc_ret'] = bt.pct_change(1)
+
+    feats = pd.concat(cols, axis=1).sort_index() if cols else pd.DataFrame()
+    for c in _CROSS_LAG_FEATURES:
+        if not feats.empty and c in feats.columns:
+            df[c] = feats[c].reindex(df.index, method='ffill').fillna(0.0).values
+        else:
+            df[c] = 0.0
+    df = df.reset_index()
+    return df
+
+
 # Feature columns used for training (order matters for model compatibility)
+# Base candidate features = the real training list (single source of truth).
+# Kept in sync with train_hybrid, which imports active_candidate_features().
 CANDIDATE_FEATURES = [
-    'ret_1', 'ret_5', 'ret_10', 'ret_20',
-    'taleb_risk', 'ret_skew', 'var_5', 'vol_z', 'atr',
-    'sma_20', 'sma_50', 'sma_200', 'trend_strength',
-    'rsi', 'macd_hist', 'bb_pos', 'vol_ratio',
-    'w_ret', 'w_rsi', 'w_trend',
-    'corr_btc', 'corr_sp500', 'corr_dxy',
-    'macro_tnx', 'macro_tnx_chg20', 'macro_vix', 'macro_vix_chg5',
-    'macro_dxy_chg20',
+    'close', 'volume', 'vol_z', 'taleb_risk', 'ret_skew', 'var_5',
+    'ret_1', 'ret_5', 'ret_10', 'ret_20', 'trend_strength', 'rsi',
+    'sma_20', 'sma_50', 'macd_hist', 'bb_pos', 'atr', 'vol_ratio',
+    'w_ret', 'w_rsi', 'w_trend', 'corr_btc', 'corr_sp500', 'corr_dxy',
 ]
+
+# Extended experiment set: base minus the raw non-stationary levels close/volume,
+# plus the macro regime features (computed but never wired in before), volatility-
+# normalized returns, cross-asset lead-lag returns, and calendar encodings.
+CANDIDATE_FEATURES_EXT = [
+    'vol_z', 'taleb_risk', 'ret_skew', 'var_5',
+    'ret_1', 'ret_5', 'ret_10', 'ret_20', 'trend_strength', 'rsi',
+    'sma_20', 'sma_50', 'macd_hist', 'bb_pos', 'atr', 'vol_ratio',
+    'w_ret', 'w_rsi', 'w_trend', 'corr_btc', 'corr_sp500', 'corr_dxy',
+    'macro_tnx', 'macro_tnx_chg20', 'macro_vix', 'macro_vix_chg5', 'macro_dxy_chg20',
+    'ret_1_vn', 'ret_5_vn',
+    'lead_sp500_ret', 'lead_vix_ret', 'lead_btc_ret',
+    'cal_dow', 'cal_mpos',
+]
+
+
+def active_candidate_features():
+    """Base list by default, the extended list when GTRADE_FEATURE_SET=ext."""
+    if (os.getenv("GTRADE_FEATURE_SET") or "base").strip().lower() == "ext":
+        return CANDIDATE_FEATURES_EXT
+    return CANDIDATE_FEATURES
 
 
 def feature_version() -> str:
@@ -297,5 +384,5 @@ def feature_version() -> str:
     with the model generation that made it and never blend the live track record
     of an old feature set with a new one.
     """
-    digest = hashlib.sha1(",".join(CANDIDATE_FEATURES).encode()).hexdigest()
+    digest = hashlib.sha1(",".join(active_candidate_features()).encode()).hexdigest()
     return digest[:8]
