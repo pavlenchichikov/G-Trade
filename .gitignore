@@ -49,6 +49,12 @@ scheduler_state.json
 loop_state.json
 _loop.lock
 
+# Runtime config / state (written by the app; seeded from the matching
+# *.example.json on a fresh clone). The .example.json seeds stay tracked.
+watchlist.json
+auto_trader_config.json
+scheduler_config.json
+
 # Internal docs (outdated)
 PLAN.md
 
@@ -70,6 +76,7 @@ _chunk_quality.json
 auto_research.py
 _auto_features.json
 _auto_research_log.json
+_auto_research_state.json
 
 # batfiles
 train_adaptive.bat
