@@ -82,5 +82,4 @@ _auto_research_state.json
 train_adaptive.bat
 auto_research.bat
 
-# subagent-driven scratch
-.superpowers/
+

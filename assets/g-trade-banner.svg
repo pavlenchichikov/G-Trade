@@ -46,7 +46,6 @@
   <rect width="1280" height="340" fill="url(#glowField)"/>
   <rect width="1280" height="340" fill="url(#grid)"/>
 
-  <!-- neural ensemble mesh (CatBoost + LSTM + Transformer + TCN) -->
   <g stroke="#1ee6c4" stroke-opacity="0.16" stroke-width="1">
     <path d="M150 70 L300 50 M150 70 L300 110 M150 70 L300 170 M150 130 L300 50 M150 130 L300 110 M150 130 L300 170 M150 190 L300 110 M150 190 L300 170"/>
     <path d="M300 50 L450 80 M300 110 L450 80 M300 110 L450 150 M300 170 L450 150 M300 50 L450 150 M300 170 L450 80"/>
@@ -57,12 +56,10 @@
     <circle cx="450" cy="80" r="4.5" opacity="0.9"/><circle cx="450" cy="150" r="4.5" opacity="0.8"/>
   </g>
 
-  <!-- rising price area + glowing signal line -->
   <path d="M40 290 C 140 270 200 300 300 252 S 460 212 560 234 S 760 154 880 182 S 1080 112 1240 142 L 1240 320 L 40 320 Z" fill="url(#area)"/>
   <path d="M40 290 C 140 270 200 300 300 252 S 460 212 560 234 S 760 154 880 182 S 1080 112 1240 142"
         fill="none" stroke="url(#line)" stroke-width="3.5" stroke-linecap="round" filter="url(#soft)"/>
 
-  <!-- candlesticks -->
   <g stroke-width="2.4">
     <g stroke="#2dffa6"><line x1="120" y1="248" x2="120" y2="292"/><rect x="113" y="258" width="14" height="27" fill="#2dffa6" rx="1"/></g>
     <g stroke="#ff3b6b"><line x1="260" y1="242" x2="260" y2="280"/><rect x="253" y="250" width="14" height="22" fill="#ff3b6b" rx="1"/></g>
@@ -75,17 +72,14 @@
 
   <rect width="1280" height="340" fill="url(#scan)"/>
 
-  <!-- dark scrim for wordmark legibility -->
   <ellipse cx="700" cy="170" rx="560" ry="150" fill="url(#scrim)"/>
 
-  <!-- micro terminal labels -->
   <g font-family="'JetBrains Mono','Consolas',monospace" font-size="13" letter-spacing="3">
     <circle cx="52" cy="40" r="4" fill="#2dffa6" filter="url(#soft)"/>
     <text x="66" y="45" fill="#7fe9dc" opacity="0.85">SIGNAL ENGINE / LIVE</text>
     <text x="1240" y="45" text-anchor="end" fill="#5f8493" letter-spacing="2">CATBOOST - LSTM - TRANSFORMER - TCN</text>
   </g>
 
-  <!-- wordmark -->
   <g font-family="'Bahnschrift','DIN Condensed','Oswald','Arial Narrow',sans-serif" font-weight="800">
     <text x="640" y="200" text-anchor="middle" font-size="132" letter-spacing="6"
           fill="url(#neon)" filter="url(#hot)">G-TRADE</text>
@@ -93,11 +87,9 @@
           fill="#eafffb">G-TRADE</text>
   </g>
 
-  <!-- tagline -->
   <text x="640" y="246" text-anchor="middle" font-family="'JetBrains Mono','Consolas',monospace"
         font-size="15" letter-spacing="6" fill="#8fd9cf" opacity="0.92">ML TRADING SIGNALS  -  181 ASSETS  -  4-MODEL ENSEMBLE</text>
 
-  <!-- frame + corner ticks -->
   <rect x="10" y="10" width="1260" height="320" fill="none" stroke="#1ee6c4" stroke-opacity="0.18" rx="6"/>
   <g stroke="#2dffa6" stroke-width="2" stroke-opacity="0.8">
     <path d="M10 34 V10 H34" fill="none"/><path d="M1246 10 H1270 V34" fill="none"/>
