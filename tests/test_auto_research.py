@@ -450,3 +450,203 @@ def test_main_applies_bh_across_axes(monkeypatch):
     ar.main()
     # BH was applied across exactly the two axis-winners' p-values
     assert captured["bh_input"] is not None and len(captured["bh_input"]) == 2
+
+
+import os as _os  # noqa: F401  (already imported at module top in most suites; harmless)
+
+_ACTIVE = ["ret_1", "ret_5", "ret_10", "ret_20", "rsi", "atr",
+           "vol_z", "sma_20", "macd_hist", "bb_pos"]   # 10 features
+
+
+def _spec(name="g1", inp="ret_1"):
+    return {"name": name, "op": "lag", "inputs": [inp], "params": {"k": 1}}
+
+
+def test_genome_to_env_empty_is_no_overrides():
+    assert ar.genome_to_env(ar.Genome()) == {}
+
+
+def test_genome_to_env_full():
+    g = ar.Genome(drops=["rsi", "atr"], extra=[_spec("gx")],
+                  label_mode="rel_median", label_window=20)
+    env = ar.genome_to_env(g)
+    assert env["GTRADE_DROP_FEATURES"] == "rsi,atr"
+    assert env["GTRADE_LABEL_MODE"] == "rel_median"
+    assert env["GTRADE_LABEL_WINDOW"] == "20"
+    assert env["GTRADE_EXTRA_FEATURES"] == "gx"
+    assert _os.path.exists(env["GTRADE_DSL_SPECS"])
+
+
+def test_valid_accepts_and_rejects():
+    assert ar.valid(ar.Genome(), _ACTIVE, 8) is True
+    assert ar.valid(ar.Genome(drops=["rsi", "atr"]), _ACTIVE, 8) is True
+    assert ar.valid(ar.Genome(drops=["not_a_feature"]), _ACTIVE, 8) is False     # unknown drop
+    assert ar.valid(ar.Genome(drops=["gx"], extra=[_spec("gx")]), _ACTIVE, 8) is False  # drop/extra overlap
+    assert ar.valid(ar.Genome(label_mode="bogus"), _ACTIVE, 8) is False          # bad mode
+    assert ar.valid(ar.Genome(label_window=0), _ACTIVE, 8) is False              # bad window
+    assert ar.valid(ar.Genome(drops=["rsi", "atr", "vol_z"]), _ACTIVE, 8) is False  # breaches floor (10-3 < 8)
+
+
+def test_random_genome_is_valid(monkeypatch):
+    monkeypatch.setenv("GTRADE_AR_PRUNE_MIN", "8")
+    import random as _r
+    for seed in range(20):
+        _r.seed(seed)
+        g = ar.random_genome(_ACTIVE, ["ret_1", "ret_5", "rsi"])
+        assert ar.valid(g, _ACTIVE, 8)
+
+
+def test_mutate_stays_valid_and_changes(monkeypatch):
+    monkeypatch.setenv("GTRADE_AR_PRUNE_MIN", "8")
+    import random as _r
+    g = ar.Genome(drops=["rsi"], extra=[], label_mode="direction", label_window=30)
+    changed = 0
+    for seed in range(30):
+        _r.seed(seed)
+        m = ar.mutate(g, _ACTIVE, ["ret_1", "ret_5", "rsi"])
+        assert ar.valid(m, _ACTIVE, 8)
+        if m != g:
+            changed += 1
+    assert changed > 0     # mutation does something across seeds
+
+
+def test_mutate_floor_constrained_stays_valid(monkeypatch):
+    # active of 8 with floor 8 -> add_drop can never fire (would breach the floor);
+    # mutate must still return a VALID genome via the other ops (flip_label, etc.)
+    # and must never produce a drop that breaches the floor.
+    monkeypatch.setenv("GTRADE_AR_PRUNE_MIN", "8")
+    active8 = _ACTIVE[:8]
+    import random as _r
+    for seed in range(20):
+        _r.seed(seed)
+        m = ar.mutate(ar.Genome(), active8, ["ret_1", "ret_5"])
+        assert ar.valid(m, active8, 8)
+        assert m.drops == []          # cannot drop below the floor of 8 from 8 active
+
+
+def test_crossover_mixes_parents_and_is_valid(monkeypatch):
+    monkeypatch.setenv("GTRADE_AR_PRUNE_MIN", "8")
+    import random as _r
+    g1 = ar.Genome(drops=["rsi"], extra=[_spec("a")], label_mode="rel_median", label_window=20)
+    g2 = ar.Genome(drops=["atr"], extra=[_spec("b")], label_mode="direction", label_window=30)
+    for seed in range(20):
+        _r.seed(seed)
+        c = ar.crossover(g1, g2, _ACTIVE)
+        assert ar.valid(c, _ACTIVE, 8)
+        # each group comes from one parent
+        assert c.drops in (g1.drops, g2.drops) or set(c.drops) <= {"rsi", "atr"}
+        assert (c.label_mode, c.label_window) in (("rel_median", 20), ("direction", 30))
+
+
+def test_crossover_resolves_drop_extra_conflict():
+    import random as _r
+    _r.seed(1)
+    # g1 drops 'b', g2 adds extra named 'b' -> if child takes both, the drop must lose
+    g1 = ar.Genome(drops=["rsi"], extra=[])
+    g2 = ar.Genome(drops=[], extra=[_spec("rsi")])   # extra name collides with g1's drop
+    for seed in range(20):
+        _r.seed(seed)
+        c = ar.crossover(g1, g2, _ACTIVE)
+        extra_names = {s["name"] for s in c.extra}
+        assert not (set(c.drops) & extra_names)        # no drop equals an extra name
+
+
+def test_bin_edges():
+    assert ar._bin(-2.0, ar._FLOOR_EDGES) == 0
+    assert ar._bin(0.0, ar._FLOOR_EDGES) == 2
+    assert ar._bin(5.0, ar._FLOOR_EDGES) == 4
+
+
+def test_fitness_is_mean_delta():
+    base = {"A": 1.0, "B": 1.0}
+    rows = _rows2({"A": 2.0, "B": 0.0})       # deltas +1, -1 -> mean 0
+    assert ar.fitness(rows, base) == 0.0
+    rows2 = _rows2({"A": 3.0, "B": 3.0})       # +2, +2 -> mean 2
+    assert ar.fitness(rows2, base) == 2.0
+
+
+def test_behavior_floor_and_count():
+    active = ["ret_1", "ret_5", "ret_10", "ret_20", "rsi", "atr",
+              "vol_z", "sma_20", "macd_hist", "bb_pos"]   # 10
+    base = {"A": 1.0, "B": 1.0}
+    rows = _rows2({"A": 3.0, "B": 0.5})        # min delta = -0.5 -> floor bin 1
+    g = ar.Genome(drops=["rsi", "atr"], extra=[_spec("gx")])   # count 10 - 2 + 1 = 9
+    bd1, bd2 = ar.behavior(g, rows, base, active)
+    assert bd1 == 1                             # -0.5 in [-1.0, -0.25) -> bin 1
+    assert bd2 == 0                             # 9 < 12 -> count bin 0
+
+
+_QD_ACTIVE = ["ret_1", "ret_5", "ret_10", "ret_20", "rsi", "atr",
+              "vol_z", "sma_20", "macd_hist", "bb_pos"]
+
+
+def test_archive_put_store_displace_keep():
+    base = {"A": 1.0, "B": 1.0}
+    arch = {}
+    g1 = ar.Genome(drops=["rsi"])
+    assert ar.archive_put(arch, g1, _rows2({"A": 2.0, "B": 2.0}), base, _QD_ACTIVE) is True
+    # same niche, higher mean fitness -> displaces
+    g2 = ar.Genome(drops=["atr"])
+    assert ar.archive_put(arch, g2, _rows2({"A": 3.0, "B": 3.0}), base, _QD_ACTIVE) is True
+    # same niche, lower fitness -> kept (False)
+    # NOTE: deltas must keep min_delta >= 1.0 (same floor bin as g1/g2) while the
+    # mean stays below g2's fitness of 2.0; {"A": 1.5, "B": 1.5} (deltas +0.5,+0.5)
+    # would land in floor bin 3 (a different niche), so it is corrected here.
+    g3 = ar.Genome(drops=["vol_z"])
+    assert ar.archive_put(arch, g3, _rows2({"A": 2.5, "B": 2.5}), base, _QD_ACTIVE) is False
+    assert len(arch) == 1
+
+
+def test_qd_save_load_roundtrip(tmp_path, monkeypatch):
+    monkeypatch.setattr(ar, "_QD_ARCHIVE_PATH", str(tmp_path / "qd.json"))
+    base = {"A": 1.0}
+    arch = {}
+    ar.archive_put(arch, ar.Genome(drops=["rsi"], label_mode="rel_median", label_window=20),
+                   _rows2({"A": 2.0}), base, _QD_ACTIVE)
+    ar._qd_save(arch)
+    loaded = ar._qd_load()
+    (k, v), = loaded.items()
+    assert v["genome"].drops == ["rsi"] and v["genome"].label_mode == "rel_median"
+    assert v["genome"].label_window == 20
+
+
+def test_run_qd_illuminates_and_gates(monkeypatch):
+    monkeypatch.setattr(ar, "_qd_load", lambda: {})
+    monkeypatch.setattr(ar, "_qd_save", lambda a: None)
+    monkeypatch.setattr(ar, "BUDGET", 6, raising=False)
+    monkeypatch.setenv("GTRADE_AR_QD_INIT", "4")
+    monkeypatch.setenv("GTRADE_AR_QD_FINAL", "2")
+    monkeypatch.delenv("GTRADE_AR_OBJECTIVE", raising=False)
+    import random as _r
+    _r.seed(0)
+    calls = {"real": 0, "holdout_full": 0}
+    bh_seen = {"n": None}
+    real_bh = ar.benjamini_hochberg
+    monkeypatch.setattr(ar, "benjamini_hochberg",
+                        lambda p, alpha=0.05: (bh_seen.__setitem__("n", len(p)), real_bh(p, alpha))[1])
+
+    def fake_train(subset, env):
+        calls["real"] += 1
+        screen = env.get("GTRADE_SCREEN_ONLY") == "1"
+        if subset == ar.HELDOUT_ASSETS and not screen:
+            calls["holdout_full"] += 1
+        # more drops -> higher score, so dropping spreads cells and lifts fitness
+        n_drop = len([d for d in env.get("GTRADE_DROP_FEATURES", "").split(",") if d])
+        s = 1.0 + 0.7 * n_drop
+        return [{"Asset": a, "Score": s} for a in subset.split(",")]
+
+    archive = ar.run_qd(train_fn=fake_train)
+    assert isinstance(archive, dict) and len(archive) >= 1        # illuminated some niches
+    assert bh_seen["n"] is not None and bh_seen["n"] <= 2          # BH across <= GTRADE_AR_QD_FINAL elites
+    assert calls["holdout_full"] >= 1                             # final stage ran the held-out gate
+    # no real train_hybrid subprocess (the fake replaces train_env entirely)
+
+
+def test_main_dispatches_to_qd(monkeypatch):
+    called = {"qd": 0, "axisloop": 0}
+    monkeypatch.setattr(ar, "run_qd", lambda: called.__setitem__("qd", called["qd"] + 1))
+    monkeypatch.setattr(ar, "train_env", lambda s, e: called.__setitem__("axisloop", 1) or [])
+    monkeypatch.setattr(ar, "_try_sample_frame", lambda: None)
+    monkeypatch.setenv("GTRADE_AR_AXES", "qd")
+    ar.main()
+    assert called["qd"] == 1 and called["axisloop"] == 0       # qd ran; the axis loop did not
