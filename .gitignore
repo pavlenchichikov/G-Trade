@@ -68,7 +68,6 @@ PLAN.md
 Thumbs.db
 
 # Local validation / scratch scripts (not part of the pipeline)
-ab_labeling.py
 ab_validate.py
 ab_features.py
 train_chunked.py
