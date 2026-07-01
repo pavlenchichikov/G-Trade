@@ -1,7 +1,7 @@
-"""Auto-research loop (local, gitignored). The agent proposes feature variants
+"""Auto-research loop (local). The agent proposes feature variants
 from the DSL, the harness A/B-tests them base vs variant on a selection subset,
 and winners are checked on a held-out subset and flagged for a human. It never
-retrains production. See docs/superpowers/specs/2026-06-25-auto-research-agent-design.md.
+retrains production. 
 
 Proposer is autonomous (evolutionary search, no LLM) by default. Set
 GTRADE_AR_PROPOSER=llm to use the Claude proposer instead (needs the anthropic SDK
