@@ -102,30 +102,34 @@ def test_propose_evolutionary_no_llm(monkeypatch, tmp_path):
 
 def test_select_proposer_default_is_evolutionary(monkeypatch):
     ar = _load_auto_research()
+    from core import llm_proposer
     monkeypatch.delenv("GTRADE_AR_PROPOSER", raising=False)
     assert ar._select_proposer() is ar.propose_evolutionary
     monkeypatch.setenv("GTRADE_AR_PROPOSER", "llm")
-    assert ar._select_proposer() is ar.propose_next
+    assert ar._select_proposer() is llm_proposer.propose_specs
 
 
 def test_parse_specs_tolerant():
-    ar = _load_auto_research()
-    assert ar._parse_specs('[{"name": "z", "op": "zscore", "inputs": ["ret_1"]}]')[0]["name"] == "z"
-    assert ar._parse_specs("here you go: [\n{\"name\":\"a\",\"op\":\"lag\",\"inputs\":[\"x\"]}\n] thanks")
-    assert ar._parse_specs("sorry, no json") == []
-    assert ar._parse_specs("") == []
+    from core import llm_proposer
+    assert llm_proposer._parse_specs('[{"name": "z", "op": "zscore", "inputs": ["ret_1"]}]')[0]["name"] == "z"
+    assert llm_proposer._parse_specs("here you go: [\n{\"name\":\"a\",\"op\":\"lag\",\"inputs\":[\"x\"]}\n] thanks")
+    assert llm_proposer._parse_specs("sorry, no json") == []
+    assert llm_proposer._parse_specs("") == []
 
 
 def test_proposer_prompt_and_provider_dispatch(monkeypatch):
-    ar = _load_auto_research()
-    p = ar._proposer_prompt([], ["ret_1", "vol_z"])
+    from core import llm_proposer
+    p = llm_proposer._proposer_prompt([], ["ret_1", "vol_z"])
     assert "zscore" in p and "ret_1" in p          # DSL menu + base columns present
     # unknown provider raises before any network call
     monkeypatch.setenv("GTRADE_AR_LLM", "nope")
     with pytest.raises(RuntimeError):
-        ar.propose_next([], ["ret_1"])
-    # both real backends are registered
-    assert set(ar._LLM_BACKENDS) == {"anthropic", "openai"}
+        llm_proposer.propose_specs([], ["ret_1"])
+    # known providers are recognized (anthropic and openai)
+    monkeypatch.setenv("GTRADE_AR_LLM", "anthropic")
+    assert callable(llm_proposer._backend())
+    monkeypatch.setenv("GTRADE_AR_LLM", "openai")
+    assert callable(llm_proposer._backend())
 
 
 def test_sign_test_adoption():

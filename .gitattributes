@@ -2,6 +2,10 @@
 # Stops the constant "LF will be replaced by CRLF" churn in diffs.
 * text=auto eol=lf
 
+# cmd.exe requires CRLF: LF-only batch files misparse (set /p, if-blocks).
+*.bat  text eol=crlf
+*.cmd  text eol=crlf
+
 # Binary artifacts: never touch.
 *.cbm  binary
 *.keras binary

@@ -2,7 +2,10 @@
 {% block title %}Accuracy | G-Trade{% endblock %}
 {% block content %}
 
-<h1 class="fade">Accuracy</h1>
+<h1 class="fade">Accuracy
+  <button class="fbtn" id="reconcile-btn" type="button">Reconcile</button>
+  <span id="reconcile-msg" class="dim mono"></span>
+</h1>
 <p class="lead fade">Rolling signal accuracy over time: the current model generation
   (<span class="mono">{{ version }}</span>) is kept separate from all generations so an
   old track record does not blend with the new model. Accuracy leaders below.</p>
@@ -56,6 +59,30 @@
     ],
   });
   window.addEventListener("resize", function () { chart.resize(); });
+})();
+</script>
+
+<script>
+(function () {
+  var btn = document.getElementById("reconcile-btn");
+  var msg = document.getElementById("reconcile-msg");
+  if (!btn) return;
+  btn.addEventListener("click", async function () {
+    btn.disabled = true;
+    btn.textContent = "Reconciling...";
+    msg.textContent = "";
+    try {
+      var r = await fetch("/api/reconcile", {method: "POST"});
+      var d = await r.json();
+      if (d.error) throw new Error(d.error);
+      msg.textContent = "reconciled " + d.reconciled + " of " + d.pending + " pending";
+      setTimeout(function () { location.reload(); }, 900);
+    } catch (e) {
+      msg.textContent = String(e.message || e);
+      btn.disabled = false;
+      btn.textContent = "Reconcile";
+    }
+  });
 })();
 </script>
 

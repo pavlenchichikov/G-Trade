@@ -63,7 +63,9 @@ The feature set can be extended at train time through a constrained transform DS
 
 It never touches production: variants train into isolated directories, and a winner is flagged only after also clearing a separate held-out set by a sign-test (with an effect-size floor and an iteration budget) that guards against overfitting to noise. Adopting a flagged feature stays a manual full retrain.
 
-Edit the knobs in `auto_research.bat` (proposer, `AR_BUDGET` rounds, `GTRADE_AR_SEED`, `AR_PRESCREEN_MIN`, the LLM settings) and run it, or:
+The launcher `auto_research.bat` is an interactive menu (mode, proposer, budget, objective; Enter = default). The agent keeps permanent cross-run memory: `_ar_tried.json` (no candidate is ever re-tested), `_ar_eval_cache.json` (base trainings are reused until new data arrives) and `_ar_findings.json` (the cumulative findings journal), so the budget buys NEW experiments on every run. The LLM proposer supports a local Ollama model (`GTRADE_AR_LLM=ollama`, gemma auto-detected) in both the features axis and the QD agent (probability `GTRADE_AR_QD_LLM_P` per child, silent fallback to evolutionary search).
+
+Advanced knobs (`GTRADE_AR_SEED`, `AR_PRESCREEN_MIN`, the screen, the QD sizes, the LLM model/URL) stay as `set` lines at the top of `auto_research.bat`, or run headless:
 
 ```
 GTRADE_AR_SEED=42 AR_BUDGET=5 python auto_research.py

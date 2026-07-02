@@ -538,6 +538,19 @@ def api_performance():
             "leaderboard": dashboard.top_leaderboard(limit=20)}
 
 
+@app.post("/api/reconcile")
+async def api_reconcile():
+    """Fill in actual outcomes for pending predictions (the loop's reconcile
+    step, on demand). DB-bound, so it runs in a threadpool like /api/whatif."""
+    from starlette.concurrency import run_in_threadpool
+
+    import performance_tracker
+    try:
+        return await run_in_threadpool(performance_tracker.update_actuals)
+    except Exception as exc:
+        return {"error": "Reconcile failed: " + str(exc)[:140]}
+
+
 @app.get("/api/guru")
 def api_guru():
     return {"verdicts": dashboard.guru_latest(),

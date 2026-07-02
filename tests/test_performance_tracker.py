@@ -99,3 +99,27 @@ def test_get_accuracy_scopes_by_version(tmp_path, monkeypatch):
     assert pt.get_accuracy(days=30)["accuracy"] == pytest.approx(2 / 3)   # all
     assert pt.get_accuracy(days=30, model_version="newv")["accuracy"] == 0.0
     assert pt.get_accuracy(days=30, model_version="oldv")["accuracy"] == 1.0
+
+
+def test_update_actuals_returns_counts(tmp_path, monkeypatch):
+    import performance_tracker as pt
+    db = str(tmp_path / "m.db")
+    con = sqlite3.connect(db)
+    con.execute("CREATE TABLE btc (Date TEXT, Close REAL)")
+    con.execute("INSERT INTO btc VALUES ('2026-06-10', 100.0)")
+    con.execute("INSERT INTO btc VALUES ('2026-06-11', 110.0)")
+    con.execute("""CREATE TABLE prediction_log (
+        date TEXT, asset TEXT, signal TEXT, probability REAL,
+        actual_next_ret REAL, correct INTEGER, cb_prob REAL, lstm_prob REAL,
+        model_version TEXT)""")
+    # 2026-06-10 has a next bar (reconcilable); 2026-06-11 does not (stays pending)
+    con.execute("INSERT INTO prediction_log VALUES "
+                "('2026-06-10','BTC','BUY',0.6,NULL,NULL,NULL,NULL,'v1')")
+    con.execute("INSERT INTO prediction_log VALUES "
+                "('2026-06-11','BTC','BUY',0.6,NULL,NULL,NULL,NULL,'v1')")
+    con.commit()
+    con.close()
+    monkeypatch.setattr(pt, "DB_PATH", db)
+    monkeypatch.setattr(pt, "_ENGINE", None)   # reset the cached engine
+    res = pt.update_actuals()
+    assert res == {"pending": 2, "reconciled": 1}

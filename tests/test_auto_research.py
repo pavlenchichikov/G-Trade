@@ -85,8 +85,9 @@ def test_run_axis_additive_resumes_from_prior_log():
     kept_names = [c["name"] for c in res["kept"]]
     assert "c0" in kept_names              # resumed: prior accept preserved
     assert res["kept_delta"] == 2.0        # reconstructed from the accepted entry
-    # it resumed at iter 1 (did not retrain iter 0): only the iter-1 candidate trained
-    assert seen["trains"] <= 1
+    # per-run budget: the resumed run performs `budget`(=2) NEW iterations
+    # (iters 1 and 2) and never retrains iter 0
+    assert seen["trains"] == 2
 
 
 def test_run_axis_select_best_picks_best():
@@ -364,6 +365,43 @@ def test_mean_delta_wrapper_parity():
     base = {"A": 1.0, "B": 2.0}
     var = _rows2({"A": 1.5, "B": 2.5})
     assert ar._mean_delta(var, base) == ar._objective_delta(var, base, "mean")
+
+
+def test_run_axis_additive_budget_is_per_run():
+    # a prior log already holding `budget` entries must NOT starve a new run
+    base = [{"Asset": "SP500", "Score": 1.0}, {"Asset": "NVDA", "Score": 1.0}]
+    prior = [{"axis": "fake_add", "iter": i, "cand": [{"name": "c%d" % i}],
+              "cand_mean_delta": -1.0, "score": -1.0} for i in range(2)]
+    calls = {"n": 0}
+
+    def train(subset, env):
+        calls["n"] += 1
+        return [{"Asset": a, "Score": 0.5} for a in ("SP500", "NVDA")]
+
+    res = ar.run_axis(_axis_additive(), 2, base, train,
+                      persist=lambda log: None, prior_log=prior)
+    assert calls["n"] == 2                     # two NEW iterations this run
+    assert len(res["log"]) == 4                # 2 prior + 2 new
+
+
+def test_run_axis_select_best_budget_is_per_run():
+    base = [{"Asset": "SP500", "Score": 1.0}, {"Asset": "NVDA", "Score": 1.0}]
+    prior = [{"axis": "fake_sel", "iter": 0, "cand": {"name": "w20"},
+              "cand_mean_delta": -1.0}]
+    axis = ar.Axis(
+        name="fake_sel",
+        propose=lambda log: [{"name": "w30"}, {"name": "w60"}, {"name": "w90"}],
+        to_env=lambda cand: {"NAMES": cand["name"]},
+        kind="select_best",
+    )
+    calls = {"n": 0}
+
+    def train(subset, env):
+        calls["n"] += 1
+        return [{"Asset": a, "Score": 2.0} for a in ("SP500", "NVDA")]
+
+    ar.run_axis(axis, 2, base, train, persist=lambda log: None, prior_log=prior)
+    assert calls["n"] == 2                     # budget=2 NEW evals despite 1 prior
 
 
 def test_benjamini_hochberg_known_vector():
@@ -647,3 +685,283 @@ def test_main_dispatches_to_qd(monkeypatch):
     monkeypatch.setenv("GTRADE_AR_AXES", "qd")
     ar.main()
     assert called["qd"] == 1 and called["axisloop"] == 0       # qd ran; the axis loop did not
+
+
+def test_genome_sig_canonical():
+    a = ar.Genome(drops=["rsi", "atr"], extra=[_spec("x", "ret_1")])
+    b = ar.Genome(drops=["atr", "rsi"], extra=[_spec("y", "ret_1")])  # order/name differ
+    assert ar.genome_sig(a) == ar.genome_sig(b)
+    c = ar.Genome(drops=["rsi"], extra=[_spec("x", "ret_1")])
+    assert ar.genome_sig(a) != ar.genome_sig(c)
+
+
+def test_run_axis_marks_tried_candidates():
+    from core import ar_memory
+    base = [{"Asset": "SP500", "Score": 1.0}]
+    axis = ar.Axis(name="s", propose=lambda log: [{"name": "x"}],
+                   to_env=lambda c: {"NAMES": c["name"]}, kind="select_best",
+                   sig=lambda c: ("spec", c["name"]))
+    ar.run_axis(axis, 3, base, lambda subset, env: [{"Asset": "SP500", "Score": 2.0}],
+                persist=lambda log: None)
+    assert ar_memory.tried_seen("spec", "x") is True
+
+
+def test_propose_evolutionary_respects_registry(monkeypatch):
+    import json as _json
+    from core import ar_memory
+    monkeypatch.setenv("GTRADE_AR_SEED", "7")
+    first = ar.propose_evolutionary([], ["ret_1", "ret_5"])
+    assert first
+    ar_memory.tried_add("spec", _json.dumps(ar._spec_signature(first[0])))
+    monkeypatch.setenv("GTRADE_AR_SEED", "7")   # identical RNG stream
+    second = ar.propose_evolutionary([], ["ret_1", "ret_5"])
+    if second:   # either skipped to a different spec or gave up - never a repeat
+        assert ar._spec_signature(second[0]) != ar._spec_signature(first[0])
+
+
+def test_labeling_axis_respects_registry():
+    import json as _json
+    from core import ar_memory
+    ar_memory.tried_add(
+        "label", _json.dumps({"mode": "rel_median", "window": 20}, sort_keys=True))
+    windows = sorted(c["window"] for c in ar.make_labeling_axis().propose([]))
+    assert windows == [30, 60]
+
+
+def test_pruning_axis_respects_registry(monkeypatch):
+    monkeypatch.delenv("GTRADE_DROP_FEATURES", raising=False)
+    from core import ar_memory
+    from core.features import active_candidate_features
+    first = list(active_candidate_features())[0]
+    ar_memory.tried_add("drop", first)
+    proposed = ar.make_pruning_axis(["ret_1"]).propose([])
+    assert proposed and proposed[0]["drop"] != first
+
+
+def test_next_child_skips_seen_genomes(monkeypatch):
+    from core import ar_memory
+    g = ar.Genome(drops=["rsi"])
+    monkeypatch.setattr(ar, "mutate", lambda parent, active, bf: g)
+    archive = {"0_0": {"genome": ar.Genome(), "fitness": 0.0, "rows": []}}
+    # unseen -> returned
+    child = ar.next_child(archive, _ACTIVE, ["ret_1"])
+    assert child is not None and ar.genome_sig(child) == ar.genome_sig(g)
+    # seen -> None (every attempt produces the same seen genome)
+    ar_memory.tried_add("genome", ar.genome_sig(ar._canon_genome(g)))
+    assert ar.next_child(archive, _ACTIVE, ["ret_1"]) is None
+
+
+def test_run_qd_registers_genomes(monkeypatch):
+    from core import ar_memory
+    monkeypatch.setattr(ar, "_qd_load", lambda: {})
+    monkeypatch.setattr(ar, "_qd_save", lambda a: None)
+    monkeypatch.setattr(ar, "BUDGET", 3, raising=False)
+    monkeypatch.setenv("GTRADE_AR_QD_INIT", "3")
+    monkeypatch.setenv("GTRADE_AR_QD_FINAL", "1")
+    monkeypatch.delenv("GTRADE_AR_PROPOSER", raising=False)
+    import random as _r
+    _r.seed(0)
+
+    def fake_train(subset, env):
+        n_drop = len([d for d in env.get("GTRADE_DROP_FEATURES", "").split(",") if d])
+        s = 1.0 + 0.7 * n_drop
+        return [{"Asset": a, "Score": s} for a in subset.split(",")]
+
+    ar.run_qd(train_fn=fake_train)
+    assert ar_memory.tried_count() >= 3        # at least the init genomes registered
+
+
+def test_train_base_cached_hits_and_misses(monkeypatch):
+    from core import ar_memory
+    monkeypatch.setattr(ar_memory, "data_fingerprint", lambda subset: "fp")
+    calls = {"n": 0}
+
+    def fake_train(subset, env):
+        calls["n"] += 1
+        return [{"Asset": "SP500", "Score": 1.0}]
+
+    monkeypatch.setattr(ar, "train_env", fake_train)
+    r1 = ar.train_base_cached("SP500", {})
+    r2 = ar.train_base_cached("SP500", {})
+    assert r1 == r2 == [{"Asset": "SP500", "Score": 1.0}]
+    assert calls["n"] == 1                      # second call served from cache
+    ar.train_base_cached("SP500", {"GTRADE_SCREEN_ONLY": "1"})
+    assert calls["n"] == 2                      # different env = different key
+    monkeypatch.setattr(ar_memory, "data_fingerprint", lambda subset: "fp2")
+    ar.train_base_cached("SP500", {})
+    assert calls["n"] == 3                      # new data invalidates
+
+
+def test_train_base_cached_does_not_cache_failures(monkeypatch):
+    from core import ar_memory
+    monkeypatch.setattr(ar_memory, "data_fingerprint", lambda subset: "fp")
+    calls = {"n": 0}
+
+    def failing_train(subset, env):
+        calls["n"] += 1
+        return []
+
+    monkeypatch.setattr(ar, "train_env", failing_train)
+    assert ar.train_base_cached("SP500", {}) == []
+    assert ar.train_base_cached("SP500", {}) == []
+    assert calls["n"] == 2                      # empty rows never cached
+
+
+def test_llm_child_valid_invalid_and_error(monkeypatch):
+    from core import llm_proposer
+    elites = [{"genome": ar.Genome(), "fitness": 1.0, "rows": []}]
+    good = {"drops": ["rsi"], "extra": [], "label_mode": "direction", "label_window": 30}
+    monkeypatch.setattr(llm_proposer, "propose_genome", lambda *a, **k: good)
+    g = ar._llm_child(elites, _ACTIVE, ["ret_1"])
+    assert isinstance(g, ar.Genome) and g.drops == ["rsi"]
+    # invalid genome (unknown drop) -> None
+    bad = {"drops": ["not_a_feature"], "extra": [], "label_mode": "direction",
+           "label_window": 30}
+    monkeypatch.setattr(llm_proposer, "propose_genome", lambda *a, **k: bad)
+    assert ar._llm_child(elites, _ACTIVE, ["ret_1"]) is None
+    # backend blowing up -> None (silent fallback)
+    def boom(*a, **k):
+        raise RuntimeError("ollama down")
+    monkeypatch.setattr(llm_proposer, "propose_genome", boom)
+    assert ar._llm_child(elites, _ACTIVE, ["ret_1"]) is None
+
+
+def test_next_child_llm_first_then_fallback(monkeypatch):
+    from core import llm_proposer
+    monkeypatch.setenv("GTRADE_AR_PROPOSER", "llm")
+    monkeypatch.setenv("GTRADE_AR_QD_LLM_P", "1.0")
+    archive = {"0_0": {"genome": ar.Genome(), "fitness": 0.0, "rows": []}}
+    llm_genome = {"drops": ["rsi"], "extra": [], "label_mode": "direction",
+                  "label_window": 30}
+    monkeypatch.setattr(llm_proposer, "propose_genome", lambda *a, **k: llm_genome)
+    child = ar.next_child(archive, _ACTIVE, ["ret_1"])
+    assert child is not None and child.drops == ["rsi"]     # the LLM child won
+    # LLM fails -> evolutionary fallback still yields a child
+    def boom(*a, **k):
+        raise RuntimeError("down")
+    monkeypatch.setattr(llm_proposer, "propose_genome", boom)
+    import random as _r
+    _r.seed(3)
+    child2 = ar.next_child(archive, _ACTIVE, ["ret_1"])
+    assert child2 is not None                                # search never dies
+
+
+def test_run_qd_llm_failure_completes(monkeypatch):
+    from core import llm_proposer
+    monkeypatch.setenv("GTRADE_AR_PROPOSER", "llm")
+    monkeypatch.setenv("GTRADE_AR_QD_LLM_P", "1.0")
+
+    def boom(*a, **k):
+        raise RuntimeError("ollama down")
+
+    monkeypatch.setattr(llm_proposer, "propose_genome", boom)
+    monkeypatch.setattr(ar, "_qd_load", lambda: {})
+    monkeypatch.setattr(ar, "_qd_save", lambda a: None)
+    monkeypatch.setattr(ar, "BUDGET", 4, raising=False)
+    monkeypatch.setenv("GTRADE_AR_QD_INIT", "3")
+    monkeypatch.setenv("GTRADE_AR_QD_FINAL", "1")
+    import random as _r
+    _r.seed(0)
+
+    def fake_train(subset, env):
+        n_drop = len([d for d in env.get("GTRADE_DROP_FEATURES", "").split(",") if d])
+        s = 1.0 + 0.7 * n_drop
+        return [{"Asset": a, "Score": s} for a in subset.split(",")]
+
+    archive = ar.run_qd(train_fn=fake_train)
+    assert isinstance(archive, dict) and len(archive) >= 1   # completed on fallback
+
+
+def test_main_writes_findings(monkeypatch):
+    import json as _json
+    from core import ar_memory
+    monkeypatch.setattr(ar, "_try_sample_frame", lambda: None)
+    monkeypatch.setattr(ar, "load_state", lambda: {})
+    monkeypatch.setattr(ar, "save_state", lambda s: None)
+    monkeypatch.setattr(ar_memory, "data_fingerprint", lambda subset: "fp")
+    monkeypatch.setenv("GTRADE_AR_SCREEN", "0")
+    monkeypatch.setenv("GTRADE_AR_AXES", "labeling")
+    monkeypatch.setattr(ar, "BUDGET", 5, raising=False)
+
+    def fake_train_env(subset, env):
+        s = 5.0 if env.get("GTRADE_LABEL_MODE") else 1.0
+        return [{"Asset": a, "Score": s} for a in subset.split(",")]
+
+    monkeypatch.setattr(ar, "train_env", fake_train_env)
+    ar.main()
+    with open(ar_memory.FINDINGS_PATH, encoding="utf-8") as f:
+        journal = _json.load(f)
+    assert len(journal) == 1
+    assert journal[0]["mode"] == "axes"
+    assert journal[0]["winners"] and journal[0]["winners"][0]["axis"] == "labeling"
+    assert "adoptable" in journal[0]["winners"][0]
+
+
+def test_main_llm_proposer_failure_is_graceful(monkeypatch):
+    """Fix 1: RuntimeError from run_axis (LLM proposer down) must be caught so the
+    run still reaches findings_append journaling at the end."""
+    from core import ar_memory
+
+    called = {"findings": False}
+
+    monkeypatch.setattr(ar, "_try_sample_frame", lambda: None)
+    monkeypatch.setattr(ar, "load_state", lambda: {})
+    monkeypatch.setattr(ar, "save_state", lambda s: None)
+    monkeypatch.setattr(ar, "BUDGET", 2, raising=False)
+    monkeypatch.setenv("GTRADE_AR_SCREEN", "0")
+
+    def fake_train_env(subset, env):
+        return [{"Asset": a, "Score": 1.0} for a in subset.split(",")]
+
+    monkeypatch.setattr(ar, "train_env", fake_train_env)
+
+    def failing_propose(log):
+        raise RuntimeError("ollama down")
+
+    monkeypatch.setattr(ar, "build_axes", lambda names, bf: [
+        ar.Axis(name="llm_fail", propose=failing_propose,
+                to_env=lambda c: {}, kind="select_best"),
+    ])
+
+    real_findings_append = ar_memory.findings_append
+
+    def tracking_findings_append(record):
+        called["findings"] = True
+        real_findings_append(record)
+
+    monkeypatch.setattr(ar_memory, "findings_append", tracking_findings_append)
+
+    ar.main()   # must NOT raise
+    assert called["findings"] is True
+
+
+def test_run_qd_no_elites_still_journals(monkeypatch):
+    """Fix 2: run_qd with an empty archive must still call findings_append (mode=qd,
+    winners=[]) instead of returning early before the journaling block."""
+    from core import ar_memory
+
+    called = {"findings": None}
+
+    monkeypatch.setattr(ar, "_qd_load", lambda: {})
+    monkeypatch.setattr(ar, "_qd_save", lambda a: None)
+    monkeypatch.setattr(ar, "BUDGET", 2, raising=False)
+    monkeypatch.setenv("GTRADE_AR_QD_INIT", "0")
+    monkeypatch.setenv("GTRADE_AR_QD_FINAL", "1")
+    monkeypatch.delenv("GTRADE_AR_OBJECTIVE", raising=False)
+
+    def fake_train(subset, env):
+        return [{"Asset": a, "Score": 1.0} for a in subset.split(",")]
+
+    real_findings_append = ar_memory.findings_append
+
+    def tracking_findings_append(record):
+        called["findings"] = record
+        real_findings_append(record)
+
+    monkeypatch.setattr(ar_memory, "findings_append", tracking_findings_append)
+
+    archive = ar.run_qd(train_fn=fake_train)
+    assert isinstance(archive, dict) and len(archive) == 0
+    assert called["findings"] is not None
+    assert called["findings"]["mode"] == "qd"
+    assert called["findings"]["winners"] == []

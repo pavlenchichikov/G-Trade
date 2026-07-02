@@ -547,3 +547,34 @@ def test_loop_page_and_api(client, monkeypatch, tmp_path):
 
     dz = client.post("/api/loop/dismiss", json={"asset": "AAPL"})
     assert dz.status_code == 200 and dz.json()["proposed"] == []
+
+
+def test_api_reconcile(client, monkeypatch):
+    import performance_tracker
+    monkeypatch.setattr(performance_tracker, "update_actuals",
+                        lambda: {"pending": 5, "reconciled": 3})
+    r = client.post("/api/reconcile")
+    assert r.status_code == 200
+    assert r.json() == {"pending": 5, "reconciled": 3}
+
+
+def test_api_reconcile_error(client, monkeypatch):
+    import performance_tracker
+
+    def boom():
+        raise RuntimeError("db locked")
+
+    monkeypatch.setattr(performance_tracker, "update_actuals", boom)
+    r = client.post("/api/reconcile")
+    assert r.status_code == 200
+    assert "error" in r.json()
+
+
+def test_performance_page_has_reconcile_button(client, monkeypatch):
+    import core.dashboard as dash
+    dash.cache_clear()
+    monkeypatch.setattr(dash, "accuracy_timeseries", lambda: {"current": [], "all": []})
+    monkeypatch.setattr(dash, "top_leaderboard", lambda limit=20: [])
+    r = client.get("/performance")
+    assert r.status_code == 200
+    assert "reconcile-btn" in r.text

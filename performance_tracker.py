@@ -88,6 +88,9 @@ def log_prediction(asset, signal, probability, cb_prob=None, lstm_prob=None,
 
 
 def update_actuals():
+    """Fill in actual next-day outcomes for pending predictions. Returns
+    counters so callers (the Web UI reconcile button) can report progress."""
+    reconciled = 0
     with _conn() as con:
         cur = con.cursor()
         _ensure_table(cur)
@@ -131,10 +134,12 @@ def update_actuals():
                     "UPDATE prediction_log SET actual_next_ret=?, correct=? WHERE rowid=?",
                     (ret, correct, rowid),
                 )
+                reconciled += 1
             except Exception:
                 continue
 
         con.commit()
+    return {"pending": len(rows), "reconciled": reconciled}
 
 
 def _date_filter(days):
@@ -267,7 +272,8 @@ def get_daily_stats(days=30, model_version=None):
 
 if __name__ == "__main__":
     print("Updating actuals...")
-    update_actuals()
+    res = update_actuals()
+    print("Reconciled %d of %d pending." % (res["reconciled"], res["pending"]))
 
     lb = get_leaderboard(days=30)
     if lb.empty:

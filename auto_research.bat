@@ -1,68 +1,84 @@
 @echo off
 REM ===========================================================================
-REM  AUTO-RESEARCH AGENT launcher (central control panel).
-REM  Edit the knobs below, then run this file. It NEVER touches production:
-REM  variants train into isolated temp dirs and nothing is auto-adopted - the
-REM  agent only flags winners for a human. See README "Auto-research agent".
+REM  AUTO-RESEARCH AGENT launcher (interactive menu).
+REM  Answer the prompts (Enter = default) and the agent starts. It NEVER
+REM  touches production: variants train into isolated temp dirs and nothing is
+REM  auto-adopted - the agent only flags winners for a human. See README.
 REM
-REM  Default is fully autonomous (no LLM, no API key). The cheap CatBoost-only
-REM  screen makes most candidates fast; only survivors / finalists pay a full
-REM  ensemble train, so a run is hours, not days.
+REM  Cross-run memory: _ar_tried.json (never re-tests a candidate),
+REM  _ar_eval_cache.json (base runs reused while the data is unchanged),
+REM  _ar_findings.json (cumulative findings journal). Budget = NEW iterations
+REM  per run, so periodic launches keep exploring fresh candidates.
+REM
+REM  Advanced knobs (screen, prune floor, QD sizes, seed, LLM model/URL) live
+REM  below as set lines; the menu only asks the everyday questions.
 REM ===========================================================================
 
 cd /d "%~dp0"
 
-REM == 1. MODE: which search axes to run (comma-separated) =====================
-REM    qd        : MAP-Elites quality-diversity agent (the flagship - illuminates
-REM                a diverse archive of feature/label experiments). Runs ALONE.
-REM    features  : evolve engineered features (DSL forward-selection)
-REM    labeling  : sweep the rel_median label window {20,30,60}
-REM    pruning   : backward-elimination over the active features
-REM    Examples: "qd"   or   "labeling,pruning"   or   "features,labeling"
-set "GTRADE_AR_AXES=qd"
-
-REM == 2. Budget + cheap screen ===============================================
-REM    AR_BUDGET        : search iterations (qd: illuminate steps; axes: rounds).
-REM    GTRADE_AR_SCREEN : 1 = CatBoost-only screen before the full eval (fast).
-REM    GTRADE_AR_SCREEN_MIN : a candidate passes the screen above this delta.
-set "AR_BUDGET=15"
+REM == Advanced knobs (edit here; the menu does not ask about these) ===========
 set "GTRADE_AR_SCREEN=1"
 set "GTRADE_AR_SCREEN_MIN=0.0"
-
-REM == 3. Objective + pruning floor ===========================================
-REM    GTRADE_AR_OBJECTIVE : mean (default) or min (lift-the-floor / weak cluster).
-REM    GTRADE_AR_PRUNE_MIN : pruning never drops below this many active features.
-set "GTRADE_AR_OBJECTIVE=mean"
 set "GTRADE_AR_PRUNE_MIN=8"
-
-REM == 4. QD (MAP-Elites) knobs - only used when GTRADE_AR_AXES has qd =========
-REM    GTRADE_AR_QD_INIT  : random seed genomes to start the archive.
-REM    GTRADE_AR_QD_FINAL : top diverse elites that get the full held-out gate.
 set "GTRADE_AR_QD_INIT=8"
 set "GTRADE_AR_QD_FINAL=3"
-
-REM == 5. Proposer (for the features axis) ====================================
-REM    GTRADE_AR_PROPOSER : evolutionary (no LLM) or llm.
-REM    GTRADE_AR_SEED     : integer for reproducible search; clear it for random.
-REM    AR_PRESCREEN_MIN   : min univariate corr to bother A/B-testing a feature.
-set "GTRADE_AR_PROPOSER=evolutionary"
 set "GTRADE_AR_SEED=42"
 set "AR_PRESCREEN_MIN=0.02"
-
-REM == 6. LLM settings (ONLY when GTRADE_AR_PROPOSER=llm) ======================
-REM    GTRADE_AR_LLM         : anthropic (needs anthropic SDK + ANTHROPIC_API_KEY)
-REM                            or openai (or any OpenAI-compatible base URL).
-REM    GTRADE_AR_LLM_MODEL   : blank = provider default.
-REM    GTRADE_AR_LLM_BASE_URL: blank = provider default.
-set "GTRADE_AR_LLM=anthropic"
+set "GTRADE_AR_QD_LLM_P=0.3"
+REM    Model / base URL overrides (blank = provider default / auto-detect):
 set "GTRADE_AR_LLM_MODEL="
 set "GTRADE_AR_LLM_BASE_URL="
 
 echo ============================================================
-echo   AUTO-RESEARCH  axes=%GTRADE_AR_AXES%  budget=%AR_BUDGET%  objective=%GTRADE_AR_OBJECTIVE%  screen=%GTRADE_AR_SCREEN%
+echo   AUTO-RESEARCH  (Enter = default)
 echo ============================================================
+echo.
+echo [1] Mode:
+echo     1 = qd (MAP-Elites quality-diversity, the flagship)
+echo     2 = features (DSL forward-selection)
+echo     3 = labeling,pruning
+echo     4 = custom (type your own axes list)
+set "MODE=1"
+set /p "MODE=    choice [1]: "
+if "%MODE%"=="1" set "GTRADE_AR_AXES=qd"
+if "%MODE%"=="2" set "GTRADE_AR_AXES=features"
+if "%MODE%"=="3" set "GTRADE_AR_AXES=labeling,pruning"
+if "%MODE%"=="4" set /p "GTRADE_AR_AXES=    axes (comma-separated): "
+
+echo.
+echo [2] Proposer:
+echo     1 = evolutionary (no LLM, fully autonomous)
+echo     2 = local LLM via Ollama (gemma auto-detected; Ollama must be running)
+echo     3 = Anthropic API (needs ANTHROPIC_API_KEY)
+set "PROP=1"
+set /p "PROP=    choice [1]: "
+set "GTRADE_AR_PROPOSER=evolutionary"
+set "GTRADE_AR_LLM="
+if "%PROP%"=="2" (set "GTRADE_AR_PROPOSER=llm" & set "GTRADE_AR_LLM=ollama")
+if "%PROP%"=="3" (set "GTRADE_AR_PROPOSER=llm" & set "GTRADE_AR_LLM=anthropic")
+
+echo.
+set "AR_BUDGET=15"
+set /p "AR_BUDGET=[3] Budget (NEW search iterations this run) [15]: "
+
+echo.
+echo [4] Objective:  1 = mean (average lift)   2 = min (lift the floor)
+set "OBJ=1"
+set /p "OBJ=    choice [1]: "
+set "GTRADE_AR_OBJECTIVE=mean"
+if "%OBJ%"=="2" set "GTRADE_AR_OBJECTIVE=min"
+
+echo.
+echo ------------------------------------------------------------
+echo   axes=%GTRADE_AR_AXES%  proposer=%GTRADE_AR_PROPOSER%  llm=%GTRADE_AR_LLM%
+echo   budget=%AR_BUDGET%  objective=%GTRADE_AR_OBJECTIVE%
+echo ------------------------------------------------------------
+set "GO=Y"
+set /p "GO=Start? [Y/n]: "
+if /i "%GO%"=="n" exit /b 0
+
 python auto_research.py
 
 echo.
-echo Done. Review _auto_research_log.json (axes) or _qd_archive.json (qd) for the verdict.
+echo Done. Review _auto_research_log.json / _qd_archive.json / _ar_findings.json.
 pause

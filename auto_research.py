@@ -1,11 +1,13 @@
 """Auto-research loop (local). The agent proposes feature variants
 from the DSL, the harness A/B-tests them base vs variant on a selection subset,
 and winners are checked on a held-out subset and flagged for a human. It never
-retrains production. 
+retrains production.
 
 Proposer is autonomous (evolutionary search, no LLM) by default. Set
-GTRADE_AR_PROPOSER=llm to use the Claude proposer instead (needs the anthropic SDK
-and ANTHROPIC_API_KEY). GTRADE_AR_SEED makes the evolutionary search reproducible.
+GTRADE_AR_PROPOSER=llm to use the LLM proposer instead; the LLM layer lives in
+core/llm_proposer.py and supports anthropic (default) and openai providers
+(ollama arrives in the next task). GTRADE_AR_SEED makes the evolutionary search
+reproducible.
 
 Run:  python auto_research.py
       GTRADE_AR_PROPOSER=llm python auto_research.py
@@ -20,7 +22,10 @@ import subprocess
 import sys
 import tempfile
 from dataclasses import asdict, dataclass, field
+from datetime import datetime
 
+from core import ar_memory
+from core import llm_proposer
 from core.feature_dsl import validate_spec
 from core.logger import get_logger
 
@@ -142,6 +147,21 @@ def train_env(subset, env_overrides):
     return _train(subset, dict(env_overrides), os.path.join(tmp, "run"))
 
 
+def train_base_cached(subset, env):
+    """Cache-first BASE training: identical subset + env + feature space +
+    data snapshot reuses the stored quality rows instead of retraining.
+    Candidate runs never go through here (their envs embed temp paths)."""
+    key = ar_memory.base_key(subset, env)
+    rows = ar_memory.cache_get(key)
+    if rows is not None:
+        print("[auto-research] base cache hit: %s %s" % (subset, env or "{}"))
+        return rows
+    rows = train_env(subset, env)
+    if rows:
+        ar_memory.cache_put(key, rows)
+    return rows
+
+
 def _feature_env(specs, extra_names):
     """Feature-axis env overrides: materialize DSL specs to a temp file and point
     train_hybrid at them. Empty specs means no overrides (the plain base set)."""
@@ -178,6 +198,29 @@ def genome_to_env(g):
         env["GTRADE_LABEL_MODE"] = g.label_mode
         env["GTRADE_LABEL_WINDOW"] = str(g.label_window)
     return env
+
+
+def _spec_signature(spec):
+    """Identity of a spec ignoring its name, used to dedup against the log."""
+    return (spec["op"], tuple(spec.get("inputs") or []),
+            tuple(sorted((spec.get("params") or {}).items())))
+
+
+def _canon_genome(g):
+    """direction ignores the window; canonicalize so equivalent genomes dedup."""
+    if g.label_mode == "direction":
+        g.label_window = 30
+    return g
+
+
+def genome_sig(g):
+    """Canonical cross-run identity of a genome (drop order and the arbitrary
+    spec NAMES are ignored; only the spec signatures matter)."""
+    return json.dumps({
+        "drops": sorted(g.drops),
+        "extra": sorted(json.dumps(_spec_signature(s)) for s in g.extra),
+        "label": [g.label_mode, g.label_window],
+    }, sort_keys=True)
 
 
 def valid(g, active, prune_min):
@@ -327,11 +370,61 @@ def _qd_load():
         return {}
 
 
+def _llm_child(elites, active, base_features):
+    """A genome proposed by the LLM, converted and validated; None on ANY
+    problem (the QD loop then falls back to the evolutionary operators, so an
+    unreachable Ollama can never kill the search)."""
+    top = sorted(elites, key=lambda e: e["fitness"], reverse=True)[:5]
+    parent = random.choice(top)["genome"]
+    summary = [{"genome": asdict(e["genome"]), "fitness": e["fitness"]} for e in top]
+    try:
+        obj = llm_proposer.propose_genome(asdict(parent), summary, active, base_features)
+    except Exception:
+        return None
+    if not isinstance(obj, dict):
+        return None
+    try:
+        g = Genome(drops=list(obj.get("drops") or []),
+                   extra=list(obj.get("extra") or []),
+                   label_mode=str(obj.get("label_mode", "direction")),
+                   label_window=int(obj.get("label_window", 30)))
+    except (TypeError, ValueError):
+        return None
+    prune_min = int(os.getenv("GTRADE_AR_PRUNE_MIN", "8"))
+    return g if valid(g, active, prune_min) else None
+
+
+def next_child(archive, active, base_features, attempts=10):
+    """One unseen child genome for the QD loop: LLM-proposed (when the llm proposer is selected, with probability GTRADE_AR_QD_LLM_P) else mutate/crossover retried against the tried-registry.
+    None when the archive is empty or every attempt lands on an already-tried genome."""
+    elites = list(archive.values())
+    if not elites:
+        return None
+    if llm_proposer.llm_selected() and random.random() < float(
+            os.getenv("GTRADE_AR_QD_LLM_P") or "0.3"):
+        child = _llm_child(elites, active, base_features)
+        if child is not None:
+            child = _canon_genome(child)
+            if not ar_memory.tried_seen("genome", genome_sig(child)):
+                return child
+    for _ in range(attempts):
+        parent = random.choice(elites)["genome"]
+        if len(elites) >= 2 and random.random() < 0.5:
+            child = crossover(parent, random.choice(elites)["genome"], active)
+        else:
+            child = mutate(parent, active, base_features)
+        child = _canon_genome(child)
+        if not ar_memory.tried_seen("genome", genome_sig(child)):
+            return child
+    return None
+
+
 def run_qd(train_fn=None):
     """MAP-Elites: illuminate an archive of diverse genomes via the cheap CB screen,
     then full-evaluate + honest-gate the top elites. Returns the archive."""
     from core.features import active_candidate_features
 
+    base_fn = train_base_cached if train_fn is None else train_fn
     train_fn = train_fn or train_env
     base_features = ["ret_1", "ret_5", "ret_10", "ret_20", "vol_z", "rsi",
                      "macd_hist", "bb_pos", "trend_strength", "atr"]
@@ -339,13 +432,8 @@ def run_qd(train_fn=None):
     init = int(os.getenv("GTRADE_AR_QD_INIT", "8"))
     n_final = int(os.getenv("GTRADE_AR_QD_FINAL", "3"))
 
-    screen_base = train_fn(SELECTION_ASSETS, {"GTRADE_SCREEN_ONLY": "1"})
+    screen_base = base_fn(SELECTION_ASSETS, {"GTRADE_SCREEN_ONLY": "1"})
     base_score = {r["Asset"]: r.get("Score", 0.0) for r in screen_base}
-
-    def _canon(g):
-        if g.label_mode == "direction":
-            g.label_window = 30
-        return g
 
     def _screen_eval(g):
         return train_fn(SELECTION_ASSETS, screen_env(genome_to_env(g)))
@@ -353,128 +441,54 @@ def run_qd(train_fn=None):
     archive = _qd_load()
     if not archive:
         for _ in range(init):
-            g = _canon(random_genome(active, base_features))
+            g = _canon_genome(random_genome(active, base_features))
+            ar_memory.tried_add("genome", genome_sig(g))
             archive_put(archive, g, _screen_eval(g), base_score, active)
         _qd_save(archive)
 
     for _ in range(BUDGET):
-        elites = list(archive.values())
-        if not elites:
+        if not archive:
             break
-        parent = random.choice(elites)["genome"]
-        if len(elites) >= 2 and random.random() < 0.5:
-            child = crossover(parent, random.choice(elites)["genome"], active)
-        else:
-            child = mutate(parent, active, base_features)
-        child = _canon(child)
+        child = next_child(archive, active, base_features)
+        if child is None:
+            print("[qd] dedup: no unseen child this step, skipping.")
+            continue
+        ar_memory.tried_add("genome", genome_sig(child))
         archive_put(archive, child, _screen_eval(child), base_score, active)
         _qd_save(archive)
 
     elites = sorted(archive.values(), key=lambda e: e["fitness"], reverse=True)[:n_final]
     if not elites:
         print("[qd] no elites in the archive.")
-        return archive
-    ho_base = train_fn(HELDOUT_ASSETS, {})
-    obj = _objective()
-    results = []
-    for e in elites:
-        g = e["genome"]
-        ho_var = train_fn(HELDOUT_ASSETS, genome_to_env(g))
-        p, value, _d, tag = holdout_stats(ho_base, ho_var, obj)
-        results.append((g, p, value, tag))
-    sig = benjamini_hochberg([r[1] for r in results])
-    for (g, p, value, tag), s in zip(results, sig):
-        ok = s and value > ADOPT_MEAN_SCORE_DELTA
-        print("[qd] elite drops=%s label=%s/%d extra=%d: %s | %s" % (
-            g.drops, g.label_mode, g.label_window, len(g.extra),
-            "ADOPTABLE (BH)" if ok else "not adoptable", tag))
+        finding_winners = []
+    else:
+        ho_base = base_fn(HELDOUT_ASSETS, {})
+        obj = _objective()
+        results = []
+        for e in elites:
+            g = e["genome"]
+            ho_var = train_fn(HELDOUT_ASSETS, genome_to_env(g))
+            p, value, _d, tag = holdout_stats(ho_base, ho_var, obj)
+            results.append((g, p, value, tag))
+        sig = benjamini_hochberg([r[1] for r in results])
+        finding_winners = []
+        for (g, p, value, tag), s in zip(results, sig):
+            ok = s and value > ADOPT_MEAN_SCORE_DELTA
+            finding_winners.append({"axis": "qd", "genome": asdict(g), "p": p,
+                                    "value": value, "tag": tag, "adoptable": bool(ok)})
+            print("[qd] elite drops=%s label=%s/%d extra=%d: %s | %s" % (
+                g.drops, g.label_mode, g.label_window, len(g.extra),
+                "ADOPTABLE (BH)" if ok else "not adoptable", tag))
+    ar_memory.findings_append({
+        "ts": datetime.utcnow().isoformat(), "mode": "qd",
+        "budget": BUDGET, "winners": finding_winners})
+    mem = ar_memory.findings_summary()
+    print("[auto-research] memory: %d experiments tried, %d adoptable findings so far."
+          % (mem["experiments"], mem["adoptable"]))
     print("[qd] %d niches illuminated; review _qd_archive.json; nothing auto-adopted." % len(archive))
     return archive
 
 
-DSL_MENU = (
-    "ops: zscore(window 2-200), ratio(a,b), lag(k 1-20), diff(k 1-20), "
-    "rolling(window,agg in mean|std|sum), interaction(a,b), lead_lag(leader in "
-    "sp500|vix|btc|gold|dxy|tnx, horizon 1-20). Each spec: "
-    '{"name": lower_snake, "op": ..., "inputs": [...], "params": {...}}.'
-)
-
-
-def _proposer_prompt(log, base_features):
-    """The shared prompt for any LLM provider."""
-    history = json.dumps(log[-8:], ensure_ascii=True)
-    return (
-        "You are proposing engineered features for a trading model to revive weak "
-        "neural members. Use ONLY this DSL.\n" + DSL_MENU +
-        "\nBase columns you can reference: " + ",".join(base_features) +
-        "\nPast experiments (spec + held-back selection Score deltas):\n" + history +
-        "\nReturn STRICT JSON: a list of 1-2 new spec dicts, no prose."
-    )
-
-
-def _parse_specs(text):
-    """Extract the JSON list of specs from a model reply, tolerant of stray prose."""
-    if not text:
-        return []
-    start, end = text.find("["), text.rfind("]")
-    if start < 0 or end <= start:
-        return []
-    try:
-        specs = json.loads(text[start:end + 1])
-    except Exception:
-        return []
-    return specs if isinstance(specs, list) else []
-
-
-def _call_anthropic(prompt):
-    """Anthropic SDK. Model via GTRADE_AR_LLM_MODEL (default claude-opus-4-8)."""
-    import anthropic
-    client = anthropic.Anthropic()
-    model = os.getenv("GTRADE_AR_LLM_MODEL") or "claude-opus-4-8"
-    last_err = None
-    for _attempt in range(3):
-        try:
-            msg = client.messages.create(
-                model=model, max_tokens=600,
-                messages=[{"role": "user", "content": prompt}])
-            return msg.content[0].text.strip()
-        except Exception as exc:
-            last_err = exc
-    raise RuntimeError("anthropic proposer failed after 3 attempts: %s" % last_err)
-
-
-def _call_openai(prompt):
-    """OpenAI-compatible chat API. Works with OpenAI and any compatible endpoint
-    (Mistral, a local Ollama/LM Studio, etc.) via GTRADE_AR_LLM_BASE_URL. Model via
-    GTRADE_AR_LLM_MODEL (default gpt-4o)."""
-    import openai
-    client = openai.OpenAI(base_url=os.getenv("GTRADE_AR_LLM_BASE_URL") or None)
-    model = os.getenv("GTRADE_AR_LLM_MODEL") or "gpt-4o"
-    last_err = None
-    for _attempt in range(3):
-        try:
-            resp = client.chat.completions.create(
-                model=model, max_tokens=600,
-                messages=[{"role": "user", "content": prompt}])
-            return resp.choices[0].message.content.strip()
-        except Exception as exc:
-            last_err = exc
-    raise RuntimeError("openai proposer failed after 3 attempts: %s" % last_err)
-
-
-_LLM_BACKENDS = {"anthropic": _call_anthropic, "openai": _call_openai}
-
-
-def propose_next(log, base_features):
-    """Ask an LLM for the next 1-2 feature specs. Provider via GTRADE_AR_LLM:
-    'anthropic' (default) or 'openai' (also any OpenAI-compatible endpoint via
-    GTRADE_AR_LLM_BASE_URL). The chosen backend is retried a few times, then the
-    loop stops cleanly; a non-JSON reply yields no specs (that iteration is skipped)."""
-    provider = (os.getenv("GTRADE_AR_LLM") or "anthropic").strip().lower()
-    backend = _LLM_BACKENDS.get(provider)
-    if backend is None:
-        raise RuntimeError("unknown GTRADE_AR_LLM %r (use anthropic or openai)" % provider)
-    return _parse_specs(backend(_proposer_prompt(log, base_features)))
 
 
 _SAMPLE_WINDOWS = [5, 10, 20, 50]
@@ -484,12 +498,6 @@ _SINGLE_OPS = ["zscore", "lag", "diff", "rolling"]
 _PAIR_OPS = ["ratio", "interaction"]
 _AGGS = ["mean", "std", "sum"]
 _LEAD_LEADERS = ["sp500", "vix", "btc", "gold", "dxy", "tnx"]
-
-
-def _spec_signature(spec):
-    """Identity of a spec ignoring its name, used to dedup against the log."""
-    return (spec["op"], tuple(spec.get("inputs") or []),
-            tuple(sorted((spec.get("params") or {}).items())))
 
 
 def _random_spec(base_features, name, prefer):
@@ -560,15 +568,16 @@ def propose_evolutionary(log, base_features):
             spec = _mutate(random.choice(best[1]), name)
         else:
             spec = _random_spec(base_features, name, good_inputs)
-        if validate_spec(spec, cols) and _spec_signature(spec) not in seen:
+        if (validate_spec(spec, cols) and _spec_signature(spec) not in seen
+                and not ar_memory.tried_seen("spec", json.dumps(_spec_signature(spec)))):
             return [spec]
     return []
 
 
 def _select_proposer():
-    """Evolutionary (no LLM) by default; the Claude proposer when GTRADE_AR_PROPOSER=llm."""
-    if (os.getenv("GTRADE_AR_PROPOSER") or "evolutionary").strip().lower() == "llm":
-        return propose_next
+    """Evolutionary (no LLM) by default; the LLM proposer when GTRADE_AR_PROPOSER=llm."""
+    if llm_proposer.llm_selected():
+        return llm_proposer.propose_specs
     return propose_evolutionary
 
 
@@ -648,13 +657,15 @@ class Axis:
     """One search axis. `propose(log)` returns candidate dicts; `to_env(selected)`
     turns the selected candidate (additive: the kept+new list; select_best: a single
     candidate) into training env overrides; `kind` is "additive" or "select_best";
-    `validate(cand, selected)` and `prescreen(cand, screen_df)` default to accepting."""
+    `validate(cand, selected)` and `prescreen(cand, screen_df)` default to accepting;
+    `sig(cand)` returns (kind, signature) for the permanent tried-registry; None = not registered."""
     name: str
     propose: object
     to_env: object
     kind: str = "additive"
     validate: object = None
     prescreen: object = None
+    sig: object = None
 
     def ok(self, cand, selected, screen_df):
         v = self.validate is None or self.validate(cand, selected)
@@ -669,7 +680,16 @@ def run_axis(axis, budget, base_rows, train_fn, screen_df=None, prior_log=None, 
     additive: forward-selection - keep the running list when the cumulative mean
     Score delta improves. select_best: evaluate each proposed candidate against the
     base and keep the single best whose delta beats the base. `persist(log)` is
-    called after each iteration (None = no-op)."""
+    called after each iteration (None = no-op).
+    budget counts NEW iterations for THIS run (the persisted log only sets the
+    resume point, it does not consume budget)."""
+    def _mark_tried(cands):
+        if axis.sig is None:
+            return
+        for c in (cands if isinstance(cands, list) else [cands]):
+            kind, s = axis.sig(c)
+            ar_memory.tried_add(kind, s)
+
     base_score = {r["Asset"]: r.get("Score", 0.0) for r in base_rows}
     objective = _objective()
     log = list(prior_log or [])
@@ -681,7 +701,8 @@ def run_axis(axis, budget, base_rows, train_fn, screen_df=None, prior_log=None, 
     if axis.kind == "additive":
         kept = [c for e in axis_log if e.get("accepted") for c in e.get("cand", [])]
         kept_delta = max((e.get("cand_mean_delta", 0.0) for e in axis_log if e.get("accepted")), default=0.0)
-        for i in range(len(axis_log), budget):
+        start = len(axis_log)
+        for i in range(start, start + budget):
             proposed = axis.propose(log)
             new = [c for c in proposed if axis.ok(c, kept, screen_df)]
             if not new:
@@ -695,6 +716,7 @@ def run_axis(axis, budget, base_rows, train_fn, screen_df=None, prior_log=None, 
                     entry = {"axis": axis.name, "iter": i, "cand": new,
                              "screen_delta": sdelta, "note": "screened out"}
                     log.append(entry)
+                    _mark_tried(new)
                     persist(log)
                     continue
             rows = train_fn(SELECTION_ASSETS, axis.to_env(cand))
@@ -705,6 +727,7 @@ def run_axis(axis, budget, base_rows, train_fn, screen_df=None, prior_log=None, 
                 kept, kept_delta = cand, delta
                 entry["accepted"] = True
             log.append(entry)
+            _mark_tried(new)
             persist(log)
         return {"axis": axis.name, "kept": kept, "kept_delta": kept_delta, "log": log}
 
@@ -719,8 +742,9 @@ def run_axis(axis, budget, base_rows, train_fn, screen_df=None, prior_log=None, 
         best, best_delta = None, 0.0
     proposed = [c for c in axis.propose(log) if axis.ok(c, best, screen_df)]
     i = len([e for e in axis_log if "iter" in e])
+    stop = i + budget
     for cand in proposed:
-        if i >= budget:
+        if i >= stop:
             break
         if json.dumps(cand, sort_keys=True) in tried:
             continue
@@ -729,6 +753,7 @@ def run_axis(axis, budget, base_rows, train_fn, screen_df=None, prior_log=None, 
             if not passed:
                 log.append({"axis": axis.name, "iter": i, "cand": cand,
                             "screen_delta": sdelta, "note": "screened out"})
+                _mark_tried(cand)
                 persist(log)
                 i += 1
                 continue
@@ -739,6 +764,7 @@ def run_axis(axis, budget, base_rows, train_fn, screen_df=None, prior_log=None, 
             best, best_delta = cand, delta
             entry["accepted"] = True
         log.append(entry)
+        _mark_tried(cand)
         persist(log)
         i += 1
     return {"axis": axis.name, "best": best, "best_delta": best_delta, "log": log}
@@ -761,6 +787,7 @@ def make_features_axis(base_features):
         kind="additive",
         validate=_validate,
         prescreen=lambda cand, screen_df: True if screen_df is None else _prescreen_ok(cand, screen_df),
+        sig=lambda c: ("spec", json.dumps(_spec_signature(c))),
     )
 
 
@@ -773,7 +800,10 @@ def make_labeling_axis():
     def _propose(log):
         tried = {e["cand"]["window"] for e in log
                  if isinstance(e.get("cand"), dict) and "window" in e["cand"]}
-        return [{"mode": "rel_median", "window": w} for w in LABEL_WINDOWS if w not in tried]
+        cands = [{"mode": "rel_median", "window": w}
+                 for w in LABEL_WINDOWS if w not in tried]
+        return [c for c in cands if not ar_memory.tried_seen(
+            "label", json.dumps(c, sort_keys=True))]
 
     return Axis(
         name="labeling",
@@ -781,6 +811,7 @@ def make_labeling_axis():
         to_env=lambda cand: {"GTRADE_LABEL_MODE": cand["mode"],
                              "GTRADE_LABEL_WINDOW": str(cand["window"])},
         kind="select_best",
+        sig=lambda c: ("label", json.dumps(c, sort_keys=True)),
     )
 
 
@@ -798,7 +829,8 @@ def make_pruning_axis(base_features):
         # run_axis treats a proposer's whole result as ONE increment.
         tried = {c["drop"] for e in log for c in e.get("cand", [])
                  if isinstance(c, dict) and "drop" in c}
-        remaining = [f for f in active if f not in tried]
+        remaining = [f for f in active if f not in tried
+                     and not ar_memory.tried_seen("drop", f)]
         return [{"drop": remaining[0]}] if remaining else []
 
     def _validate(cand, kept):
@@ -811,6 +843,7 @@ def make_pruning_axis(base_features):
         to_env=lambda selected: {"GTRADE_DROP_FEATURES": ",".join(c["drop"] for c in selected)},
         kind="additive",
         validate=_validate,
+        sig=lambda c: ("drop", c["drop"]),
     )
 
 
@@ -878,31 +911,46 @@ def main():
     print("[auto-research] axes: %s | budget: %d | prescreen: %s" % (
         ",".join(a.name for a in axes), BUDGET, "on" if screen_df is not None else "off"))
 
-    base_rows = train_env(SELECTION_ASSETS, {})  # shared base, trained once
-    screen_base = train_env(SELECTION_ASSETS, {"GTRADE_SCREEN_ONLY": "1"}) if _screen_on() else None
+    base_rows = train_base_cached(SELECTION_ASSETS, {})  # shared base, trained once
+    screen_base = train_base_cached(SELECTION_ASSETS, {"GTRADE_SCREEN_ONLY": "1"}) if _screen_on() else None
     obj = _objective()
     winners = []   # (axis_name, p, value, tag)
     ho_base = None
     for axis in axes:
-        prior = load_state().get("by_axis", {}).get(axis.name)
-        res = run_axis(axis, BUDGET, base_rows, train_env, screen_df=screen_df,
-                       prior_log=prior, persist=lambda log, a=axis.name: _persist(a, log),
-                       screen_base=screen_base, screen_min=SCREEN_MIN)
-        winner = res.get("kept") or res.get("best")
-        if not winner:
-            print("[auto-research] axis %s: nothing beat the base." % axis.name)
+        try:
+            prior = load_state().get("by_axis", {}).get(axis.name)
+            res = run_axis(axis, BUDGET, base_rows, train_env, screen_df=screen_df,
+                           prior_log=prior, persist=lambda log, a=axis.name: _persist(a, log),
+                           screen_base=screen_base, screen_min=SCREEN_MIN)
+            winner = res.get("kept") or res.get("best")
+            if not winner:
+                print("[auto-research] axis %s: nothing beat the base." % axis.name)
+                continue
+            if ho_base is None:
+                ho_base = train_base_cached(HELDOUT_ASSETS, {})
+            ho_var = train_env(HELDOUT_ASSETS, axis.to_env(winner))
+            p, value, _deltas, tag = holdout_stats(ho_base, ho_var, obj)
+            winners.append((axis.name, p, value, tag))
+        except RuntimeError as exc:
+            print("[auto-research] axis %s: LLM proposer unavailable, skipping (%s)"
+                  % (axis.name, exc))
             continue
-        if ho_base is None:
-            ho_base = train_env(HELDOUT_ASSETS, {})
-        ho_var = train_env(HELDOUT_ASSETS, axis.to_env(winner))
-        p, value, _deltas, tag = holdout_stats(ho_base, ho_var, obj)
-        winners.append((axis.name, p, value, tag))
 
     sig = benjamini_hochberg([w[1] for w in winners])
+    finding_winners = []
     for (name, p, value, tag), s in zip(winners, sig):
         ok = s and value > ADOPT_MEAN_SCORE_DELTA
+        finding_winners.append({"axis": name, "p": p, "value": value,
+                                "tag": tag, "adoptable": bool(ok)})
         print("[auto-research] axis %s: %s | %s" % (
             name, "ADOPTABLE (BH)" if ok else "not adoptable", tag))
+    ar_memory.findings_append({
+        "ts": datetime.utcnow().isoformat(), "mode": "axes",
+        "axes": [a.name for a in axes], "budget": BUDGET,
+        "winners": finding_winners})
+    mem = ar_memory.findings_summary()
+    print("[auto-research] memory: %d experiments tried, %d adoptable findings so far."
+          % (mem["experiments"], mem["adoptable"]))
     print("[auto-research] nothing adopted automatically; review _auto_research_log.json.")
 
 
