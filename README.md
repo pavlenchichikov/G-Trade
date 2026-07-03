@@ -71,6 +71,15 @@ Advanced knobs (`GTRADE_AR_SEED`, `AR_PRESCREEN_MIN`, the screen, the QD sizes, 
 GTRADE_AR_SEED=42 AR_BUDGET=5 python auto_research.py
 ```
 
+### Chronos forecast features (optional, experimental)
+
+Zero-shot forecasts from a pretrained time-series model as CatBoost features, off by
+default. Install `requirements-chronos.txt`, precompute the cache once
+(`python precompute_chronos.py`), then A/B via auto_research with
+`GTRADE_CHRONOS=1 GTRADE_EXTRA_FEATURES=chronos_dir,chronos_ret,chronos_spread`
+(optionally `GTRADE_AR_SCORE_BASIS=neural`). They enter only via GTRADE_EXTRA_FEATURES,
+so feature_version and the production model are unchanged until adopted.
+
 ## Quick start
 
 ```bash

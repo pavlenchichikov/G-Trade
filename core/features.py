@@ -349,6 +349,49 @@ def add_macro_features(df: pd.DataFrame, engine) -> pd.DataFrame:
     return df
 
 
+CHRONOS_CACHE_TABLE = "chronos_cache"
+CHRONOS_COLS = ["chronos_ret", "chronos_spread", "chronos_dir"]
+
+
+def _chronos_on():
+    return (os.getenv("GTRADE_CHRONOS") or "").strip() in ("1", "true", "True")
+
+
+def add_chronos_features(df, table, engine):
+    """LEFT-JOIN cached Chronos forecast columns onto df by date, when GTRADE_CHRONOS
+    is set and a cache exists for `table`. Off / no cache -> df unchanged (so the
+    production feature space and feature_version are untouched). The column names
+    enter training only via GTRADE_EXTRA_FEATURES."""
+    if not _chronos_on():
+        return df
+    try:
+        q = "SELECT date, %s FROM %s WHERE asset = ?" % (
+            ",".join(CHRONOS_COLS), CHRONOS_CACHE_TABLE)
+        cache = pd.read_sql(q, engine, params=(table,))
+    except Exception:
+        return df                                   # no cache table -> no-op
+    if cache.empty:
+        return df
+    cache["date"] = pd.to_datetime(cache["date"])
+    cache = cache.set_index("date")
+    cache = cache[~cache.index.duplicated(keep="last")]   # unique right index -> no row multiplication
+    cache.index = cache.index.normalize()
+    # Follow the sibling add_* convention: in the pipeline df carries a Date/date
+    # COLUMN (each add_* does set_index(date) -> work -> reset_index), so join on
+    # that column and restore the frame. Without this, a df that arrives with a
+    # RangeIndex after a sibling reset_index would join dates-vs-integers and yield
+    # SILENTLY all-NaN Chronos columns. When df is already date-indexed (isolated
+    # use), join directly.
+    date_col = 'Date' if 'Date' in df.columns else ('date' if 'date' in df.columns else None)
+    if date_col is None:
+        df.index = pd.to_datetime(df.index).normalize()
+        return df.join(cache[CHRONOS_COLS], how="left")
+    df = df.set_index(date_col)
+    df.index = pd.to_datetime(df.index).normalize()
+    df = df.join(cache[CHRONOS_COLS], how="left")
+    return df.reset_index()
+
+
 _CROSS_LAG_FEATURES = ['lead_sp500_ret', 'lead_vix_ret', 'lead_btc_ret']
 
 

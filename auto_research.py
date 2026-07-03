@@ -933,7 +933,7 @@ def _try_sample_frame():
         from sqlalchemy import create_engine
         from core.features import (engineer_features, add_weekly_features,
                                    add_crossasset_features, add_macro_features,
-                                   add_cross_lag_features)
+                                   add_cross_lag_features, add_chronos_features)
         from core.track_record import _table_name
         engine = create_engine("sqlite:///" + os.path.join(BASE, "market.db"))
         table = _table_name(SELECTION_ASSETS.split(",")[0])
@@ -943,6 +943,7 @@ def _try_sample_frame():
         df = add_crossasset_features(df, table, engine)
         df = add_macro_features(df, engine)
         df = add_cross_lag_features(df, engine)
+        df = add_chronos_features(df, table, engine)
         return df
     except Exception:
         return None

@@ -397,3 +397,107 @@ def test_active_candidate_features_drop_unknown_is_harmless(monkeypatch):
     full = active_candidate_features()
     monkeypatch.setenv("GTRADE_DROP_FEATURES", "does_not_exist")
     assert active_candidate_features() == full
+
+
+def test_add_chronos_features_off_by_default(monkeypatch, tmp_path):
+    import pandas as pd
+    from sqlalchemy import create_engine
+    from core import features as F
+    monkeypatch.delenv("GTRADE_CHRONOS", raising=False)
+    df = pd.DataFrame({"close": [1.0, 2.0]},
+                      index=pd.to_datetime(["2020-01-01", "2020-01-02"]))
+    eng = create_engine("sqlite:///" + str(tmp_path / "m.db"))
+    out = F.add_chronos_features(df.copy(), "sp500", eng)
+    assert list(out.columns) == ["close"]          # unchanged, no chronos cols
+
+
+def test_add_chronos_features_joins_when_enabled(monkeypatch, tmp_path):
+    import pandas as pd
+    from sqlalchemy import create_engine
+    from core import features as F
+    dbp = str(tmp_path / "m.db")
+    eng = create_engine("sqlite:///" + dbp)
+    cache = pd.DataFrame({
+        "asset": ["sp500", "sp500"], "date": ["2020-01-01", "2020-01-02"],
+        "chronos_ret": [0.01, 0.02], "chronos_spread": [0.05, 0.06],
+        "chronos_dir": [1.0, 0.0]})
+    cache.to_sql("chronos_cache", eng, index=False)
+    monkeypatch.setenv("GTRADE_CHRONOS", "1")
+    df = pd.DataFrame({"close": [1.0, 2.0]},
+                      index=pd.to_datetime(["2020-01-01", "2020-01-02"]))
+    out = F.add_chronos_features(df.copy(), "sp500", eng)
+    assert "chronos_ret" in out.columns and "chronos_spread" in out.columns
+    assert abs(out.iloc[0]["chronos_ret"] - 0.01) < 1e-9
+    assert out.iloc[1]["chronos_dir"] == 0.0
+
+
+def test_chronos_names_not_in_feature_version(monkeypatch):
+    from core import features as F
+    monkeypatch.delenv("GTRADE_CHRONOS", raising=False)
+    monkeypatch.delenv("GTRADE_EXTRA_FEATURES", raising=False)
+    v1 = F.feature_version()
+    monkeypatch.setenv("GTRADE_CHRONOS", "1")
+    assert F.feature_version() == v1               # gate does not change the id
+
+
+def test_add_chronos_features_pipeline_date_column(monkeypatch, tmp_path):
+    """In the pipeline df carries a Date COLUMN with a RangeIndex (siblings end with
+    reset_index). The join must key off that column, not the integer index, else the
+    Chronos columns are silently all-NaN."""
+    import pandas as pd
+    from sqlalchemy import create_engine
+    from core import features as F
+    eng = create_engine("sqlite:///" + str(tmp_path / "m.db"))
+    cache = pd.DataFrame({
+        "asset": ["sp500", "sp500"], "date": ["2020-01-01", "2020-01-02"],
+        "chronos_ret": [0.01, 0.02], "chronos_spread": [0.05, 0.06],
+        "chronos_dir": [1.0, 0.0]})
+    cache.to_sql("chronos_cache", eng, index=False)
+    monkeypatch.setenv("GTRADE_CHRONOS", "1")
+    # df as it arrives in the pipeline: a 'Date' column + a RangeIndex
+    df = pd.DataFrame({"Date": pd.to_datetime(["2020-01-01", "2020-01-02"]),
+                       "close": [1.0, 2.0]})
+    out = F.add_chronos_features(df.copy(), "sp500", eng)
+    assert "chronos_ret" in out.columns
+    assert out["chronos_ret"].notna().all()        # NOT silently all-NaN
+    assert abs(float(out.loc[out["Date"] == pd.Timestamp("2020-01-01"), "chronos_ret"].iloc[0]) - 0.01) < 1e-9
+
+
+def test_add_chronos_features_enabled_but_no_cache(monkeypatch, tmp_path):
+    """GTRADE_CHRONOS set but no cache table -> no-op (df unchanged), not a crash."""
+    import pandas as pd
+    from sqlalchemy import create_engine
+    from core import features as F
+    eng = create_engine("sqlite:///" + str(tmp_path / "empty.db"))
+    monkeypatch.setenv("GTRADE_CHRONOS", "1")
+    df = pd.DataFrame({"close": [1.0, 2.0]},
+                      index=pd.to_datetime(["2020-01-01", "2020-01-02"]))
+    out = F.add_chronos_features(df.copy(), "sp500", eng)
+    assert list(out.columns) == ["close"]
+
+
+def test_add_chronos_features_dedup_no_row_multiplication(monkeypatch, tmp_path):
+    """Cache with a duplicate date must not multiply left rows (row count preserved)."""
+    import pandas as pd
+    from sqlalchemy import create_engine
+    from core import features as F
+    eng = create_engine("sqlite:///" + str(tmp_path / "dedup.db"))
+    # Two rows with identical (asset, date) - the duplicate that triggers row multiplication
+    cache = pd.DataFrame({
+        "asset": ["sp500", "sp500"],
+        "date": ["2020-01-01", "2020-01-01"],   # DUPLICATE date
+        "chronos_ret": [0.01, 0.99],            # keep="last" should retain 0.99
+        "chronos_spread": [0.05, 0.88],
+        "chronos_dir": [1.0, 0.0],
+    })
+    cache.to_sql("chronos_cache", eng, index=False)
+    monkeypatch.setenv("GTRADE_CHRONOS", "1")
+    df = pd.DataFrame({
+        "Date": pd.to_datetime(["2020-01-01", "2020-01-02"]),
+        "close": [1.0, 2.0],
+    })
+    out = F.add_chronos_features(df.copy(), "sp500", eng)
+    assert len(out) == 2                        # NOT multiplied by the duplicate
+    # keep="last" means the second row (chronos_ret=0.99) wins for 2020-01-01
+    val = float(out.loc[out["Date"] == pd.Timestamp("2020-01-01"), "chronos_ret"].iloc[0])
+    assert abs(val - 0.99) < 1e-9
