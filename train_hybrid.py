@@ -19,6 +19,7 @@ from sqlalchemy import create_engine
 from catboost import CatBoostClassifier
 import tensorflow as tf
 from core.logger import get_logger
+from core import net_hygiene
 
 logger = get_logger("train_hybrid")
 from tensorflow.keras.models import Model
@@ -595,100 +596,186 @@ def _train_one_asset(asset, candidate_features, prev_registry_entry):
                 lstm = tf_enc = tcn_model = None
                 lstm_acc = 0.5
             else:
-                with _gpu_lock:
-                    _dev = '/GPU:0' if _HAS_GPU else '/CPU:0'
-                    with tf.device(_dev):
-                        if k == 1:
-                            _placed = tf.constant(1.0).device
-                            try:
-                                _mem = tf.config.experimental.get_memory_info('GPU:0')
-                                _vram = f"  VRAM={_mem['current']//1024//1024}MB"
-                            except Exception:
-                                _vram = ""
-                            _safe_print(
-                                f"  [Device] {asset:<10} - {_placed}"
-                                f"  train={len(X_seq_train)} seq  batch={_batch}{_vram}"
-                            )
-                        # -- Multi-task LSTM --------------------------------------------
-                        lstm_mt = build_lstm_multitask((lookback, len(selected)),
-                                                       n_train_samples=len(X_seq_train),
-                                                       **_lstm_kw)
+                # SP-2 Task 3: uniqueness sample-weights (Lopez de Prado).  Off by default;
+                # set GTRADE_NET_UNIQUENESS=1 to enable.  When unset, _uniq_w is None and
+                # every dataset construction below falls through to the else-branch which is
+                # byte-identical to the original code.
+                _uniq_w = None
+                if net_hygiene.uniqueness_on():
+                    # LdP average-uniqueness addresses OVERLAPPING FORWARD label windows.
+                    # Both current label modes (direction and rel_median) are next-bar
+                    # labels - rel_median's window sizes the TRAILING baseline, not a
+                    # forward hold - so their forward footprint is 1 bar -> horizon 1 ->
+                    # all-ones (an honest no-op today). A future multi-bar forward label
+                    # (triple-barrier) sets GTRADE_LABEL_HORIZON to its barrier horizon to
+                    # activate real down-weighting.
+                    try:
+                        _horizon = max(1, int(os.getenv("GTRADE_LABEL_HORIZON", "1")))
+                    except ValueError:
+                        _horizon = 1
+                    _uniq_w = net_hygiene.uniqueness_weights(
+                        len(X_seq_train), _horizon
+                    ).astype("float32")
+
+                # SP-2 Task 2: seed-averaging closure.  When GTRADE_NET_SEEDS is unset
+                # (default), net_seeds()==1 and _fit_all_nets() runs once with NO
+                # set_random_seed call -> structurally identical to the original code.
+                def _fit_all_nets(multi_seed=False):
+                    if k == 1:
+                        _placed = tf.constant(1.0).device
+                        try:
+                            _mem = tf.config.experimental.get_memory_info('GPU:0')
+                            _vram = f"  VRAM={_mem['current']//1024//1024}MB"
+                        except Exception:
+                            _vram = ""
+                        _safe_print(
+                            f"  [Device] {asset:<10} - {_placed}"
+                            f"  train={len(X_seq_train)} seq  batch={_batch}{_vram}"
+                        )
+                    # -- Multi-task LSTM --------------------------------------------
+                    lstm_mt = build_lstm_multitask((lookback, len(selected)),
+                                                   n_train_samples=len(X_seq_train),
+                                                   **_lstm_kw)
+                    if not multi_seed:
                         _ws_load(lstm_mt, 'lstm', _warm)
+                    if _uniq_w is not None:
+                        # A single sample_weight array applies to all outputs. A dict
+                        # sample_weight (even keyed by output name) is rejected by this
+                        # Keras/tf.data version with KeyError, so weight both heads by
+                        # uniqueness (harmless for the auxiliary magnitude task).
+                        train_ds = tf.data.Dataset.from_tensor_slices((
+                            X_seq_train.astype('float32'),
+                            {'direction': y_seq_train.astype('float32'),
+                             'magnitude': y_mag_train},
+                            _uniq_w,
+                        )).shuffle(len(X_seq_train)).batch(_batch).prefetch(tf.data.AUTOTUNE)
+                    else:
                         train_ds = tf.data.Dataset.from_tensor_slices((
                             X_seq_train.astype('float32'),
                             {'direction': y_seq_train.astype('float32'),
                              'magnitude': y_mag_train}
                         )).shuffle(len(X_seq_train)).batch(_batch).prefetch(tf.data.AUTOTUNE)
-                        val_ds = tf.data.Dataset.from_tensor_slices((
-                            X_seq_val.astype('float32'),
-                            {'direction': y_seq_val.astype('float32'),
-                             'magnitude': y_mag_val_d}
-                        )).batch(BATCH).prefetch(tf.data.AUTOTUNE)
-                        # mode='min' is required on Keras 3 / TF 2.20+: it cannot infer
-                        # the direction for a multi-output loss name like
-                        # 'val_direction_loss' and raises without an explicit mode.
-                        es_lstm = EarlyStopping(monitor='val_direction_loss', patience=10,
-                                                mode='min', restore_best_weights=True)
-                        _lstm_cb = EpochStateCallback(asset, k, _EP_LSTM,
-                                                     label="LSTM", val_metric="val_direction_loss")
-                        lstm_mt.fit(train_ds, validation_data=val_ds, epochs=_EP_LSTM,
-                                    callbacks=[es_lstm, _lstm_cb], verbose=0)
+                    val_ds = tf.data.Dataset.from_tensor_slices((
+                        X_seq_val.astype('float32'),
+                        {'direction': y_seq_val.astype('float32'),
+                         'magnitude': y_mag_val_d}
+                    )).batch(BATCH).prefetch(tf.data.AUTOTUNE)
+                    # mode='min' is required on Keras 3 / TF 2.20+: it cannot infer
+                    # the direction for a multi-output loss name like
+                    # 'val_direction_loss' and raises without an explicit mode.
+                    es_lstm = EarlyStopping(monitor='val_direction_loss', patience=10,
+                                            mode='min', restore_best_weights=True)
+                    _lstm_cb = EpochStateCallback(asset, k, _EP_LSTM,
+                                                 label="LSTM", val_metric="val_direction_loss")
+                    lstm_mt.fit(train_ds, validation_data=val_ds, epochs=_EP_LSTM,
+                                callbacks=[es_lstm, _lstm_cb], verbose=0)
+                    if not multi_seed:
                         _ws_save(lstm_mt, 'lstm', _warm)
-                        lstm_test_prob = lstm_mt.predict(
-                            X_seq_test.astype('float32'), batch_size=BATCH, verbose=0)[0].flatten()
-                        lstm_val_prob  = lstm_mt.predict(
-                            X_seq_val.astype('float32'),  batch_size=BATCH, verbose=0)[0].flatten()
-                        # Extract direction-only model - compatible with predict.py / backtest.py
-                        lstm = Model(inputs=lstm_mt.input,
-                                     outputs=lstm_mt.get_layer('direction').output)
-                        del lstm_mt  # Python obj freed; shared layers still in lstm - OK
+                    lstm_test_prob = lstm_mt.predict(
+                        X_seq_test.astype('float32'), batch_size=BATCH, verbose=0)[0].flatten()
+                    lstm_val_prob  = lstm_mt.predict(
+                        X_seq_val.astype('float32'),  batch_size=BATCH, verbose=0)[0].flatten()
+                    # Extract direction-only model - compatible with predict.py / backtest.py
+                    lstm = Model(inputs=lstm_mt.input,
+                                 outputs=lstm_mt.get_layer('direction').output)
+                    del lstm_mt  # Python obj freed; shared layers still in lstm - OK
 
-                        # -- Transformer encoder --------------------------------------
-                        tf_enc = build_transformer_encoder((lookback, len(selected)),
-                                                           n_train_samples=len(X_seq_train),
-                                                           **_tf_kw)
+                    # -- Transformer encoder ------------------------------------------
+                    tf_enc = build_transformer_encoder((lookback, len(selected)),
+                                                       n_train_samples=len(X_seq_train),
+                                                       **_tf_kw)
+                    if not multi_seed:
                         _ws_load(tf_enc, 'tf', _warm)
+                    if _uniq_w is not None:
+                        train_ds_tf = tf.data.Dataset.from_tensor_slices(
+                            (X_seq_train.astype('float32'),
+                             y_seq_train.astype('float32'),
+                             _uniq_w)
+                        ).shuffle(len(X_seq_train)).batch(_batch).prefetch(tf.data.AUTOTUNE)
+                    else:
                         train_ds_tf = tf.data.Dataset.from_tensor_slices(
                             (X_seq_train.astype('float32'), y_seq_train.astype('float32'))
                         ).shuffle(len(X_seq_train)).batch(_batch).prefetch(tf.data.AUTOTUNE)
-                        val_ds_tf = tf.data.Dataset.from_tensor_slices(
-                            (X_seq_val.astype('float32'), y_seq_val.astype('float32'))
-                        ).batch(BATCH).prefetch(tf.data.AUTOTUNE)
-                        es_tf = EarlyStopping(monitor='val_loss', patience=8,
-                                              mode='min', restore_best_weights=True)
-                        _tf_cb = EpochStateCallback(asset, k, _EP_TF,
-                                                   label="TF", val_metric="val_loss")
-                        tf_enc.fit(train_ds_tf, validation_data=val_ds_tf, epochs=_EP_TF,
-                                   callbacks=[es_tf, _tf_cb], verbose=0)
+                    val_ds_tf = tf.data.Dataset.from_tensor_slices(
+                        (X_seq_val.astype('float32'), y_seq_val.astype('float32'))
+                    ).batch(BATCH).prefetch(tf.data.AUTOTUNE)
+                    es_tf = EarlyStopping(monitor='val_loss', patience=8,
+                                          mode='min', restore_best_weights=True)
+                    _tf_cb = EpochStateCallback(asset, k, _EP_TF,
+                                               label="TF", val_metric="val_loss")
+                    tf_enc.fit(train_ds_tf, validation_data=val_ds_tf, epochs=_EP_TF,
+                               callbacks=[es_tf, _tf_cb], verbose=0)
+                    if not multi_seed:
                         _ws_save(tf_enc, 'tf', _warm)
-                        tf_test_prob = tf_enc.predict(
-                            X_seq_test.astype('float32'), batch_size=BATCH, verbose=0).flatten()
-                        tf_val_prob  = tf_enc.predict(
-                            X_seq_val.astype('float32'),  batch_size=BATCH, verbose=0).flatten()
+                    tf_test_prob = tf_enc.predict(
+                        X_seq_test.astype('float32'), batch_size=BATCH, verbose=0).flatten()
+                    tf_val_prob  = tf_enc.predict(
+                        X_seq_val.astype('float32'),  batch_size=BATCH, verbose=0).flatten()
 
-                        # -- TCN (4th ensemble member) -------------------------------
-                        tcn_model = build_tcn((lookback, len(selected)),
-                                              n_train_samples=len(X_seq_train),
-                                              **_tcn_kw)
+                    # -- TCN (4th ensemble member) ------------------------------------
+                    tcn_model = build_tcn((lookback, len(selected)),
+                                          n_train_samples=len(X_seq_train),
+                                          **_tcn_kw)
+                    if not multi_seed:
                         _ws_load(tcn_model, 'tcn', _warm)
+                    if _uniq_w is not None:
+                        train_ds_tcn = tf.data.Dataset.from_tensor_slices(
+                            (X_seq_train.astype('float32'),
+                             y_seq_train.astype('float32'),
+                             _uniq_w)
+                        ).shuffle(len(X_seq_train)).batch(_batch).prefetch(tf.data.AUTOTUNE)
+                    else:
                         train_ds_tcn = tf.data.Dataset.from_tensor_slices(
                             (X_seq_train.astype('float32'), y_seq_train.astype('float32'))
                         ).shuffle(len(X_seq_train)).batch(_batch).prefetch(tf.data.AUTOTUNE)
-                        val_ds_tcn = tf.data.Dataset.from_tensor_slices(
-                            (X_seq_val.astype('float32'), y_seq_val.astype('float32'))
-                        ).batch(BATCH).prefetch(tf.data.AUTOTUNE)
-                        es_tcn = EarlyStopping(monitor='val_loss', patience=7,
-                                               mode='min', restore_best_weights=True)
-                        _tcn_cb = EpochStateCallback(asset, k, _EP_TCN,
-                                                     label="TCN", val_metric="val_loss")
-                        tcn_model.fit(train_ds_tcn, validation_data=val_ds_tcn, epochs=_EP_TCN,
-                                      callbacks=[es_tcn, _tcn_cb], verbose=0)
+                    val_ds_tcn = tf.data.Dataset.from_tensor_slices(
+                        (X_seq_val.astype('float32'), y_seq_val.astype('float32'))
+                    ).batch(BATCH).prefetch(tf.data.AUTOTUNE)
+                    es_tcn = EarlyStopping(monitor='val_loss', patience=7,
+                                           mode='min', restore_best_weights=True)
+                    _tcn_cb = EpochStateCallback(asset, k, _EP_TCN,
+                                                 label="TCN", val_metric="val_loss")
+                    tcn_model.fit(train_ds_tcn, validation_data=val_ds_tcn, epochs=_EP_TCN,
+                                  callbacks=[es_tcn, _tcn_cb], verbose=0)
+                    if not multi_seed:
                         _ws_save(tcn_model, 'tcn', _warm)
-                        tcn_test_prob = tcn_model.predict(
-                            X_seq_test.astype('float32'), batch_size=BATCH, verbose=0).flatten()
-                        tcn_val_prob = tcn_model.predict(
-                            X_seq_val.astype('float32'), batch_size=BATCH, verbose=0).flatten()
+                    tcn_test_prob = tcn_model.predict(
+                        X_seq_test.astype('float32'), batch_size=BATCH, verbose=0).flatten()
+                    tcn_val_prob = tcn_model.predict(
+                        X_seq_val.astype('float32'), batch_size=BATCH, verbose=0).flatten()
+                    return {
+                        "lstm_test": lstm_test_prob, "lstm_val": lstm_val_prob,
+                        "tf_test":   tf_test_prob,   "tf_val":   tf_val_prob,
+                        "tcn_test":  tcn_test_prob,  "tcn_val":  tcn_val_prob,
+                        "lstm": lstm, "tf_enc": tf_enc, "tcn_model": tcn_model,
+                    }
 
+                with _gpu_lock:
+                    _dev = '/GPU:0' if _HAS_GPU else '/CPU:0'
+                    with tf.device(_dev):
+                        n_seeds = net_hygiene.net_seeds()
+                        if n_seeds <= 1:
+                            runs = [_fit_all_nets()]
+                        else:
+                            runs = []
+                            for _s in range(n_seeds):
+                                tf.keras.utils.set_random_seed(1000 + _s)
+                                runs.append(_fit_all_nets(multi_seed=True))
+                    if len(runs) == 1:
+                        r0 = runs[0]
+                        lstm_test_prob, lstm_val_prob = r0["lstm_test"], r0["lstm_val"]
+                        tf_test_prob, tf_val_prob = r0["tf_test"], r0["tf_val"]
+                        tcn_test_prob, tcn_val_prob = r0["tcn_test"], r0["tcn_val"]
+                    else:
+                        lstm_test_prob = net_hygiene.average_probs([r["lstm_test"] for r in runs])
+                        lstm_val_prob  = net_hygiene.average_probs([r["lstm_val"]  for r in runs])
+                        tf_test_prob   = net_hygiene.average_probs([r["tf_test"]   for r in runs])
+                        tf_val_prob    = net_hygiene.average_probs([r["tf_val"]    for r in runs])
+                        tcn_test_prob  = net_hygiene.average_probs([r["tcn_test"]  for r in runs])
+                        tcn_val_prob   = net_hygiene.average_probs([r["tcn_val"]   for r in runs])
+                    lstm      = runs[-1]["lstm"]
+                    tf_enc    = runs[-1]["tf_enc"]
+                    tcn_model = runs[-1]["tcn_model"]
                 lstm_acc = float(((lstm_test_prob >= 0.5).astype(int) == y_seq_test).mean())
 
             # Wait for CatBoost
@@ -741,12 +828,28 @@ def _train_one_asset(asset, candidate_features, prev_registry_entry):
             tcn_val_al  = tcn_val_prob[:n_val]
             tcn_test_al = tcn_test_prob[:n_test]
 
+            # SP-2 Task 4: per-net calibration + abstention (off by default). When
+            # GTRADE_NET_CALIBRATE is set, calibrate each NET's probs (not CatBoost)
+            # on validation and abstain near 0.5, so the meta-learner sees honest,
+            # decisive net inputs. Unset -> lstm_val_cal/lstm_test_cal are the raw
+            # slices and tf/tcn stay unchanged (byte-identical to before).
+            if net_hygiene.calibrate_nets_on():
+                _cal_eps = net_hygiene.abstain_eps()
+                lstm_val_cal, lstm_test_cal = net_hygiene.calibrate_and_abstain(
+                    lstm_val_prob[:n_val], val_target_aligned, lstm_test_prob[:n_test], _cal_eps)
+                tf_val_al, tf_test_al = net_hygiene.calibrate_and_abstain(
+                    tf_val_al, val_target_aligned, tf_test_al, _cal_eps)
+                tcn_val_al, tcn_test_al = net_hygiene.calibrate_and_abstain(
+                    tcn_val_al, val_target_aligned, tcn_test_al, _cal_eps)
+            else:
+                lstm_val_cal, lstm_test_cal = lstm_val_prob[:n_val], lstm_test_prob[:n_test]
+
             # -- Stacking meta-classifier --------------------------------
             X_meta_val = build_stacking_features(
-                cb_val_aligned, lstm_val_prob[:n_val], tf_val_al, tcn_val_al,
+                cb_val_aligned, lstm_val_cal, tf_val_al, tcn_val_al,
                 val_trend)
             X_meta_test = build_stacking_features(
-                cb_test_aligned[:n_test], lstm_test_prob[:n_test],
+                cb_test_aligned[:n_test], lstm_test_cal,
                 tf_test_al, tcn_test_al, test_trend)
 
             try:
@@ -755,12 +858,14 @@ def _train_one_asset(asset, candidate_features, prev_registry_entry):
                 val_prob = meta_clf.predict_proba(X_meta_val)[:, 1]
                 test_prob = meta_clf.predict_proba(X_meta_test)[:, 1]
             except Exception:
-                # Fallback: equal-weight average
+                # Fallback: equal-weight average. Use the calibrated LSTM arrays
+                # (lstm_*_cal) so this stays consistent with tf/tcn when calibration
+                # is on; when off they are the raw slices, so this is byte-identical.
                 meta_clf = None
-                val_prob = 0.25 * (cb_val_aligned + lstm_val_prob[:n_val]
+                val_prob = 0.25 * (cb_val_aligned + lstm_val_cal
                                    + tf_val_al + tcn_val_al)
                 test_prob = 0.25 * (cb_test_aligned[:n_test]
-                                    + lstm_test_prob[:n_test]
+                                    + lstm_test_cal
                                     + tf_test_al + tcn_test_al)
 
             # threshold tuning on validation (top-3 averaging for stability)
