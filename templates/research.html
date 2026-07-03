@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}Research | G-Trade{% endblock %}
+{% block content %}
+
+<h1 class="fade">Auto-Research</h1>
+<p class="lead fade">What the auto-research agent has tried and found. Nothing here is
+  adopted automatically; a finding becomes trustworthy once it clears the held-out gate
+  in two independent runs (REPLICATED).</p>
+
+<div class="statgrid">
+  <div class="stat fade"><span class="stat-label">Experiments tried</span>
+    <span class="stat-value mono">{{ summary.experiments }}</span></div>
+  <div class="stat fade"><span class="stat-label">Adoptable findings</span>
+    <span class="stat-value mono">{{ summary.adoptable }}</span></div>
+  <div class="stat fade"><span class="stat-label">Replicated</span>
+    <span class="stat-value mono">{{ summary.replicated }}</span></div>
+</div>
+
+<section class="panel fade">
+  <div class="panel-head"><h2>Recent winners</h2></div>
+  <table class="grid">
+    <thead>
+      <tr><th>Run</th><th>Mode</th><th>Axis</th><th>Verdict</th>
+        <th class="num">Neural lift</th><th>Detail</th></tr>
+    </thead>
+    <tbody>
+      {% for r in rows %}
+      <tr>
+        <td class="dim mono">{{ r.ts[:16] }}</td>
+        <td class="mono">{{ r.mode }}</td>
+        <td>{{ r.axis }}</td>
+        <td class="{{ 't-buy' if r.adoptable else 'dim' }}">
+          {% if r.replicated %}REPLICATED ({{ r.clears }}){% elif r.adoptable %}ADOPTABLE{% else %}not adoptable{% endif %}</td>
+        <td class="num mono">{{ "%+.2f"|format(r.neural_lift) if r.neural_lift is not none else "-" }}</td>
+        <td class="dim">{{ r.tag }}</td>
+      </tr>
+      {% else %}
+      <tr><td class="empty" colspan="6">No research runs yet.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+
+{% endblock %}

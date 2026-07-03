@@ -91,6 +91,11 @@ def findings_summary():
             "replicated": replicated}
 
 
+def findings_recent(n=20):
+    """The last n findings-journal records, newest first (empty on unreadable file)."""
+    return list(reversed(_load(FINDINGS_PATH, [])))[:n]
+
+
 def data_fingerprint(subset):
     """Newest bar date per asset table of the subset; changes when new data
     arrives. A missing table is a deterministic marker; a whole-DB failure

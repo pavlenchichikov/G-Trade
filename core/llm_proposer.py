@@ -146,6 +146,31 @@ def _backend():
     return fn
 
 
+def reflect_on():
+    """GTRADE_AR_REFLECT: run a 'reflect then propose' step on the LLM path (default OFF)."""
+    return (os.getenv("GTRADE_AR_REFLECT") or "").strip() in ("1", "true", "True")
+
+
+def _reflect_hypothesis():
+    """One-line hypothesis of why recent experiments did not clear the gate, from the
+    findings journal. Empty string when reflection is off, the journal is empty, or any
+    error - so the caller's prompt is unchanged in those cases."""
+    if not reflect_on():
+        return ""
+    try:
+        from core import ar_memory
+        recent = ar_memory.findings_recent(5)
+        if not recent:
+            return ""
+        prompt = (
+            "Here are recent auto-research experiments and whether they cleared the "
+            "held-out gate:\n" + json.dumps(recent, ensure_ascii=True)[:4000] +
+            "\nIn ONE sentence, hypothesize why they did not improve the model. No prose.")
+        return (_backend()(prompt) or "").strip()
+    except Exception:
+        return ""
+
+
 GENOME_MENU = (
     'A genome is JSON: {"drops": [features to drop], "extra": [spec dicts], '
     '"label_mode": "direction" or "rel_median", "label_window": 20 or 30 or 60}. '
@@ -182,6 +207,9 @@ def propose_genome(parent, elites, active, base_features):
         "\nCurrent elites (genome + fitness): " + json.dumps(elites, ensure_ascii=True) +
         "\nReturn STRICT JSON: one genome object, no prose."
     )
+    hyp = _reflect_hypothesis()
+    if hyp:
+        prompt = "Reflection: " + hyp + "\n" + prompt
     backend = _backend()
     for _attempt in range(2):
         obj = _parse_obj(backend(prompt))
@@ -194,4 +222,8 @@ def propose_specs(log, base_features):
     """Ask the selected LLM for the next 1-2 feature specs. The backend retries
     a few times then raises cleanly; a non-JSON reply yields no specs (that
     iteration is skipped)."""
-    return _parse_specs(_backend()(_proposer_prompt(log, base_features)))
+    prompt = _proposer_prompt(log, base_features)
+    hyp = _reflect_hypothesis()
+    if hyp:
+        prompt = "Reflection: " + hyp + "\n" + prompt
+    return _parse_specs(_backend()(prompt))

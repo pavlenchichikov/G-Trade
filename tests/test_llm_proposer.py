@@ -178,3 +178,67 @@ def test_propose_genome_prompt_mentions_parent_and_elites(monkeypatch):
     assert '"drops": ["atr"]' in seen["prompt"]
     assert '"fitness": 1.5' in seen["prompt"]
     assert "rsi,atr" in seen["prompt"]
+
+
+def test_reflect_on_env(monkeypatch):
+    monkeypatch.delenv("GTRADE_AR_REFLECT", raising=False)
+    assert lp.reflect_on() is False
+    monkeypatch.setenv("GTRADE_AR_REFLECT", "1")
+    assert lp.reflect_on() is True
+
+
+def test_reflect_hypothesis_reads_journal(monkeypatch):
+    from core import ar_memory
+    monkeypatch.setenv("GTRADE_AR_LLM", "openai")
+    monkeypatch.setenv("GTRADE_AR_REFLECT", "1")
+    ar_memory.findings_append({"ts": "t1", "winners": [{"axis": "features", "adoptable": False}]})
+    monkeypatch.setattr(lp, "_call_openai", lambda prompt: "the features were too noisy")
+    assert lp._reflect_hypothesis() == "the features were too noisy"
+
+
+def test_reflect_hypothesis_empty_when_off_or_error(monkeypatch):
+    monkeypatch.delenv("GTRADE_AR_REFLECT", raising=False)
+    assert lp._reflect_hypothesis() == ""              # off
+    monkeypatch.setenv("GTRADE_AR_REFLECT", "1")
+    monkeypatch.setenv("GTRADE_AR_LLM", "openai")
+    def boom(prompt):
+        raise RuntimeError("down")
+    monkeypatch.setattr(lp, "_call_openai", boom)
+    assert lp._reflect_hypothesis() == ""              # error -> ""
+
+
+def test_propose_specs_includes_reflection(monkeypatch):
+    seen = {}
+    monkeypatch.setenv("GTRADE_AR_LLM", "openai")
+    monkeypatch.setenv("GTRADE_AR_REFLECT", "1")
+    monkeypatch.setattr(lp, "_reflect_hypothesis", lambda: "too much overfitting")
+    def capture(prompt):
+        seen["prompt"] = prompt
+        return "[]"
+    monkeypatch.setattr(lp, "_call_openai", capture)
+    lp.propose_specs([], ["ret_1"])
+    assert "Reflection: too much overfitting" in seen["prompt"]
+
+
+def test_propose_specs_no_reflection_when_off(monkeypatch):
+    seen = {}
+    monkeypatch.setenv("GTRADE_AR_LLM", "openai")
+    monkeypatch.delenv("GTRADE_AR_REFLECT", raising=False)
+    monkeypatch.setattr(lp, "_call_openai", lambda prompt: seen.setdefault("prompt", prompt) or "[]")
+    lp.propose_specs([], ["ret_1"])
+    assert "Reflection:" not in seen["prompt"]         # byte-identical prompt when off
+
+
+def test_propose_genome_includes_reflection(monkeypatch):
+    seen = {}
+    monkeypatch.setenv("GTRADE_AR_LLM", "openai")
+    monkeypatch.setenv("GTRADE_AR_REFLECT", "1")
+    monkeypatch.setattr(lp, "_reflect_hypothesis", lambda: "labels too noisy")
+
+    def capture(prompt):
+        seen["prompt"] = prompt
+        return "{}"
+
+    monkeypatch.setattr(lp, "_call_openai", capture)
+    lp.propose_genome({"drops": []}, [], ["rsi", "atr"], ["ret_1"])
+    assert "Reflection: labels too noisy" in seen["prompt"]

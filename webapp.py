@@ -137,6 +137,27 @@ def _portfolio_snapshot():
     }
 
 
+def _research_snapshot():
+    """Findings-journal snapshot for the /research page: cumulative counters plus a
+    flattened newest-first list of recent winners. Read-only."""
+    from core import ar_memory
+    summary = ar_memory.findings_summary()
+    recent = ar_memory.findings_recent(15)
+    rows = []
+    for rec in recent:
+        for w in rec.get("winners", []):
+            rows.append({
+                "ts": rec.get("ts", ""), "mode": rec.get("mode", ""),
+                "axis": w.get("axis", ""), "adoptable": bool(w.get("adoptable")),
+                "replicated": bool(w.get("replicated")),
+                "clears": w.get("clears") or 0, "neural_lift": w.get("neural_lift"),
+                "tag": w.get("tag", ""),
+            })
+    # Two independent caps: findings_recent(15) bounds the RECORDS read; rows[:40]
+    # bounds the flattened winner-ROWS shown (one record can hold many winners).
+    return {"summary": summary, "rows": rows[:40], "runs": len(recent)}
+
+
 def _spark(closes, w=110, h=26):
     """Points for an svg sparkline from a list of closes."""
     if len(closes) < 2:
@@ -366,6 +387,7 @@ def api_palette():
         ["Correlations", "/correlations"], ["Accuracy", "/performance"],
         ["News", "/news"], ["Guru", "/guru"], ["Models", "/models"],
         ["Risk", "/risk"], ["Portfolio", "/portfolio"], ["What-If", "/whatif"],
+        ["Research", "/research"],
     ]
     return {"pages": pages, "assets": sorted(FULL_ASSET_MAP)}
 
@@ -401,6 +423,16 @@ async def api_loop_dismiss(request: Request):
     except Exception:
         body = {}
     return loop_state.dismiss(LOOP_STATE_PATH, str(body.get("asset", "")).upper())
+
+
+@app.get("/research", response_class=HTMLResponse)
+def research_page(request: Request):
+    return templates.TemplateResponse(request, "research.html", _research_snapshot())
+
+
+@app.get("/api/research")
+def api_research():
+    return _research_snapshot()
 
 
 @app.get("/whatif", response_class=HTMLResponse)

@@ -578,3 +578,34 @@ def test_performance_page_has_reconcile_button(client, monkeypatch):
     r = client.get("/performance")
     assert r.status_code == 200
     assert "reconcile-btn" in r.text
+
+
+def test_research_page_empty(client):
+    r = client.get("/research")
+    assert r.status_code == 200
+    assert "Research" in r.text
+    assert "No research runs yet" in r.text        # empty-state
+
+
+def test_research_page_with_findings(client):
+    from core import ar_memory
+    ar_memory.findings_append({"ts": "2026-07-03T21:00:00", "mode": "qd",
+        "winners": [{"axis": "qd", "adoptable": True, "replicated": True,
+                     "clears": 2, "neural_lift": 0.31, "tag": "min dScore 1.20"}]})
+    r = client.get("/research")
+    assert r.status_code == 200
+    assert "REPLICATED" in r.text and "min dScore 1.20" in r.text
+
+
+def test_api_research(client):
+    from core import ar_memory
+    ar_memory.findings_append({"ts": "t1", "mode": "axes",
+        "winners": [{"axis": "features", "adoptable": False, "tag": "x"}]})
+    d = client.get("/api/research").json()
+    assert "summary" in d and "rows" in d
+    assert any(row["axis"] == "features" for row in d["rows"])
+
+
+def test_palette_has_research(client):
+    d = client.get("/api/palette").json()
+    assert any(p[0] == "Research" for p in d["pages"])

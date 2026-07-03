@@ -111,3 +111,12 @@ def test_findings_summary_counts_replicated():
     assert s["adoptable"] == 2
     assert s["replicated"] == 1
     assert s["experiments"] == 1
+
+
+def test_findings_recent_newest_first_and_cap():
+    assert am.findings_recent() == []
+    for i in range(3):
+        am.findings_append({"ts": "t%d" % i, "winners": []})
+    rec = am.findings_recent(2)
+    assert [r["ts"] for r in rec] == ["t2", "t1"]      # newest first, capped at 2
+    assert len(am.findings_recent()) == 3
