@@ -1129,3 +1129,55 @@ def test_run_axis_additive_neural_basis(monkeypatch):
     res = ar.run_axis(axis, 1, base, ar.train_env, persist=lambda log: None)
     # candidate contribution (4.5) beats base contribution (0.5) -> kept
     assert res["kept"] and res["kept_delta"] > 0
+
+
+# --- Task 2: surrogate-guided next_child ---
+
+
+def test_surrogate_child_picks_higher_predicted(monkeypatch):
+    monkeypatch.setenv("GTRADE_AR_SURROGATE", "1")
+    monkeypatch.setenv("GTRADE_AR_SURROGATE_K", "2")
+    # archive fitness = n_drops, so the surrogate learns "more drops = better"
+    archive = {}
+    for i, k in enumerate([0, 1, 2, 3, 0, 1, 2, 3, 1, 2]):
+        g = ar.Genome(drops=list(_ACTIVE[:k]))
+        archive["%d_0" % i] = {"genome": g, "fitness": float(k), "rows": []}
+    lo = ar.Genome(drops=[])                        # predicted low
+    hi = ar.Genome(drops=list(_ACTIVE[:3]))         # predicted high
+    seq = iter([lo, hi])
+    monkeypatch.setattr(ar, "mutate", lambda parent, active, bf: next(seq))
+    monkeypatch.setattr(ar, "crossover", lambda a, b, active: next(seq))
+    # force the mutate path (not crossover) is irrelevant; both draw from seq
+    import random as _r
+    _r.seed(1)
+    child = ar._surrogate_child(archive, _ACTIVE, ["ret_1"])
+    assert child is not None and len(child.drops) == 3   # the higher-predicted one
+
+
+def test_next_child_surrogate_off_is_unchanged(monkeypatch):
+    monkeypatch.delenv("GTRADE_AR_SURROGATE", raising=False)
+    archive = {"0_0": {"genome": ar.Genome(), "fitness": 0.0, "rows": []}}
+    called = {"surrogate": 0}
+    from core import qd_surrogate
+    monkeypatch.setattr(qd_surrogate, "fit_surrogate",
+                        lambda *a, **k: called.__setitem__("surrogate", called["surrogate"] + 1) or None)
+    monkeypatch.setattr(ar, "mutate", lambda parent, active, bf: ar.Genome(drops=["rsi"]))
+    import random as _r
+    _r.seed(0)
+    child = ar.next_child(archive, _ACTIVE, ["ret_1"])
+    assert child is not None                       # plain path still works
+    assert called["surrogate"] == 0                # surrogate never consulted when OFF
+
+
+def test_next_child_surrogate_error_falls_back(monkeypatch):
+    monkeypatch.setenv("GTRADE_AR_SURROGATE", "1")
+
+    def boom(*a, **k):
+        raise RuntimeError("surrogate down")
+    monkeypatch.setattr(ar, "_surrogate_child", boom)
+    monkeypatch.setattr(ar, "mutate", lambda parent, active, bf: ar.Genome(drops=["atr"]))
+    archive = {"0_0": {"genome": ar.Genome(), "fitness": 0.0, "rows": []}}
+    import random as _r
+    _r.seed(0)
+    child = ar.next_child(archive, _ACTIVE, ["ret_1"])
+    assert child is not None                       # fell back to mutate/crossover

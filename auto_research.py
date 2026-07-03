@@ -26,6 +26,7 @@ from datetime import datetime
 
 from core import ar_memory
 from core import llm_proposer
+from core import qd_surrogate
 from core.feature_dsl import validate_spec
 from core.logger import get_logger
 
@@ -451,6 +452,34 @@ def _llm_child(elites, active, base_features):
     return g if valid(g, active, prune_min) else None
 
 
+def _surrogate_child(archive, active, base_features):
+    """Generate up to n_candidates() unseen children via mutate/crossover (valid by
+    construction, like the plain loop), score each with a surrogate fit on the archive,
+    and return the highest-predicted previously-untried child. None when the surrogate
+    cannot be fit or every candidate is already tried."""
+    elites = list(archive.values())
+    samples = [(qd_surrogate.genome_vector(e["genome"], active, base_features), e["fitness"])
+               for e in elites]
+    model = qd_surrogate.fit_surrogate(samples)
+    if model is None:
+        return None
+    best, best_pred = None, None
+    for _ in range(qd_surrogate.n_candidates()):
+        parent = random.choice(elites)["genome"]
+        if len(elites) >= 2 and random.random() < 0.5:
+            child = crossover(parent, random.choice(elites)["genome"], active)
+        else:
+            child = mutate(parent, active, base_features)
+        child = _canon_genome(child)
+        if ar_memory.tried_seen("genome", genome_sig(child)):
+            continue
+        pred = qd_surrogate.predict(
+            model, qd_surrogate.genome_vector(child, active, base_features))
+        if best is None or pred > best_pred:
+            best, best_pred = child, pred
+    return best
+
+
 def next_child(archive, active, base_features, attempts=10):
     """One unseen child genome for the QD loop: LLM-proposed (when the llm proposer is selected, with probability GTRADE_AR_QD_LLM_P) else mutate/crossover retried against the tried-registry.
     None when the archive is empty or every attempt lands on an already-tried genome."""
@@ -464,6 +493,13 @@ def next_child(archive, active, base_features, attempts=10):
             child = _canon_genome(child)
             if not ar_memory.tried_seen("genome", genome_sig(child)):
                 return child
+    if qd_surrogate.surrogate_on():
+        try:
+            child = _surrogate_child(archive, active, base_features)
+        except Exception:
+            child = None
+        if child is not None:
+            return child
     for _ in range(attempts):
         parent = random.choice(elites)["genome"]
         if len(elites) >= 2 and random.random() < 0.5:
