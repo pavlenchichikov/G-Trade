@@ -85,8 +85,10 @@ def _load_json(path):
 
 
 def _predict_asset(name, registry, thresholds):
-    """Returns (sig, prob, price, mode, meta_prob) or None on failure. meta_prob is
-    None unless GTRADE_META_SIZING is on (the SP-6 Phase 2b meta-sizing gate)."""
+    """Returns (sig, prob, price, mode, meta_prob, cb_prob, lstm_prob) or None on failure.
+    prob is the ensemble probability; cb_prob/lstm_prob are the individual member probs
+    logged to the journal (lstm_prob is None for a CB-only champion). meta_prob is None
+    unless GTRADE_META_SIZING is on (the SP-6 Phase 2b meta-sizing gate)."""
     table = name.lower().replace("^", "").replace(".", "").replace("-", "")
     cb_path = os.path.join(MODEL_DIR, f"{table}_cb.cbm")
     lstm_path = os.path.join(MODEL_DIR, f"{table}_lstm.keras")
@@ -243,7 +245,7 @@ def _predict_asset(name, registry, thresholds):
                         sig, _info = meta_sizer.gate(sig, meta_p)
             except Exception as e:
                 logger.debug("meta-sizing skipped for %s: %s", name, e)
-        return sig, prob, curr_price, mode, meta_p
+        return sig, prob, curr_price, mode, meta_p, cb_prob, lstm_prob
 
     except Exception as e:
         logger.error("Prediction failed for %s: %s", table, e)
@@ -284,9 +286,10 @@ def run_radar():
             results[name] = res
             # Log prediction for performance tracking
             if _do_log:
-                sig, prob, price, mode, meta_p = res
+                sig, prob, price, mode, meta_p, cb_p, lstm_p = res
                 try:
-                    log_prediction(name, sig, prob, cb_prob=prob, meta_prob=meta_p)
+                    log_prediction(name, sig, prob, cb_prob=cb_p, lstm_prob=lstm_p,
+                                   meta_prob=meta_p)
                     logged += 1
                 except Exception as e:
                     logger.debug("Log prediction failed for %s: %s", name, e)
@@ -307,7 +310,7 @@ def run_radar():
         print(tag + "-" * max(0, W - len(tag)))
         print(col_hdr)
 
-        for name, (sig, prob, price, mode, _mp) in rows:
+        for name, (sig, prob, price, mode, _mp, _cbp, _lstmp) in rows:
             clr = _CLR[sig]
             # Pad signal text first, THEN wrap with color codes so
             # surrounding columns stay aligned regardless of escape chars
