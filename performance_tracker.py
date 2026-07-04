@@ -112,13 +112,17 @@ def update_actuals():
                 # never happens.
                 df.columns = [c.lower() for c in df.columns]
                 df = df[~df.index.duplicated(keep="last")].sort_index()
-                if date_str not in df.index:
+                # Predictions can be logged on non-trading days (weekends/holidays), so
+                # match the last bar ON OR BEFORE the prediction date (the close the model
+                # saw) and take the return to the following bar. Requiring the prediction
+                # date to be an exact bar left every weekend-dated prediction permanently
+                # unreconciled. For a trading-day prediction this is the old date->next-day
+                # behavior unchanged.
+                pos = int(df.index.searchsorted(date_str, side="right")) - 1
+                if pos < 0 or pos + 1 >= len(df):
                     continue
-                idx = df.index.get_loc(date_str)
-                if idx + 1 >= len(df):
-                    continue
-                today_close = df["close"].iloc[idx]
-                next_close = df["close"].iloc[idx + 1]
+                today_close = df["close"].iloc[pos]
+                next_close = df["close"].iloc[pos + 1]
                 if today_close == 0:
                     continue
                 ret = (next_close - today_close) / today_close

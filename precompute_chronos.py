@@ -38,10 +38,11 @@ def precompute_asset(asset, engine, forecaster=None, context=64, horizon=5,
                      model="amazon/chronos-t5-tiny"):
     """Forecast + cache the uncached bars of one asset. Returns rows newly written."""
     table = _table_name(asset)
-    prices = pd.read_sql('SELECT Date, Close FROM "%s" ORDER BY Date' % table,
+    # market.db stores OHLCV lower-case (open/close/high/low/volume) with a capital Date.
+    prices = pd.read_sql('SELECT Date, close FROM "%s" ORDER BY Date' % table,
                          engine, index_col="Date")
     prices.index = pd.to_datetime(prices.index)
-    feats = forecast_features(prices["Close"], context=context, horizon=horizon,
+    feats = forecast_features(prices["close"], context=context, horizon=horizon,
                               model=model, forecaster=forecaster).dropna()
     if feats.empty:
         return 0

@@ -1,4 +1,4 @@
-# Optional deps for SP-3 Chronos forecast features (see precompute_chronos.py).
+# Optional deps for  Chronos forecast features (see precompute_chronos.py).
 # NOT required by the core stack; install only to A/B Chronos features.
 torch>=2.0
 chronos-forecasting>=1.2

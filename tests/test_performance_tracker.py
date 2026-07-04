@@ -123,3 +123,28 @@ def test_update_actuals_returns_counts(tmp_path, monkeypatch):
     monkeypatch.setattr(pt, "_ENGINE", None)   # reset the cached engine
     res = pt.update_actuals()
     assert res == {"pending": 2, "reconciled": 1}
+
+
+def test_update_actuals_reconciles_weekend_dated_prediction(tmp_path, monkeypatch):
+    """A prediction logged on a non-trading day (no exact bar) must reconcile against
+    the last bar on-or-before it and the following bar - not stay pending forever."""
+    import performance_tracker as pt
+    db = str(tmp_path / "wk.db")
+    con = sqlite3.connect(db)
+    con.execute("CREATE TABLE btc (Date TEXT, open REAL, high REAL, low REAL, close REAL, volume REAL)")
+    con.executemany("INSERT INTO btc VALUES (?,?,?,?,?,?)", [
+        ("2026-06-12", 1, 1, 1, 100.0, 1),   # Friday
+        ("2026-06-15", 1, 1, 1, 110.0, 1),   # Monday (+10%); 06-13/06-14 are weekend, no bars
+    ])
+    con.execute("CREATE TABLE prediction_log (date TEXT, asset TEXT, signal TEXT, probability REAL, "
+                "actual_next_ret REAL, correct INTEGER, cb_prob REAL, lstm_prob REAL, model_version TEXT)")
+    con.execute("INSERT INTO prediction_log VALUES ('2026-06-13','BTC','BUY',0.7,NULL,NULL,NULL,NULL,'v1')")
+    con.commit(); con.close()
+    monkeypatch.setattr(pt, "DB_PATH", db)
+    monkeypatch.setattr(pt, "_ENGINE", None)
+    res = pt.update_actuals()
+    assert res == {"pending": 1, "reconciled": 1}
+    con = sqlite3.connect(db)
+    ret, correct = con.execute("SELECT actual_next_ret, correct FROM prediction_log").fetchone()
+    con.close()
+    assert abs(ret - 0.10) < 1e-9 and correct == 1   # Friday 100 -> Monday 110
