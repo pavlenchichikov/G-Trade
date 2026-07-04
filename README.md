@@ -74,8 +74,17 @@ GTRADE_AR_SEED=42 AR_BUDGET=5 python auto_research.py
 ### Chronos forecast features (optional, experimental)
 
 Zero-shot forecasts from a pretrained time-series model as CatBoost features, off by
-default. Install `requirements-chronos.txt`, precompute the cache once
-(`python precompute_chronos.py`), then A/B via auto_research with
+default. Install `requirements-chronos.txt`, then precompute the cache once:
+
+```bash
+python precompute_chronos.py                          # 10-asset selection, tiny model
+python precompute_chronos.py --model base --assets all # bigger model, all 181 assets
+```
+
+`--model` picks the Chronos base model by short name (`tiny`, `mini`, `small`, `base`,
+`large`) or a full Hugging Face id; a bigger model forecasts better but is much slower
+per bar. `--assets` takes comma-separated names or `all` for the full 181-asset universe
+(default is a 10-asset selection). Then A/B via auto_research with
 `GTRADE_CHRONOS=1 GTRADE_EXTRA_FEATURES=chronos_dir,chronos_ret,chronos_spread`
 (optionally `GTRADE_AR_SCORE_BASIS=neural`). They enter only via GTRADE_EXTRA_FEATURES,
 so feature_version and the production model are unchanged until adopted.

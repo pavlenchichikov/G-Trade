@@ -148,3 +148,16 @@ def test_update_actuals_reconciles_weekend_dated_prediction(tmp_path, monkeypatc
     ret, correct = con.execute("SELECT actual_next_ret, correct FROM prediction_log").fetchone()
     con.close()
     assert abs(ret - 0.10) < 1e-9 and correct == 1   # Friday 100 -> Monday 110
+
+
+def test_log_prediction_records_meta_prob(tmp_path, monkeypatch):
+    import sqlite3
+    import performance_tracker as pt
+    db = str(tmp_path / "mp.db")
+    monkeypatch.setattr(pt, "DB_PATH", db)
+    monkeypatch.setattr(pt, "_ENGINE", None)
+    pt.log_prediction("BTC", "BUY", 0.7, meta_prob=0.42)
+    con = sqlite3.connect(db)
+    val = con.execute("SELECT meta_prob FROM prediction_log").fetchone()[0]
+    con.close()
+    assert abs(val - 0.42) < 1e-9

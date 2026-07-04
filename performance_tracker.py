@@ -30,12 +30,14 @@ def current_model_version() -> str:
 
 
 def _migrate(cur):
-    """Add model_version to an old prediction_log in place (rows before the
+    """Add model_version and meta_prob to an old prediction_log in place (rows before the
     migration keep NULL = legacy generation, so they never blend with the new
     model's track record)."""
     cols = [r[1] for r in cur.execute("PRAGMA table_info(prediction_log)").fetchall()]
     if cols and "model_version" not in cols:
         cur.execute("ALTER TABLE prediction_log ADD COLUMN model_version TEXT")
+    if cols and "meta_prob" not in cols:
+        cur.execute("ALTER TABLE prediction_log ADD COLUMN meta_prob REAL")
 
 
 def _ensure_table(cur):
@@ -49,7 +51,8 @@ def _ensure_table(cur):
             correct INTEGER,
             cb_prob REAL,
             lstm_prob REAL,
-            model_version TEXT
+            model_version TEXT,
+            meta_prob REAL
         )
     """)
     _migrate(cur)
@@ -63,7 +66,7 @@ def _prepare():
 
 
 def log_prediction(asset, signal, probability, cb_prob=None, lstm_prob=None,
-                   model_version=None):
+                   model_version=None, meta_prob=None):
     today = datetime.utcnow().strftime("%Y-%m-%d")
     if model_version is None:
         model_version = feature_version()
@@ -80,9 +83,10 @@ def log_prediction(asset, signal, probability, cb_prob=None, lstm_prob=None,
         cur.execute(
             """INSERT INTO prediction_log
                (date, asset, signal, probability, actual_next_ret, correct,
-                cb_prob, lstm_prob, model_version)
-               VALUES (?, ?, ?, ?, NULL, NULL, ?, ?, ?)""",
-            (today, asset, signal, probability, cb_prob, lstm_prob, model_version),
+                cb_prob, lstm_prob, model_version, meta_prob)
+               VALUES (?, ?, ?, ?, NULL, NULL, ?, ?, ?, ?)""",
+            (today, asset, signal, probability, cb_prob, lstm_prob,
+             model_version, meta_prob),
         )
         con.commit()
 

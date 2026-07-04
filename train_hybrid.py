@@ -20,6 +20,7 @@ from catboost import CatBoostClassifier
 import tensorflow as tf
 from core.logger import get_logger
 from core import net_hygiene
+from core import meta_sizer
 
 logger = get_logger("train_hybrid")
 from tensorflow.keras.models import Model
@@ -996,6 +997,12 @@ def _train_one_asset(asset, candidate_features, prev_registry_entry):
                 save_scaler(best_fold['models']['scaler'], MODEL_DIR, table)
                 _calib = fit_calibrator(best_fold.get('val_prob'), best_fold.get('val_target'))
                 save_calibrator(_calib, MODEL_DIR, table)
+                # SP-6 Phase 2b: optionally train + persist a per-asset meta-sizing model
+                # (P(CB correct)). Env-gated (GTRADE_META_SIZING); default off -> skipped.
+                # Never allowed to break champion training.
+                if meta_sizer.meta_enabled() != "off":
+                    if meta_sizer.train_and_save(asset, df):
+                        logger.info("[meta] saved sizing model for %s", asset)
                 registry_update = {
                     'score': best_fold['score'],
                     'updated_at': datetime.now().isoformat(),

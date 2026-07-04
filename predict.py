@@ -42,6 +42,7 @@ from core.ensemble import build_stacking_features
 from core.scaling import load_or_fit_scaler
 from core.calibration import load_calibrator, apply_calibrator
 from core.model_io import get_lookback as _get_lookback, load_lstm_model as _load_lstm_model
+from core import meta_sizer
 
 logger = get_logger("predict")
 
@@ -84,7 +85,8 @@ def _load_json(path):
 
 
 def _predict_asset(name, registry, thresholds):
-    """Returns (sig, prob, price, mode) or None on failure."""
+    """Returns (sig, prob, price, mode, meta_prob) or None on failure. meta_prob is
+    None unless GTRADE_META_SIZING is on (the SP-6 Phase 2b meta-sizing gate)."""
     table = name.lower().replace("^", "").replace(".", "").replace("-", "")
     cb_path = os.path.join(MODEL_DIR, f"{table}_cb.cbm")
     lstm_path = os.path.join(MODEL_DIR, f"{table}_lstm.keras")
@@ -229,7 +231,19 @@ def _predict_asset(name, registry, thresholds):
             sig = "WAIT"
             mode = f"{mode} low-q"
 
-        return sig, prob, curr_price, mode
+        meta_p = None
+        if meta_sizer.meta_enabled() != "off":
+            try:
+                model = meta_sizer.load_meta(name)
+                if model is not None:
+                    mcols = [c for c in (meta_sizer.OPINION_COLS + meta_sizer.REGIME_COLS)
+                             if c in df.columns]
+                    if len(mcols) >= 3:
+                        meta_p = meta_sizer.meta_prob(model, df[mcols].iloc[-1].to_numpy())
+                        sig, _info = meta_sizer.gate(sig, meta_p)
+            except Exception as e:
+                logger.debug("meta-sizing skipped for %s: %s", name, e)
+        return sig, prob, curr_price, mode, meta_p
 
     except Exception as e:
         logger.error("Prediction failed for %s: %s", table, e)
@@ -270,9 +284,9 @@ def run_radar():
             results[name] = res
             # Log prediction for performance tracking
             if _do_log:
-                sig, prob, price, mode = res
+                sig, prob, price, mode, meta_p = res
                 try:
-                    log_prediction(name, sig, prob, cb_prob=prob)
+                    log_prediction(name, sig, prob, cb_prob=prob, meta_prob=meta_p)
                     logged += 1
                 except Exception as e:
                     logger.debug("Log prediction failed for %s: %s", name, e)
@@ -293,7 +307,7 @@ def run_radar():
         print(tag + "-" * max(0, W - len(tag)))
         print(col_hdr)
 
-        for name, (sig, prob, price, mode) in rows:
+        for name, (sig, prob, price, mode, _mp) in rows:
             clr = _CLR[sig]
             # Pad signal text first, THEN wrap with color codes so
             # surrounding columns stay aligned regardless of escape chars
