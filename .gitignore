@@ -67,9 +67,11 @@ PLAN.md
 .DS_Store
 Thumbs.db
 
-# Local validation / scratch scripts (not part of the pipeline)
+# Local validation (AB tests / scratch scripts (not part of the pipeline)
 ab_validate.py
 ab_features.py
+ab_labeling.py
+ab_chronos.py
 train_chunked.py
 _chunk_progress.txt
 _chunk_quality.json
