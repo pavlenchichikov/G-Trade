@@ -85,10 +85,13 @@ def _load_json(path):
 
 
 def _predict_asset(name, registry, thresholds):
-    """Returns (sig, prob, price, mode, meta_prob, cb_prob, lstm_prob) or None on failure.
-    prob is the ensemble probability; cb_prob/lstm_prob are the individual member probs
-    logged to the journal (lstm_prob is None for a CB-only champion). meta_prob is None
-    unless GTRADE_META_SIZING is on (the SP-6 Phase 2b meta-sizing gate)."""
+    """Returns (sig, prob, price, mode, meta_prob, cb_prob, lstm_prob, bar_date) or
+    None on failure. prob is the ensemble probability; cb_prob/lstm_prob are the
+    individual member probs logged to the journal (lstm_prob is None for a CB-only
+    champion). meta_prob is None unless GTRADE_META_SIZING is on (the SP-6 Phase 2b
+    meta-sizing gate). bar_date is the date of the latest bar the prediction was
+    computed from (YYYY-MM-DD) - used to stamp the journal by market day, not wall
+    clock, so weekend/holiday runs do not mint phantom rows for a closed market."""
     table = name.lower().replace("^", "").replace(".", "").replace("-", "")
     cb_path = os.path.join(MODEL_DIR, f"{table}_cb.cbm")
     lstm_path = os.path.join(MODEL_DIR, f"{table}_lstm.keras")
@@ -245,7 +248,8 @@ def _predict_asset(name, registry, thresholds):
                         sig, _info = meta_sizer.gate(sig, meta_p)
             except Exception as e:
                 logger.debug("meta-sizing skipped for %s: %s", name, e)
-        return sig, prob, curr_price, mode, meta_p, cb_prob, lstm_prob
+        bar_date = pd.Timestamp(df.index[-1]).strftime('%Y-%m-%d')
+        return sig, prob, curr_price, mode, meta_p, cb_prob, lstm_prob, bar_date
 
     except Exception as e:
         logger.error("Prediction failed for %s: %s", table, e)
@@ -286,10 +290,10 @@ def run_radar():
             results[name] = res
             # Log prediction for performance tracking
             if _do_log:
-                sig, prob, price, mode, meta_p, cb_p, lstm_p = res
+                sig, prob, price, mode, meta_p, cb_p, lstm_p, bar_date = res
                 try:
                     log_prediction(name, sig, prob, cb_prob=cb_p, lstm_prob=lstm_p,
-                                   meta_prob=meta_p)
+                                   meta_prob=meta_p, date=bar_date)
                     logged += 1
                 except Exception as e:
                     logger.debug("Log prediction failed for %s: %s", name, e)
@@ -310,7 +314,7 @@ def run_radar():
         print(tag + "-" * max(0, W - len(tag)))
         print(col_hdr)
 
-        for name, (sig, prob, price, mode, _mp, _cbp, _lstmp) in rows:
+        for name, (sig, prob, price, mode, _mp, _cbp, _lstmp, _bd) in rows:
             clr = _CLR[sig]
             # Pad signal text first, THEN wrap with color codes so
             # surrounding columns stay aligned regardless of escape chars

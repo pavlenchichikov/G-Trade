@@ -75,7 +75,8 @@
       var r = await fetch("/api/reconcile", {method: "POST"});
       var d = await r.json();
       if (d.error) throw new Error(d.error);
-      msg.textContent = "reconciled " + d.reconciled + " of " + d.pending + " pending";
+      msg.textContent = "reconciled " + d.reconciled + " of " + d.pending + " pending"
+        + (d.excluded ? " (" + d.excluded + " non-trading days dropped)" : "");
       setTimeout(function () { location.reload(); }, 900);
     } catch (e) {
       msg.textContent = String(e.message || e);

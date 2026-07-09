@@ -66,8 +66,13 @@ def _prepare():
 
 
 def log_prediction(asset, signal, probability, cb_prob=None, lstm_prob=None,
-                   model_version=None, meta_prob=None):
-    today = datetime.utcnow().strftime("%Y-%m-%d")
+                   model_version=None, meta_prob=None, date=None):
+    # Stamp the prediction with the market bar it was computed from, not the wall
+    # clock. A radar run on a Saturday for a stock sees only Friday's close, so the
+    # caller passes date="Friday" and the per-asset dedup collapses it into the real
+    # Friday prediction instead of minting a phantom "Saturday" row for a closed
+    # market. date=None keeps the old wall-clock default for callers that lack a bar.
+    today = date or datetime.utcnow().strftime("%Y-%m-%d")
     if model_version is None:
         model_version = feature_version()
     with _conn() as con:
@@ -91,63 +96,108 @@ def log_prediction(asset, signal, probability, cb_prob=None, lstm_prob=None,
         con.commit()
 
 
+def _load_bars(asset, cache):
+    """Return a per-asset (Date-indexed, lowercase-columns) close series, cached
+    for the duration of one reconcile pass. None if the price table is missing."""
+    if asset in cache:
+        return cache[asset]
+    table = asset.lower()
+    try:
+        df = pd.read_sql(
+            f'SELECT Date, Close FROM "{table}" ORDER BY Date',
+            _engine(),
+            index_col="Date",
+        )
+        # data_engine stores columns lowercase (close); normalize so df["close"]
+        # never raises KeyError and silently skips the actual-vs-predicted check.
+        df.columns = [c.lower() for c in df.columns]
+        df.index = pd.to_datetime(df.index).normalize()
+        df = df[~df.index.duplicated(keep="last")].sort_index()
+    except Exception:
+        df = None
+    cache[asset] = df
+    return df
+
+
 def update_actuals():
-    """Fill in actual next-day outcomes for pending predictions. Returns
-    counters so callers (the Web UI reconcile button) can report progress."""
+    """Reconcile logged predictions against the next trading bar. Returns counters
+    so callers (the Web UI reconcile button) can report progress.
+
+    A prediction is objectively verifiable only if its date is a real trading bar
+    for that asset. Trading days are per-asset: a Saturday is a live bar for crypto
+    but a closed market for a stock. So for each row:
+
+      - date is an exact bar with a following bar  -> score it (BUY correct if the
+        next close rose, SELL if it fell, WAIT never scored).
+      - date is an exact bar but the latest one    -> stays pending (outcome not
+        formed yet: today/yesterday before the next close lands).
+      - date has no bar but a later bar exists      -> the market was closed that day
+        (weekend/holiday); the prediction just reused the prior close and cannot be
+        verified, so it is dropped (excluded) rather than mapped onto a neighbouring
+        day and double-counted. This is why non-trading days never reach the stats.
+      - date has no bar and none follow yet         -> a real trading day whose bar is
+        not fetched yet -> stays pending (never deleted).
+    """
     reconciled = 0
+    excluded = 0
+    cache = {}
     with _conn() as con:
         cur = con.cursor()
         _ensure_table(cur)
+        pending = cur.execute(
+            "SELECT COUNT(*) FROM prediction_log WHERE actual_next_ret IS NULL"
+        ).fetchone()[0]
+
+        # Scan every row (not just pending) so historical phantom rows already
+        # scored on a closed-market day get purged too - one reconcile self-heals.
         rows = cur.execute(
-            "SELECT rowid, date, asset, signal FROM prediction_log WHERE actual_next_ret IS NULL"
+            "SELECT rowid, date, asset, signal, actual_next_ret FROM prediction_log"
         ).fetchall()
 
-        for rowid, date_str, asset, signal in rows:
-            table = asset.lower()
-            try:
-                df = pd.read_sql(
-                    f'SELECT Date, Close FROM "{table}" ORDER BY Date',
-                    _engine(),
-                    index_col="Date",
-                )
-                # data_engine stores columns in lowercase (close), so we
-                # normalize the names - otherwise df["Close"] raises KeyError,
-                # falls into except, and the actual-vs-predicted check silently
-                # never happens.
-                df.columns = [c.lower() for c in df.columns]
-                df = df[~df.index.duplicated(keep="last")].sort_index()
-                # Predictions can be logged on non-trading days (weekends/holidays), so
-                # match the last bar ON OR BEFORE the prediction date (the close the model
-                # saw) and take the return to the following bar. Requiring the prediction
-                # date to be an exact bar left every weekend-dated prediction permanently
-                # unreconciled. For a trading-day prediction this is the old date->next-day
-                # behavior unchanged.
-                pos = int(df.index.searchsorted(date_str, side="right")) - 1
-                if pos < 0 or pos + 1 >= len(df):
-                    continue
-                today_close = df["close"].iloc[pos]
-                next_close = df["close"].iloc[pos + 1]
-                if today_close == 0:
-                    continue
-                ret = (next_close - today_close) / today_close
+        for rowid, date_str, asset, signal, anr in rows:
+            df = _load_bars(asset, cache)
+            if df is None or len(df) == 0:
+                continue
+            D = pd.Timestamp(date_str).normalize()
+            pos = int(df.index.searchsorted(D, side="right")) - 1
+            exact = pos >= 0 and df.index[pos] == D
+            has_future = pos + 1 < len(df)
 
-                if signal == "WAIT":
-                    correct = None
-                elif signal == "BUY":
-                    correct = 1 if ret > 0 else 0
-                else:  # SELL
-                    correct = 1 if ret < 0 else 0
-
-                cur.execute(
-                    "UPDATE prediction_log SET actual_next_ret=?, correct=? WHERE rowid=?",
-                    (ret, correct, rowid),
-                )
-                reconciled += 1
-            except Exception:
+            if not exact:
+                if has_future:
+                    # Non-trading day for this asset (market was closed), yet it has
+                    # since traded: unverifiable stale duplicate -> remove it.
+                    cur.execute("DELETE FROM prediction_log WHERE rowid=?", (rowid,))
+                    excluded += 1
+                # else: bar simply not fetched yet -> leave pending, never delete.
                 continue
 
+            if anr is not None:
+                continue  # already scored on a real bar
+            if not has_future:
+                continue  # exact bar but latest -> outcome not formed yet
+
+            today_close = df["close"].iloc[pos]
+            next_close = df["close"].iloc[pos + 1]
+            if today_close == 0:
+                continue
+            ret = (next_close - today_close) / today_close
+
+            if signal == "WAIT":
+                correct = None
+            elif signal == "BUY":
+                correct = 1 if ret > 0 else 0
+            else:  # SELL
+                correct = 1 if ret < 0 else 0
+
+            cur.execute(
+                "UPDATE prediction_log SET actual_next_ret=?, correct=? WHERE rowid=?",
+                (ret, correct, rowid),
+            )
+            reconciled += 1
+
         con.commit()
-    return {"pending": len(rows), "reconciled": reconciled}
+    return {"pending": pending, "reconciled": reconciled, "excluded": excluded}
 
 
 def _date_filter(days):
@@ -282,6 +332,8 @@ if __name__ == "__main__":
     print("Updating actuals...")
     res = update_actuals()
     print("Reconciled %d of %d pending." % (res["reconciled"], res["pending"]))
+    if res.get("excluded"):
+        print("Excluded %d prediction(s) on non-trading days (market closed)." % res["excluded"])
 
     lb = get_leaderboard(days=30)
     if lb.empty:
