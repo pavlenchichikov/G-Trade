@@ -244,6 +244,35 @@ def test_risk_page_has_tail_risk_panel(client):
     assert "Tail risk (Taleb)" in r.text
 
 
+def test_risk_page_has_risk_alerts_panel(client):
+    """The Risk Alerts panel (surfacing the HTML report's alert logic) is present
+    on /risk and loads lazily (no heavy asset scan on page render)."""
+    r = client.get("/risk")
+    assert r.status_code == 200
+    assert "<h2>Risk Alerts</h2>" in r.text
+    assert 'id="risk-alerts-list"' in r.text
+
+
+def test_api_risk_alerts_returns_report_alerts(client, monkeypatch):
+    """/api/risk/alerts serves the same structured records performance_report builds,
+    without recomputing on every request (heavy asset scan is done in the report)."""
+    import performance_report
+    import webapp
+
+    fake = [
+        {"level": "overbought", "message": "BTC: RSI=80 (OVERBOUGHT)"},
+        {"level": "regime", "message": "VIX: 34 (FEAR)"},
+    ]
+    monkeypatch.setattr(performance_report, "collect_risk_alerts", lambda: fake)
+    webapp._ALERTS_CACHE.update(ts=0.0, alerts=None)  # start from a cold cache
+
+    data = client.get("/api/risk/alerts?force=1").json()
+    assert data["alerts"] == fake
+    assert data["cached"] is False
+    # a second (non-forced) call is served from cache, not a fresh scan
+    assert client.get("/api/risk/alerts").json()["cached"] is True
+
+
 def test_asset_page_shows_taleb_value(client, monkeypatch):
     import core.dashboard as dash
     dash.cache_clear()

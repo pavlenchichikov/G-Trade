@@ -688,6 +688,34 @@ def api_risk():
     return {**_risk_snapshot(), "config": RISK_CONFIG}
 
 
+# The Risk Alerts scan reads every asset's price history + RSI (a few seconds), so
+# it is fetched lazily by the /risk panel and memoized briefly instead of blocking
+# the page or the 20s poll.
+_ALERTS_CACHE = {"ts": 0.0, "alerts": None}
+_ALERTS_TTL = 180.0
+
+
+@app.get("/api/risk/alerts")
+async def api_risk_alerts(force: bool = False):
+    """The HTML report's Risk Alerts (RSI overbought/oversold, fearful VIX, stale
+    models), surfaced for the /risk panel. DB-heavy, so it runs in a threadpool and
+    is cached for a few minutes (force=1 bypasses the cache for a manual refresh)."""
+    import time
+
+    from starlette.concurrency import run_in_threadpool
+
+    now = time.time()
+    if not force and _ALERTS_CACHE["alerts"] is not None and now - _ALERTS_CACHE["ts"] < _ALERTS_TTL:
+        return {"alerts": _ALERTS_CACHE["alerts"], "cached": True}
+    try:
+        import performance_report
+        alerts = await run_in_threadpool(performance_report.collect_risk_alerts)
+        _ALERTS_CACHE.update(ts=now, alerts=alerts)
+        return {"alerts": alerts, "cached": False}
+    except Exception as exc:
+        return {"error": "Risk alerts failed: " + str(exc)[:140], "alerts": []}
+
+
 @app.post("/api/risk/position")
 async def api_risk_open_position(request: Request):
     try:

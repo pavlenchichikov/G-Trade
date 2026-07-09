@@ -108,6 +108,18 @@
 
 <section class="panel fade">
   <div class="panel-head">
+    <h2>Risk Alerts</h2>
+    <button class="fbtn" id="risk-alerts-refresh">Refresh</button>
+  </div>
+  <p class="dim" style="padding: 0 16px;">From the HTML report: RSI overbought/oversold, a fearful VIX regime, and stale-model reminders. Scans all assets, so it loads on demand.</p>
+  <div id="risk-alerts-body" style="padding: 0 16px 12px;">
+    <p class="dim mono" id="risk-alerts-status">Loading alerts...</p>
+    <ul class="risk-alerts" id="risk-alerts-list" hidden></ul>
+  </div>
+</section>
+
+<section class="panel fade">
+  <div class="panel-head">
     <h2>Tail risk (Taleb)</h2>
     <span class="dim mono">soft cap {{ "%.1f"|format(config.taleb_soft_cap) }} &middot; hard cap {{ "%.1f"|format(config.taleb_risk_cap) }}</span>
   </div>
@@ -305,6 +317,72 @@ limitsSaveBtn.addEventListener('click', async function () {
     limitsErrorEl.hidden = false;
   }
 });
+
+// -- Risk Alerts (lazy-loaded from the HTML report's alert logic) --------------
+(function () {
+  const status = document.getElementById('risk-alerts-status');
+  const list = document.getElementById('risk-alerts-list');
+  const refreshBtn = document.getElementById('risk-alerts-refresh');
+  const LABEL = {overbought: 'OVERBOUGHT', oversold: 'OVERSOLD', regime: 'REGIME', model: 'MODEL'};
+
+  function render(alerts) {
+    if (!alerts || !alerts.length) {
+      list.hidden = true;
+      status.hidden = false;
+      status.textContent = 'No alerts - nothing overbought/oversold, calm regime, models fresh.';
+      return;
+    }
+    list.innerHTML = alerts.map(function (a) {
+      const lvl = a.level || 'model';
+      return '<li class="risk-alert ra-' + lvl + '">' +
+        '<span class="ra-tag">' + (LABEL[lvl] || lvl.toUpperCase()) + '</span>' +
+        '<span class="ra-msg mono">' + a.message + '</span></li>';
+    }).join('');
+    status.hidden = true;
+    list.hidden = false;
+  }
+
+  async function load(force) {
+    status.hidden = false;
+    status.textContent = force ? 'Rescanning assets...' : 'Loading alerts...';
+    list.hidden = true;
+    refreshBtn.disabled = true;
+    try {
+      const r = await fetch('/api/risk/alerts' + (force ? '?force=1' : ''));
+      const d = await r.json();
+      if (d.error) throw new Error(d.error);
+      render(d.alerts);
+    } catch (e) {
+      status.hidden = false;
+      status.textContent = 'Could not load alerts - try Refresh.';
+      list.hidden = true;
+    } finally {
+      refreshBtn.disabled = false;
+    }
+  }
+
+  refreshBtn.addEventListener('click', function () { load(true); });
+  load(false);
+})();
 </script>
+
+<style>
+.risk-alerts { list-style: none; margin: 8px 0 0; padding: 0; }
+.risk-alert {
+  display: flex; align-items: center; gap: 10px;
+  padding: 7px 0; border-bottom: 1px solid var(--line-soft);
+}
+.risk-alert:last-child { border-bottom: 0; }
+.ra-tag {
+  font-family: var(--mono); font-size: 10px; letter-spacing: 1px;
+  padding: 2px 7px; border-radius: 3px; border: 1px solid;
+  flex: 0 0 auto; min-width: 84px; text-align: center;
+}
+.ra-msg { font-size: 13px; color: var(--text); }
+.ra-overbought .ra-tag { color: var(--red);   border-color: rgba(255, 59, 92, 0.45);  background: rgba(255, 59, 92, 0.08); }
+.ra-oversold  .ra-tag { color: var(--green); border-color: rgba(0, 255, 163, 0.45);  background: rgba(0, 255, 163, 0.08); }
+.ra-regime    .ra-tag { color: var(--amber); border-color: rgba(227, 162, 58, 0.5);  background: rgba(227, 162, 58, 0.10); }
+.ra-model     .ra-tag { color: var(--dim);   border-color: var(--line);              background: transparent; }
+</style>
 
 {% endblock %}

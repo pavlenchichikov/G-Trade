@@ -106,21 +106,58 @@ def _chg_color(val):
     return "#64748b"
 
 
-def generate_html():
-    now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
+def _build_asset_rows():
+    """One row per asset with recent price stats + registry score/policy. Shared by
+    the HTML report and the web UI Risk Alerts panel so both read the same numbers."""
     registry = _load_registry()
-    minfo = _model_info()
-    regime_data = _regime_info()
-
-    # Asset rows
-    asset_rows = []
+    rows = []
     for asset in sorted(FULL_ASSET_MAP.keys()):
         stats = _get_asset_stats(asset)
+        if not stats:
+            continue
         reg = registry.get(asset, {})
-        score = reg.get("score", "")
-        policy = reg.get("policy", "")
-        if stats:
-            asset_rows.append({**stats, "asset": asset, "score": score, "policy": policy})
+        rows.append({**stats, "asset": asset,
+                     "score": reg.get("score", ""), "policy": reg.get("policy", "")})
+    return rows
+
+
+def collect_risk_alerts(asset_rows=None, regime_data=None, minfo=None):
+    """The report's Risk Alerts as structured records, so the web UI can render them
+    with severity colors. Same rules as the HTML report: RSI overbought/oversold, a
+    fearful VIX regime, and a stale-model reminder. Pass already-computed inputs to
+    avoid recomputing; omit them and this rebuilds from market.db / models."""
+    if asset_rows is None:
+        asset_rows = _build_asset_rows()
+    if regime_data is None:
+        regime_data = _regime_info()
+    if minfo is None:
+        minfo = _model_info()
+
+    alerts = []
+    for r in asset_rows:
+        if r["rsi"] > 75:
+            alerts.append({"level": "overbought",
+                           "message": f"{r['asset']}: RSI={r['rsi']:.0f} (OVERBOUGHT)"})
+        elif r["rsi"] < 25:
+            alerts.append({"level": "oversold",
+                           "message": f"{r['asset']}: RSI={r['rsi']:.0f} (OVERSOLD)"})
+    if regime_data and regime_data["regime"].get("vix_level") in ("FEAR", "PANIC"):
+        alerts.insert(0, {"level": "regime",
+                          "message": f"VIX: {regime_data['regime'].get('vix_value','')} "
+                                     f"({regime_data['regime'].get('vix_level','')})"})
+    if minfo["oldest_days"] > 7:
+        alerts.append({"level": "model",
+                       "message": f"Oldest model: {minfo['oldest_days']:.0f} days (consider retraining)"})
+    return alerts
+
+
+def generate_html():
+    now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
+    minfo = _model_info()
+    regime_data = _regime_info()
+    registry = _load_registry()
+
+    asset_rows = _build_asset_rows()
 
     # Regime section
     regime_html = ""
@@ -151,18 +188,9 @@ def generate_html():
         for r in top10
     )
 
-    # Risk alerts
-    alerts = []
-    for r in asset_rows:
-        if r["rsi"] > 75:
-            alerts.append(f"{r['asset']}: RSI={r['rsi']:.0f} (OVERBOUGHT)")
-        elif r["rsi"] < 25:
-            alerts.append(f"{r['asset']}: RSI={r['rsi']:.0f} (OVERSOLD)")
-    if regime_data and regime_data["regime"].get("vix_level") in ("FEAR", "PANIC"):
-        alerts.insert(0, f"VIX: {regime_data['regime'].get('vix_value','')} ({regime_data['regime'].get('vix_level','')})")
-    if minfo["oldest_days"] > 7:
-        alerts.append(f"Oldest model: {minfo['oldest_days']:.0f} days (consider retraining)")
-    alerts_html = "".join(f"<li>{a}</li>" for a in alerts) if alerts else "<li>No alerts</li>"
+    # Risk alerts (same records the web UI /risk panel renders)
+    alerts = collect_risk_alerts(asset_rows, regime_data, minfo)
+    alerts_html = "".join(f"<li>{a['message']}</li>" for a in alerts) if alerts else "<li>No alerts</li>"
 
     # Full asset table
     def _fmt_score(s):
