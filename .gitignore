@@ -72,6 +72,9 @@ ab_validate.py
 ab_features.py
 ab_labeling.py
 ab_chronos.py
+# companion test of the local ab_labeling.py: keep it out of Git too, else CI
+# checks out the test without the module and the unguarded import fails collection.
+tests/test_ab_labeling.py
 train_chunked.py
 _chunk_progress.txt
 _chunk_quality.json
