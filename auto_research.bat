@@ -23,7 +23,7 @@ REM  (GTRADE_AR_WIKI). After each run an LLM distills the findings journal into
 REM  _ar_wiki/*.md topic pages the proposer then reads, so learning accumulates
 REM  across runs instead of a sliding window. It uses the LLM backend, so pick an
 REM  LLM proposer (or it defaults to Anthropic and needs ANTHROPIC_API_KEY). Off
-REM  by default -> byte-identical. When on, this script also offers a wiki lint
+REM  by default, so it is byte-identical. When on, this script also offers a wiki lint
 REM  (reconcile contradictions + prune stale claims) after the run.
 REM
 REM  Advanced knobs (screen, prune floor, QD sizes, seed, base URL, exhaustion
@@ -71,7 +71,7 @@ if "%MODE%"=="1" set "GTRADE_AR_AXES=qd"
 if "%MODE%"=="2" set "GTRADE_AR_AXES=features"
 if "%MODE%"=="3" set "GTRADE_AR_AXES=labeling,pruning"
 if "%MODE%"=="4" set /p "GTRADE_AR_AXES=    axes (comma-separated): "
-REM  Not one of 1-4 -> use whatever was typed verbatim as the axes (e.g. "qd" or "qd,features").
+REM  Not one of 1-4: use whatever was typed verbatim as the axes (e.g. "qd" or "qd,features").
 if not defined GTRADE_AR_AXES set "GTRADE_AR_AXES=%MODE%"
 
 echo.

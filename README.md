@@ -2,113 +2,103 @@
 
 ![G-Trade](assets/g-trade-banner.svg)
 
-ML trading signals for ~181 assets: crypto, US, European and Russian stocks, indices, forex, commodities. Each asset has an ensemble of 4 models (CatBoost, LSTM, Transformer, TCN). The best one is picked by walk-forward backtest with commissions. Position sizing is Kelly-based, with drawdown stops.
+[![CI](https://github.com/pavlenchichikov/G-Trade/actions/workflows/ci.yml/badge.svg)](https://github.com/pavlenchichikov/G-Trade/actions/workflows/ci.yml)
+[![Python 3.12](https://img.shields.io/badge/python-3.12-blue.svg)](https://www.python.org/)
+[![Lint: Ruff](https://img.shields.io/badge/lint-ruff-261230.svg)](https://github.com/astral-sh/ruff)
+[![License: CC BY-NC 4.0](https://img.shields.io/badge/license-CC%20BY--NC%204.0-lightgrey.svg)](LICENSE)
+
+**Multi-asset machine-learning trading-signal engine.** A per-asset ensemble (CatBoost + LSTM + Transformer + TCN) over ~181 markets - crypto, US / European / Russian equities, indices, forex and commodities - with walk-forward selection, calibrated probabilities, Kelly sizing, tail-risk controls, a FastAPI dashboard, and an autonomous, statistically-gated research agent. Signals only, human-in-the-loop - no auto-execution.
+
+> **Disclaimer.** G-Trade is a research and educational project. Its output is a set of model predictions - **not financial advice and not a recommendation to buy or sell any security**. Markets carry risk and you can lose money. The software is provided "as is", without warranty of any kind. Use it at your own risk; do your own research and consult a licensed professional before making any financial decision. See [Disclaimer](#disclaimer) in full.
+
+## Table of contents
+
+- [Features](#features)
+- [How it works](#how-it-works)
+- [Web UI](#web-ui)
+- [Auto-research agent](#auto-research-agent)
+- [Self-maintaining loop](#self-maintaining-loop)
+- [Telegram bot](#telegram-bot)
+- [Tech stack](#tech-stack)
+- [Quick start](#quick-start)
+- [Training](#training)
+- [Network](#network)
+- [Configuration](#configuration)
+- [Tests](#tests)
+- [License](#license)
+- [Disclaimer](#disclaimer)
+
+## Features
+
+- **~181 assets, one model each.** Every asset trains its own ensemble of four models (CatBoost, LSTM, Transformer, TCN); the champion is chosen by a walk-forward backtest with commissions, slippage and an embargo against leakage.
+- **Honest, calibrated signals.** BUY / SELL / WAIT with a calibrated probability, per-asset tuned thresholds, and a live accuracy track record that reconciles each prediction against the realized next-bar move.
+- **Risk-managed by design.** Kelly-based position sizing, drawdown stops, sector-exposure and correlation checks, and a Taleb tail-risk index that shrinks size above a soft cap and blocks new buys above a hard cap.
+- **Rich feature set.** Returns and volatility-normalized returns, tail risk (kurtosis / skew / VaR), RSI / MACD / SMA / ATR, weekly and cross-asset correlations, cross-asset lead-lag, calendar position, and a macro regime read (10y yield, VIX, dollar).
+- **Autonomous research agent.** A quality-diversity (MAP-Elites) search over features, labels and transforms, with a rigorous held-out adoption gate (Wilcoxon signed-rank + Benjamini-Hochberg + cross-run replication) so nothing is adopted on noise. Never touches production automatically.
+- **Instant FastAPI dashboard.** Reads ready-made predictions from the database (no TensorFlow at serve time), so it starts immediately - signal radar, per-asset detail, portfolio analytics, an interactive risk manager, and a what-if backtester.
+- **Value overlay.** A "Guru Council" (Lynch, Buffett, Graham, Munger) as a long-term fundamentals overlay for real stocks, tracked at a 60-day horizon while the ML signal stays primary.
 
 ## How it works
 
 1. `data_engine.py` downloads up to 15 years of daily and weekly quotes from Yahoo Finance and MOEX into `market.db` (SQLite).
-2. `train_hybrid.py` builds features: returns and volatility-normalized returns, volatility, tail risk (Taleb kurtosis, skew, VaR), RSI, MACD, SMA, ATR, weekly and cross-asset correlations, cross-asset lead-lag, calendar position, and macro regime (10y yield, VIX, dollar). Trains the ensemble and saves the champion together with its scaler and probability calibrator.
-3. `predict.py` prints BUY/SELL/WAIT with confidence for all assets.
+2. `train_hybrid.py` builds the features (above), trains the ensemble, and saves the champion together with its scaler and probability calibrator, chosen by walk-forward backtest.
+3. `predict.py` prints BUY / SELL / WAIT with confidence for all assets.
 4. `backtest.py` checks champions on held-out data: PnL, win rate, Sharpe, directional accuracy, Brier, alpha vs buy & hold.
-5. `risk_manager.py` and `portfolio.py` do position sizing, loss limits and correlations. Tail risk is gated by the Taleb index: position size shrinks above the soft cap and new buys are blocked above the hard cap.
+5. `risk_manager.py` and `portfolio.py` do position sizing, loss limits and correlation checks. Tail risk is gated by the Taleb index: size shrinks above the soft cap, new buys are blocked above the hard cap.
 
-On top of the signals there are supporting layers: a Guru Council (Lynch, Buffett, Graham, Munger) from `guru_report.py` as a long-term value overlay, shown only for assets with real fundamentals and tracked at a 60-day horizon while the ML signal stays primary; news sentiment from `news_analyzer.py`; and a market regime / fear-greed read. `db_check.py` is a read-only audit of `market.db` (freshness, OHLC sanity, gaps, coverage).
+Supporting layers: a **Guru Council** value overlay (`guru_report.py`, shown only for assets with real fundamentals), news sentiment (`news_analyzer.py`), a market regime / fear-greed read, and `db_check.py`, a read-only audit of `market.db` (freshness, OHLC sanity, gaps, coverage).
 
-`app.py` is a Streamlit dashboard. The Telegram bot sends signals every hour.
+`app.py` is a Streamlit dashboard; the Telegram bot sends signals every hour.
 
 ## Web UI
 
-```
+```bash
 uvicorn webapp:app --host 0.0.0.0 --port 8000
 ```
 
-Lightweight web interface, no TensorFlow needed, reads predictions from the database, starts instantly. Pages:
+Lightweight web interface - no TensorFlow needed, reads predictions from the database, starts instantly. Pages:
 
-- `/` signal radar: BUY/SELL/WAIT per asset with confidence, live accuracy, a Taleb tail-risk column, a live market-breadth panel and regime / fear-greed gauges
-- `/asset/BTC` per-asset detail: price and candle charts, signal history, model consensus, Taleb tail risk, and the Guru Council value verdict (N/A for non-stocks) with on-demand recalculate
-- `/portfolio` portfolio analytics over your open positions: diversification score, sector exposure heat, held-asset correlation and per-position warnings
-- `/whatif` what-if simulator: backtest "what if I had invested $X, N days ago, following the signals", with an equity curve and per-asset breakdown
-- `/loop` self-maintaining loop: daily cycle status and drift proposals, with one-click approve of a champion-challenger retrain
-- `/guru` value overlay: the council verdict next to the ML signal for each stock, with a 60-day accuracy track record
-- `/risk` interactive risk manager: open and close positions, edit and persist risk limits, manually halt or resume trading, plus a Taleb tail-risk watchlist of the highest-risk assets
-- `/market`, `/sectors`, `/correlations`, `/performance`, `/news`, `/models` analytics pages
+- `/` - signal radar: BUY / SELL / WAIT per asset with confidence, live accuracy, a Taleb tail-risk column, a live market-breadth panel and regime / fear-greed gauges
+- `/asset/BTC` - per-asset detail: price and candle charts, signal history, model consensus, Taleb tail risk, and the Guru Council value verdict (N/A for non-stocks) with on-demand recalculate
+- `/portfolio` - portfolio analytics over open positions: diversification score, sector-exposure heat, held-asset correlation, per-position warnings
+- `/whatif` - what-if simulator: "what if I had invested $X, N days ago, following the signals", with an equity curve and per-asset breakdown
+- `/risk` - interactive risk manager: open / close positions, edit and persist risk limits, halt / resume trading, plus a Taleb tail-risk watchlist
+- `/loop` - self-maintaining loop: daily cycle status and drift proposals, with one-click approve of a champion-challenger retrain
+- `/guru` - value overlay: the council verdict next to the ML signal, with a 60-day accuracy track record
+- `/market`, `/sectors`, `/correlations`, `/performance`, `/news`, `/models` - analytics pages
 
-Same data as JSON under `/api/...`. Pages auto-refresh; the regime and fear-greed gauges update live with a pulsing needle; a Cmd-K command palette jumps to any asset or page; a ticker tape of top movers runs along the bottom. Works from a phone on the same network.
-
-## Telegram bot
-
-`python alert_bot.py` runs the hourly scan and also:
-
-- commands /top, /signal BTC, /risk, /digest (owner only)
-- morning digest, hour is set by GTRADE_DIGEST_HOUR, default 9
-- degradation warnings: data older than 7 days or accuracy below 40% on the last 20 verified signals
-
-## Self-maintaining loop
-
-`loop_cycle.py` runs the safe daily pipeline (data, predict, reconcile) and scans every asset for drift: rolling accuracy below a floor, a drop from the trained baseline, model age, or stale data. Proposals show up on the `/loop` page. Approving one runs `loop_retrain.py`, a RAM-safe champion-challenger retrain (force-promote off) that replaces a champion only if the fresh model beats it. The loop never retrains on its own; retraining always waits for your approval.
-
-Register `run_loop.bat` with Windows Task Scheduler to run the cycle daily:
-
-```
-schtasks /Create /TN "G-Trade Loop" /TR "\"%CD%\run_loop.bat\"" /SC DAILY /ST 23:30
-```
-
-Drift thresholds live in `core/drift.py` (`DRIFT_CONFIG`). The cycle writes `loop_state.json`; a lockfile keeps the cycle and a retrain from running at the same time.
+Same data as JSON under `/api/...`. Pages auto-refresh; a Cmd-K palette jumps to any asset or page; a ticker tape of top movers runs along the bottom. Works from a phone on the same network.
 
 ## Auto-research agent
 
-The feature set can be extended at train time through a constrained transform DSL in `core/feature_dsl.py` (z-score, ratio, lag, diff, rolling, interaction, cross-asset lead-lag over the existing columns, no eval). Point `GTRADE_DSL_SPECS` at a JSON file of specs and list their names in `GTRADE_EXTRA_FEATURES`, and training materializes them as extra candidates; with both unset training is unchanged.
+The feature set can be extended at train time through a constrained transform DSL in `core/feature_dsl.py` (z-score, ratio, lag, diff, rolling, interaction, cross-asset lead-lag over existing columns - no `eval`). Point `GTRADE_DSL_SPECS` at a JSON file of specs and list their names in `GTRADE_EXTRA_FEATURES`; with both unset, training is unchanged.
 
-`auto_research.py` (a local tool, run via `auto_research.bat`) automates the search as a forward selection: each round a proposer suggests a spec, a cheap univariate pre-screen drops proposals with no signal, the baseline (trained once and cached) is compared against base plus the kept features plus the new one, and a feature is kept only if it improves the cumulative result. State is persisted, so a run resumes where it stopped. The default proposer is an evolutionary search with no LLM and no API key; `GTRADE_AR_PROPOSER=llm` uses a model instead (Anthropic by default, or `GTRADE_AR_LLM=openai` for OpenAI and any OpenAI-compatible endpoint such as Mistral or a local Ollama via `GTRADE_AR_LLM_BASE_URL`).
+`auto_research.py` (a local tool, run via `auto_research.bat`) automates the search - a quality-diversity (MAP-Elites) illumination over feature, label and transform genomes, or a simpler forward selection. A proposer suggests a candidate, a cheap CatBoost-only pre-screen drops the obvious losers, and the cached baseline is compared against the candidate. The default proposer is an evolutionary search with no LLM and no API key; `GTRADE_AR_PROPOSER=llm` uses a model instead (Anthropic by default, OpenAI or any OpenAI-compatible endpoint such as Mistral or a **local Ollama** via `GTRADE_AR_LLM=ollama`).
 
-It never touches production: variants train into isolated directories, and a winner is flagged only after also clearing a separate held-out set by a sign-test (with an effect-size floor and an iteration budget) that guards against overfitting to noise. Adopting a flagged feature stays a manual full retrain.
+**It never touches production.** Candidates train into isolated temp directories, and a winner is flagged only after clearing a separate held-out set under a one-sided **Wilcoxon signed-rank** test (with a practical effect-size floor, a **Benjamini-Hochberg** correction across candidates, an iteration budget, and a **cross-run replication** gate) - designed to reject improvements that are only noise. Adopting a flagged winner stays a manual full retrain.
 
-The launcher `auto_research.bat` is an interactive menu (mode, proposer, budget, objective; Enter = default). The agent keeps permanent cross-run memory: `_ar_tried.json` (no candidate is ever re-tested), `_ar_eval_cache.json` (base trainings are reused until new data arrives) and `_ar_findings.json` (the cumulative findings journal), so the budget buys NEW experiments on every run. The LLM proposer supports a local Ollama model (`GTRADE_AR_LLM=ollama`, gemma auto-detected) in both the features axis and the QD agent (probability `GTRADE_AR_QD_LLM_P` per child, silent fallback to evolutionary search).
+Permanent cross-run memory: `_ar_tried.json` (no candidate is re-tested), `_ar_eval_cache.json` (base trainings reused until new data arrives) and `_ar_findings.json` (the cumulative findings journal), so the budget buys **new** experiments every run.
 
-Advanced knobs (`GTRADE_AR_SEED`, `AR_PRESCREEN_MIN`, the screen, the QD sizes, the LLM model/URL) stay as `set` lines at the top of `auto_research.bat`, or run headless:
+**Research wiki (optional, `GTRADE_AR_WIKI=1`).** Distills the append-only findings journal into a compounding, self-maintained knowledge base (Karpathy's "LLM Wiki" pattern): after each run an LLM folds new findings into a few interlinked markdown topic pages under `_ar_wiki/`, tagging claims by confidence and reconciling contradictions, and the proposer reads that distilled wiki instead of only the last few findings. The pages also render read-only on `/research`. Off by default (byte-identical).
 
-```
-GTRADE_AR_SEED=42 AR_BUDGET=5 python auto_research.py
-```
+**Chronos forecast features (optional, experimental).** Zero-shot forecasts from a pretrained time-series model as extra CatBoost features. Install `requirements-chronos.txt`, precompute the cache (`python precompute_chronos.py --assets all`), then A/B via `GTRADE_CHRONOS=1 GTRADE_EXTRA_FEATURES=chronos_dir,chronos_ret,chronos_spread`. They enter only through `GTRADE_EXTRA_FEATURES`, so the production model is unchanged until adopted.
 
-### Research wiki (compounding findings, optional)
+## Self-maintaining loop
 
-`GTRADE_AR_WIKI=1` (menu item 6, or the env var) turns the append-only findings journal
-into a compounding, self-maintained knowledge base (Karpathy's "LLM Wiki" pattern). After
-each run an LLM distills the new findings into a few interlinked markdown topic pages under
-`_ar_wiki/` (labeling, features, regime, neural, calibration, general, changes) - tagging
-claims by confidence, reconciling contradictions, pruning stale ones - and the LLM proposer
-reads that distilled wiki instead of only the last few findings, so learning accumulates
-across runs. It uses the LLM backend (pick an LLM proposer, or it defaults to Anthropic).
-The launcher offers a `lint` pass (reconcile + prune) after a run; the pages also render
-read-only on the `/research` Web UI page. Off by default (byte-identical). The wiki is
-strategy guidance only - the factual "was this candidate tried" stays in `_ar_tried.json`,
-so a wiki gap is never mistaken for untried.
+`loop_cycle.py` runs the safe daily pipeline (data, predict, reconcile) and scans every asset for drift - rolling accuracy below a floor, a drop from the trained baseline, model age, or stale data. Proposals surface on `/loop`. Approving one runs `loop_retrain.py`, a RAM-safe champion-challenger retrain that replaces a champion only if the fresh model beats it. **The loop never retrains on its own; retraining always waits for your approval.** Register `run_loop.bat` with Task Scheduler to run daily. Drift thresholds live in `core/drift.py` (`DRIFT_CONFIG`).
 
-### Chronos forecast features (optional, experimental)
+## Telegram bot
 
-Zero-shot forecasts from a pretrained time-series model as CatBoost features, off by
-default. Install `requirements-chronos.txt`, then precompute the cache once:
+`python alert_bot.py` runs the hourly scan and also serves `/top`, `/signal BTC`, `/risk`, `/digest` (owner only), a morning digest (`GTRADE_DIGEST_HOUR`, default 9), and degradation warnings (data older than 7 days, or accuracy below 40% on the last 20 verified signals).
 
-```bash
-python precompute_chronos.py --fresh --assets all       # start clean, all 181 assets, tiny
-python precompute_chronos.py --model small --assets all # a bigger model for more quality
-```
+## Tech stack
 
-`--model` picks the Chronos base model by short name (`tiny`, `mini`, `small`, `base`,
-`large`) or a full Hugging Face id; a bigger model forecasts better but is much slower per
-bar (on CPU, `base` is ~40-60 min per asset, `large` far more - `small`/`tiny` are the
-practical picks, and for near-noise financial series the marginal quality gain of a large
-model is small). `--assets` takes comma-separated names or `all` for the full 181-asset
-universe. `--fresh` wipes the cache first.
-
-The cache is keyed by (asset, date, model) and training AUTO-DETECTS the cached model, so
-you precompute ONE model and everything downstream just uses it - no `GTRADE_CHRONOS_MODEL`
-to keep in sync (it stays available only as an override if several models are cached). Then
-A/B via auto_research with `GTRADE_CHRONOS=1
-GTRADE_EXTRA_FEATURES=chronos_dir,chronos_ret,chronos_spread` (optionally
-`GTRADE_AR_SCORE_BASIS=neural`). They enter only via GTRADE_EXTRA_FEATURES, so
-feature_version and the production model are unchanged until adopted.
+- **Language:** Python 3.12
+- **ML:** CatBoost, TensorFlow / Keras (LSTM, Transformer, TCN), scikit-learn, Optuna, scipy; optional Amazon Chronos (zero-shot forecasts)
+- **Serving / UI:** FastAPI + Uvicorn (web UI), Streamlit (`app.py`), Jinja2
+- **Data:** SQLite (`market.db`), pandas / numpy, Yahoo Finance + MOEX
+- **Research agent:** MAP-Elites quality-diversity search; pluggable LLM proposer (Anthropic / OpenAI / local Ollama)
+- **Ops / tooling:** Ruff, pytest, GitHub Actions CI, Telegram Bot API
 
 ## Quick start
 
@@ -122,41 +112,39 @@ python predict.py             # console signals
 streamlit run app.py          # dashboard
 ```
 
-`python launcher.py` opens a text menu over all of the above (full cycle, dashboard, web UI, predict, DB audit, and more). `python db_check.py` runs a read-only audit of `market.db`; add `--fix` to repair duplicates and date formats.
-
-`python scheduler.py` runs as a daemon: data every 6h, predictions every 4h, daily DB check.
-
-## Network
-
-If SOCKS5_PROXY is set in `.env`, outbound requests go through it. `net.py` checks if the proxy is alive and falls back to a direct connection.
-
-- GTRADE_PROXY_MODE=auto|on|off, default auto
-- GTRADE_SSL_VERIFY=0 disables TLS certificate checks. Verification is on by default, turn it off only if your proxy intercepts TLS
+`python launcher.py` opens a text menu over all of the above (full cycle, dashboard, web UI, predict, DB audit, and more). `python db_check.py` runs a read-only audit of `market.db` (`--fix` repairs duplicates and date formats). `python scheduler.py` runs as a daemon: data every 6h, predictions every 4h, a daily DB check.
 
 ## Training
 
-TensorFlow on Windows is CPU-only since 2.11, so neural training runs on CPU. Good enough for daily data. For a GPU use WSL2 and `pip install tensorflow[and-cuda]`.
+TensorFlow on Windows is CPU-only since 2.11, so neural training runs on CPU - fine for daily data. For a GPU, use WSL2 and `pip install tensorflow[and-cuda]`.
 
-TensorFlow accumulates memory across many assets in one process, so a full 181-asset retrain on a memory-constrained box is best run in chunks (about 15 assets via `GTRADE_ASSETS`), restarting a fresh process per chunk; each restart releases the memory and keeps RAM flat. The champion registry accumulates per asset, so chunks add up to a full run.
+TensorFlow accumulates memory across many assets in one process, so a full 181-asset retrain on a memory-constrained box is best run in chunks (~15 assets via `GTRADE_ASSETS`), restarting a fresh process per chunk; the champion registry accumulates per asset, so chunks add up to a full run.
 
 Optional env flags for `train_hybrid.py`:
 
 - `GTRADE_ADAPTIVE_NETS=1` - size each net to the asset's data (fewer params, faster, less overfit); off by default keeps the original flat nets
-- `GTRADE_NET_CAP` - cap for the adaptive LSTM units (default 128); lower it, e.g. 80, to shrink the data-rich assets, the main speed and RAM lever
-- `GTRADE_EPOCHS_LSTM`, `GTRADE_EPOCHS_TF`, `GTRADE_EPOCHS_TCN` - per-net epoch caps (defaults 160, 100, 80); early stopping usually trims them further
-- `GTRADE_FEATURE_SET=base|ext` - which candidate feature set to train on; `ext` (default, the adopted set) drops the raw non-stationary close/volume and adds macro, volatility-normalized returns, cross-asset lead-lag and calendar; `base` is the older list, kept for an A/B
-- `GTRADE_FORCE_PROMOTE=1` - accept new champions regardless of score (use after a feature-set change); leave it off for a champion-challenger retrain that keeps the old model unless beaten
+- `GTRADE_NET_CAP` - cap for the adaptive LSTM units (default 128); the main speed / RAM lever
+- `GTRADE_EPOCHS_LSTM`, `GTRADE_EPOCHS_TF`, `GTRADE_EPOCHS_TCN` - per-net epoch caps (defaults 160, 100, 80)
+- `GTRADE_FEATURE_SET=base|ext` - which candidate feature set to train on (`ext` is the adopted default)
+- `GTRADE_FORCE_PROMOTE=1` - accept new champions regardless of score (use after a feature-set change)
 - `GTRADE_ASSETS=BTC,ETH,NVDA` - train only the listed assets (subset or chunk)
-- `GTRADE_HISTORY_DAYS` - how far back `data_engine.py` fetches (default 15 years); `GTRADE_BACKFILL=1` re-pulls older bars for tables that already exist
+- `GTRADE_HISTORY_DAYS`, `GTRADE_BACKFILL=1` - fetch depth and re-pull of older bars
 - `GTRADE_WORKERS`, `GTRADE_MAX_FOLDS` - parallel workers and the walk-forward fold cap
-- `GTRADE_CB_DEVICE=GPU` - run CatBoost on GPU (Windows-native; benchmark first, often slower on the small per-asset datasets)
+- `GTRADE_CB_DEVICE=GPU` - run CatBoost on GPU (benchmark first; often slower on the small per-asset datasets)
 
-## Config
+## Network
 
-- `.env` - telegram credentials, proxy
+If `SOCKS5_PROXY` is set in `.env`, outbound requests go through it; `net.py` checks the proxy is alive and falls back to a direct connection.
+
+- `GTRADE_PROXY_MODE=auto|on|off` (default auto)
+- `GTRADE_SSL_VERIFY=0` disables TLS certificate checks (on by default; turn off only if your proxy intercepts TLS)
+
+## Configuration
+
+- `.env` - telegram credentials, proxy (never committed; see `.env.example`)
 - `config.py` - asset list and buy/sell thresholds
-- `auto_trader_config.json` - paper trading settings
-- `pyproject.toml` - ruff and pytest configuration
+- `auto_trader_config.json` - paper-trading settings
+- `pyproject.toml` - Ruff and pytest configuration
 
 ## Tests
 
@@ -167,4 +155,8 @@ ruff check .
 
 ## License
 
-Creative Commons Attribution-NonCommercial 4.0 (CC BY-NC 4.0). See `LICENSE`.
+Creative Commons Attribution-NonCommercial 4.0 (CC BY-NC 4.0). See [`LICENSE`](LICENSE).
+
+## Disclaimer
+
+G-Trade is provided for **research and educational purposes only**. It is not investment advice, financial advice, or a recommendation, solicitation or offer to buy or sell any security or financial instrument. Trading and investing involve substantial risk of loss and are not suitable for every investor; past or simulated performance does not guarantee future results. The authors and contributors accept no liability for any loss or damage arising from the use of this software, which is provided "AS IS", without warranty of any kind. You are solely responsible for your own decisions - do your own research and consult a licensed financial professional before acting on anything produced by this project.
