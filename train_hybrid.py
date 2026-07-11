@@ -1113,7 +1113,7 @@ def train_system():
     total_assets = len(asset_list)
     print()
     print("=" * W)
-    print("  G-TRADE TRAINER  |  Ensemble (CB+LSTM+TF+TCN)")
+    print("  ATRATUS TRAINER  |  Ensemble (CB+LSTM+TF+TCN)")
     print(f"  {datetime.now().strftime('%Y-%m-%d  %H:%M:%S')}")
     _nets_label = ("adaptive" + (" + warm-start" if _NET_WARMSTART else "")) if _ADAPTIVE_NETS else "flat (default)"
     print(f"  Device : {_dev_label}  |  CatBoost: {_CB_TASK_TYPE}  |  Nets: {_nets_label}")

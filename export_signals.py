@@ -1,5 +1,5 @@
 """
-Export Signals - G-Trade
+Export Signals - Atratus
 ==========================================
 Builds a signal table from champion_registry, tuned_thresholds, and market.db,
 then exports to CSV.

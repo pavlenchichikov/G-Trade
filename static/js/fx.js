@@ -1,4 +1,4 @@
-/* Signature FX for the G-Trade terminal: boot sequence, chart crosshair,
+/* Signature FX for the Atratus terminal: boot sequence, chart crosshair,
    regime-reactive ambient wash, and odometer count-up on hero numbers.
    Pure cosmetics, no dependencies, honours prefers-reduced-motion. */
 (function () {

@@ -1,1 +1,1 @@
-"""Core modules for G-Trade."""
+"""Core modules for Atratus."""

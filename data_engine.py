@@ -536,7 +536,7 @@ def main():
 
     print()
     print('=' * W)
-    print('  G-TRADE DATA ENGINE')
+    print('  ATRATUS DATA ENGINE')
     print(f'  {datetime.now().strftime("%Y-%m-%d  %H:%M:%S")}')
     print('=' * W)
     print(route_status_line())

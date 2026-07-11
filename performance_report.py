@@ -208,7 +208,7 @@ def generate_html():
     )
 
     html = f"""<!DOCTYPE html>
-<html><head><meta charset="utf-8"><title>G-Trade Report {now_str}</title>
+<html><head><meta charset="utf-8"><title>Atratus Report {now_str}</title>
 <style>
   * {{ margin:0; padding:0; box-sizing:border-box; }}
   body {{ background:#0a0e17; color:#e2e8f0; font-family:'Segoe UI',Consolas,monospace; padding:24px; }}
@@ -231,7 +231,7 @@ def generate_html():
   table.data tr:hover {{ background:#1e293b; }}
   .alerts li {{ padding:4px 0; color:#eab308; }}
 </style></head><body>
-<h1>G-TRADE -- Performance Report</h1>
+<h1>ATRATUS -- Performance Report</h1>
 <p class="meta">Generated: {now_str}</p>
 
 <div class="stats">

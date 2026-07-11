@@ -1,5 +1,5 @@
 """
-G-TRADE SCHEDULER -- Auto Task Runner
+ATRATUS SCHEDULER -- Auto Task Runner
 Runs project tasks on configurable intervals using subprocess.
 Uses only stdlib: threading, time, subprocess, json, sys, os, argparse.
 """
@@ -165,7 +165,7 @@ def cmd_status():
 
     print()
     print("=" * 70)
-    print("  G-TRADE SCHEDULER  |  Status")
+    print("  ATRATUS SCHEDULER  |  Status")
     print(f"  Tasks: {enabled_count} enabled / {total_count} total")
     print("=" * 70)
     print()
@@ -240,7 +240,7 @@ def cmd_run():
 
     print()
     print("=" * 60)
-    print("  G-TRADE SCHEDULER  |  Auto Task Runner")
+    print("  ATRATUS SCHEDULER  |  Auto Task Runner")
     print(f"  Tasks : {enabled_count} enabled / {total_count} total")
     print("  Stop  : Ctrl+C")
     print("=" * 60)
@@ -284,7 +284,7 @@ def cmd_run():
 
 
 def main():
-    parser = argparse.ArgumentParser(description="G-Trade Scheduler -- Auto Task Runner")
+    parser = argparse.ArgumentParser(description="Atratus Scheduler -- Auto Task Runner")
     parser.add_argument("--status", action="store_true", help="Show schedule and last run times")
     parser.add_argument("--once", nargs="+", metavar="TASK", help="Run specific tasks once and exit")
     args = parser.parse_args()

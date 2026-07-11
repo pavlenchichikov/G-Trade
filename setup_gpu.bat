@@ -1,10 +1,10 @@
 @echo off
-title G-TRADE GPU SETUP
+title ATRATUS GPU SETUP
 color 0E
 cls
 
 echo =============================================================
-echo    G-TRADE GPU SETUP: Auto-Detect + Install
+echo    ATRATUS GPU SETUP: Auto-Detect + Install
 echo =============================================================
 echo.
 echo  This script will:

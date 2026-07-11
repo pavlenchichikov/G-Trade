@@ -1,4 +1,4 @@
-"""Centralized logging configuration for G-Trade.
+"""Centralized logging configuration for Atratus.
 
 Usage in any module:
     from core.logger import get_logger

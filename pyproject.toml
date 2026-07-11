@@ -1,5 +1,5 @@
-# Single-source tool configuration for G-Trade.
-# G-Trade is an application (not a published package), so this file centralizes
+# Single-source tool configuration for Atratus.
+# Atratus is an application (not a published package), so this file centralizes
 # tool config only - runtime dependencies stay pinned in requirements.txt, which
 # the Dockerfile and CI install. See README.md for setup.
 

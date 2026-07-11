@@ -283,7 +283,7 @@ def send_telegram(messages, use_proxy):
         apihelper.proxy = None
 
     bot = TeleBot(TELEGRAM_TOKEN)
-    header = (f"*G-TRADE REPORT*\n"
+    header = (f"*ATRATUS REPORT*\n"
               f"_{datetime.now().strftime('%Y-%m-%d %H:%M')}_\n\n")
     full_msg = header + "\n\n".join(messages)
 
@@ -492,7 +492,7 @@ def run_cycle():
     thresholds = _load_json(THRESHOLDS_PATH)
 
     print(f"\n{'='*55}")
-    print(f"  G-TRADE SENTINEL  |  {datetime.now():%Y-%m-%d %H:%M}")
+    print(f"  ATRATUS SENTINEL  |  {datetime.now():%Y-%m-%d %H:%M}")
     print(f"{'='*55}")
     logger.info("=== New scan cycle started ===")
 

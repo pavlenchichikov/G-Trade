@@ -1,5 +1,5 @@
 """
-whatif_simulator.py - G-Trade
+whatif_simulator.py - Atratus
 ================================================
 "What if I invested $X in these assets N days ago using the model's signals?"
 
@@ -392,7 +392,7 @@ def _print_summary(result: dict) -> None:
         return
 
     print("\n" + "=" * 58)
-    print("  G-TRADE - WHAT-IF SIMULATOR RESULTS")
+    print("  ATRATUS - WHAT-IF SIMULATOR RESULTS")
     print("=" * 58)
     print(f"  Initial capital : ${result['initial']:>12,.2f}")
     print(f"  Final equity    : ${result['final']:>12,.2f}")
@@ -412,7 +412,7 @@ def _print_summary(result: dict) -> None:
 
 def main():
     parser = argparse.ArgumentParser(
-        description="G-Trade - What-If Simulator",
+        description="Atratus - What-If Simulator",
         formatter_class=argparse.RawTextHelpFormatter,
     )
     parser.add_argument(
@@ -450,7 +450,7 @@ def main():
     )
     args = parser.parse_args()
 
-    print("\nG-Trade What-If Simulator")
+    print("\nAtratus What-If Simulator")
     print(f"  Capital: ${args.capital:,.0f} | Days back: {args.days} | Strategy: {args.strategy}")
 
     if args.top > 0:

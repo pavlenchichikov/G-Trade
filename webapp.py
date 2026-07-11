@@ -27,7 +27,7 @@ REGISTRY_PATH = os.path.join(MODEL_DIR, "champion_registry.json")
 QUALITY_PATH = os.path.join(MODEL_DIR, "quality_report.json")
 THRESHOLDS_PATH = os.path.join(MODEL_DIR, "tuned_thresholds.json")
 
-app = FastAPI(title="G-Trade")
+app = FastAPI(title="Atratus")
 templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
 app.mount("/static", StaticFiles(directory=os.path.join(BASE_DIR, "static")), name="static")
 

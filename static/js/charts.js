@@ -1,4 +1,4 @@
-// ECharts helper layer for the G-Trade dashboard. Each helper takes a DOM id
+// ECharts helper layer for the Atratus dashboard. Each helper takes a DOM id
 // plus plain data and renders one chart. No build step; echarts.min.js loads first.
 function gtGauge(id, score, label) {
   var el = document.getElementById(id);

@@ -1,5 +1,5 @@
 @echo off
-title G-TRADE: GPU ACCELERATED
+title ATRATUS: GPU ACCELERATED
 color 0A
 set PYTHONIOENCODING=utf-8
 cls
@@ -21,7 +21,7 @@ if %errorlevel% neq 0 (
 :menu
 cls
 echo =======================================================
-echo    G-TRADE
+echo    ATRATUS
 echo =======================================================
 echo.
 echo  CORE                     ANALYTICS

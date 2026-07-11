@@ -1,5 +1,5 @@
 """
-Model Health Monitor - G-Trade
+Model Health Monitor - Atratus
 =================================================
 Checks age, quality, and drift of trained models.
 

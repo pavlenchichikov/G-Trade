@@ -105,7 +105,7 @@ def run_forensic_test():
     thresholds = _load_json(THRESHOLDS_PATH)
 
     print("\n" + "=" * 95)
-    print("   G-TRADE BACKTEST")
+    print("   ATRATUS BACKTEST")
     print("   CB + LSTM + Transformer + TCN | Meta-Stacking | Adversarial Validation")
     print("=" * 95 + "\n")
     fmt = "{:<8} | {:>6} | {:>8} | {:>12} | {:>10} | {:>8} | {:>8} | {:<15}"

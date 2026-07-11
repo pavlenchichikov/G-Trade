@@ -1,5 +1,5 @@
 """
-model_comparison.py - Model quality tracking over time for G-Trade.
+model_comparison.py - Model quality tracking over time for Atratus.
 Saves daily snapshots of quality_report.json and provides comparison utilities.
 """
 
@@ -287,7 +287,7 @@ def get_best_worst(metric="score", n=5) -> dict:
 
 if __name__ == "__main__":
     print("=" * 60)
-    print("Model Quality Tracker - G-Trade")
+    print("Model Quality Tracker - Atratus")
     print("=" * 60)
 
     print("\n[1] Saving snapshot...")

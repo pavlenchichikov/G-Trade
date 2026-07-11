@@ -1,5 +1,5 @@
 """
-Portfolio Manager V1 - G-Trade
+Portfolio Manager V1 - Atratus
 =================================================
 Cross-asset correlation, sector exposure tracking, diversification scoring,
 and signal ranking that accounts for portfolio concentration.

@@ -1,6 +1,6 @@
 # Contributing
 
-Thanks for your interest in G-Trade. This is a personal research project licensed under
+Thanks for your interest in Atratus. This is a personal research project licensed under
 **CC BY-NC 4.0** (non-commercial) - please keep that in mind for any reuse or contribution.
 
 ## Development setup

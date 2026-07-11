@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 340" width="1280" height="340" role="img" aria-label="G-Trade - ML trading signals">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 340" width="1280" height="340" role="img" aria-label="Atratus - ML trading signals">
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0" stop-color="#05080f"/>
@@ -82,9 +82,9 @@
 
   <g font-family="'Bahnschrift','DIN Condensed','Oswald','Arial Narrow',sans-serif" font-weight="800">
     <text x="640" y="200" text-anchor="middle" font-size="132" letter-spacing="6"
-          fill="url(#neon)" filter="url(#hot)">G-TRADE</text>
+          fill="url(#neon)" filter="url(#hot)">ATRATUS</text>
     <text x="640" y="200" text-anchor="middle" font-size="132" letter-spacing="6"
-          fill="#eafffb">G-TRADE</text>
+          fill="#eafffb">ATRATUS</text>
   </g>
 
   <text x="640" y="246" text-anchor="middle" font-family="'JetBrains Mono','Consolas',monospace"

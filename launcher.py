@@ -1,5 +1,5 @@
 """
-G-Trade - GUI Launcher (Tkinter)
+Atratus - GUI Launcher (Tkinter)
 Graphical launcher replacing the bat-file menu.
 """
 
@@ -51,10 +51,10 @@ class LogRedirector:
         pass
 
 
-class GTradeLauncher(tk.Tk):
+class AtratusLauncher(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("G-TRADE - Control Center")
+        self.title("ATRATUS - Control Center")
         self.configure(bg=BG)
         self.geometry("1060x820")
         self.minsize(900, 700)
@@ -79,7 +79,7 @@ class GTradeLauncher(tk.Tk):
         top.pack(fill=tk.X, padx=16, pady=(12, 0))
 
         tk.Label(
-            top, text="G-TRADE", font=("Consolas", 20, "bold"),
+            top, text="ATRATUS", font=("Consolas", 20, "bold"),
             fg=FG_ACCENT, bg=BG
         ).pack(side=tk.LEFT)
 
@@ -1152,5 +1152,5 @@ class GTradeLauncher(tk.Tk):
 
 
 if __name__ == "__main__":
-    app = GTradeLauncher()
+    app = AtratusLauncher()
     app.mainloop()

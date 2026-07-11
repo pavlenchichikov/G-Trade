@@ -1,5 +1,5 @@
 """
-sector_rotation.py - Sector rotation analysis for G-Trade.
+sector_rotation.py - Sector rotation analysis for Atratus.
 Analyzes which sectors are growing/declining over recent weeks.
 """
 

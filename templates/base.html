@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{% block title %}G-Trade{% endblock %}</title>
+  <title>{% block title %}Atratus{% endblock %}</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&family=Martian+Mono:wght@400;600;700&display=swap" rel="stylesheet">
@@ -11,7 +11,7 @@
 </head>
 <body>
   <div id="boot" aria-hidden="true">
-    <div class="boot-brand">G-TRADE</div>
+    <div class="boot-brand">ATRATUS</div>
     <div class="boot-line" data-d="0">booting trading floor<b>...</b></div>
     <div class="boot-line" data-d="1">link MOEX feed <b>OK</b></div>
     <div class="boot-line" data-d="2">link YAHOO feed <b>OK</b></div>
@@ -26,7 +26,7 @@
 
   <header class="topbar">
     <div class="topbar-inner">
-      <a class="brand" href="/"><span class="brand-mark">G</span><span class="brand-word">TRADE</span><span class="brand-dot"></span></a>
+      <a class="brand" href="/"><span class="brand-mark">A</span><span class="brand-word">TRATUS</span><span class="brand-dot"></span></a>
       <nav>
         <a href="/" {% if request.url.path == '/' %}class="active"{% endif %}>Radar</a>
         <a href="/market" {% if request.url.path == '/market' %}class="active"{% endif %}>Market</a>
@@ -56,7 +56,7 @@
     {% block content %}{% endblock %}
   </main>
   <footer>
-    <span>G-Trade | signals are not investment advice</span>
+    <span>Atratus | signals are not investment advice</span>
   </footer>
   <div id="palette" class="palette" hidden>
     <div class="palette-box">

@@ -1,5 +1,5 @@
 """
-Optuna Hyperparameter Tuner - G-Trade
+Optuna Hyperparameter Tuner - Atratus
 ========================================================
 
 WHAT THIS IS. Tunes model hyperparameters (mainly CatBoost: depth, learning

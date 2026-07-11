@@ -14,7 +14,7 @@ import warnings
 warnings.filterwarnings('ignore')
 
 # --- 1. SYSTEM SETTINGS ---
-st.set_page_config(page_title="G-TRADE TERMINAL", layout="wide", page_icon="")
+st.set_page_config(page_title="ATRATUS TERMINAL", layout="wide", page_icon="")
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 if BASE_DIR not in sys.path: sys.path.append(BASE_DIR)
@@ -554,7 +554,7 @@ def get_guru_analysis(symbol, df, smart_data_tuple, sector=None):
     return _guru_analysis(fund, tech, sector=sector, weights=_council_weights())
 
 # --- 6. INTERFACE (STREAMLIT UI) ---
-st.title("G-TRADE")
+st.title("ATRATUS")
 
 # Load sources
 with st.spinner('Connecting to data feeds...'):
