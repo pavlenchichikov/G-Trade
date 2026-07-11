@@ -52,6 +52,13 @@ echo ============================================================
 echo   AUTO-RESEARCH  (Enter = default)
 echo ============================================================
 echo.
+echo [0] Action:  1 = search for new candidates (default)
+echo              2 = re-gate stored candidates under the current gate (reuse past runs)
+set "ACT=1"
+set /p "ACT=    choice [1]: "
+if "%ACT%"=="2" goto :regate
+
+echo.
 echo [1] Mode (type the number, or an axes name/list directly):
 echo     1 = qd (MAP-Elites quality-diversity, the flagship)
 echo     2 = features (DSL forward-selection)
@@ -155,3 +162,27 @@ echo.
 echo Done. Review _auto_research_log.json / _qd_archive.json / _ar_findings.json.
 if "%GTRADE_AR_WIKI%"=="1" echo Research wiki: _ar_wiki\*.md  (also on the /research Web UI page).
 pause
+goto :end
+
+REM == Re-gate: re-score the best already-found candidates under the current gate ==
+:regate
+echo.
+echo   RE-GATE: re-scores the best already-found candidate genomes (from _qd_archive +
+echo   _ar_findings) under the current stronger gate. Reuses past experiments; trains only
+echo   the top-K on the held-out set. Adopts nothing - flags winners for you.
+set "RGK=8"
+set /p "RGK=    top-K candidates [8]: "
+echo.
+echo     CB-only pre-screen first (cheaper, coarser)?  1 = no (default)   2 = yes
+set "RGS=1"
+set /p "RGS=    choice [1]: "
+set "RGSCREEN="
+if "%RGS%"=="2" set "RGSCREEN=--regate-screen"
+echo.
+echo   Running: auto_research.py --regate --regate-k %RGK% %RGSCREEN%
+python auto_research.py --regate --regate-k %RGK% %RGSCREEN%
+echo.
+echo Done. Review _ar_findings.json (mode=regate) for the new verdicts.
+pause
+
+:end

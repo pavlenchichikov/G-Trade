@@ -35,7 +35,7 @@ logger = get_logger("auto_research")
 
 BASE = os.path.dirname(os.path.abspath(__file__))
 SELECTION_ASSETS = "SP500,NVDA,BTC,ETH,EURUSD,GBPJPY,GAS,AAPL,SBER,DAX"
-HELDOUT_ASSETS = "MSFT,GOLD,USDJPY,ADA,CAC40,XOM"
+HELDOUT_ASSETS = "MSFT,GOLD,USDJPY,ADA,CAC40,XOM,GOOGL,SOL,SILVER,GBPUSD,NASDAQ,DXY,TNX,AIRBUS"
 BUDGET = int(os.getenv("AR_BUDGET", "15"))
 ADOPT_MEAN_SCORE_DELTA = 0.5
 
@@ -92,6 +92,22 @@ def _sign_test_p(deltas):
     return sum(math.comb(n, i) for i in range(k, n + 1)) * (0.5 ** n)
 
 
+def _wilcoxon_p(deltas):
+    """One-sided Wilcoxon signed-rank p that the per-asset deltas are > 0 - a
+    magnitude-aware improvement test (a consistent small edge across most assets
+    passes even if a few are slightly negative), far more powerful than the sign
+    test at this n. Returns 1.0 (no evidence) on inputs scipy cannot test: fewer
+    than 2 non-zero deltas, or any scipy error."""
+    nz = [d for d in deltas if d != 0]
+    if len(nz) < 2:
+        return 1.0
+    try:
+        from scipy.stats import wilcoxon
+        return float(wilcoxon(deltas, alternative="greater").pvalue)
+    except Exception:
+        return 1.0
+
+
 def _objective():
     """The search/gate objective: 'mean' (default) or 'min' (lift-the-floor)."""
     o = (os.getenv("GTRADE_AR_OBJECTIVE") or "mean").strip().lower()
@@ -102,15 +118,15 @@ def _objective():
 
 
 def holdout_stats(base_rows, ext_rows, objective="mean"):
-    """Raw held-out stats for a variant: (sign-test p, objective value, deltas, tag).
+    """Raw held-out stats for a variant: (wilcoxon p, objective value, deltas, tag).
     No adoption decision - main applies BH across the axis-winners."""
     base_score = {r["Asset"]: r.get("Score", 0.0) for r in base_rows}
     value, deltas = _objective_delta(ext_rows, base_score, objective)
     if not deltas:
         return 1.0, 0.0, [], "no common held-out assets"
-    p = _sign_test_p(deltas)
+    p = _wilcoxon_p(deltas)
     up = sum(1 for d in deltas if d > 0)
-    tag = "%s dScore %.2f, sign-test p=%.3f (%d/%d up)" % (objective, value, p, up, len(deltas))
+    tag = "%s dScore %.2f, wilcoxon p=%.3f (%d/%d up)" % (objective, value, p, up, len(deltas))
     return p, value, deltas, tag
 
 
@@ -619,6 +635,112 @@ def run_qd(train_fn=None):
     return archive
 
 
+def _regate_candidates(archive_raw, findings, k):
+    """Distinct stored candidate genomes to re-gate, capped at k. Findings winners
+    (they carry a held-out `value` + neural_lift) rank first by that value; archive-
+    only elites (a bare selection `fitness`) fill the remaining slots. Pure - no
+    training. archive_raw is the raw JSON dict {cell: {"genome": <dict>, "fitness"}}."""
+    by_sig = {}  # sig -> (Genome, value, neural_lift)
+    for rec in findings or []:
+        for w in rec.get("winners", []):
+            gd, v = w.get("genome"), w.get("value")
+            if not isinstance(gd, dict) or v is None:
+                continue
+            try:
+                g = Genome(**gd)
+            except (TypeError, ValueError):
+                continue
+            sig = genome_sig(g)
+            if sig not in by_sig or v > by_sig[sig][1]:
+                by_sig[sig] = (g, v, w.get("neural_lift"))
+    found = set(by_sig)
+    arch = []
+    for cell in (archive_raw or {}).values():
+        gd = cell.get("genome") if isinstance(cell, dict) else None
+        f = cell.get("fitness") if isinstance(cell, dict) else None
+        if not isinstance(gd, dict) or f is None:
+            continue
+        try:
+            g = Genome(**gd)
+        except (TypeError, ValueError):
+            continue
+        if genome_sig(g) not in found:
+            arch.append((g, f, None))
+    findings_ranked = sorted(by_sig.values(),
+                             key=lambda c: (c[1], c[2] if c[2] is not None else -1e9),
+                             reverse=True)
+    arch_ranked = sorted(arch, key=lambda c: c[1], reverse=True)
+    return (findings_ranked + arch_ranked)[:k]
+
+
+def _regate_load_archive_raw():
+    if not os.path.exists(_QD_ARCHIVE_PATH):
+        return {}
+    try:
+        with open(_QD_ARCHIVE_PATH, encoding="utf-8") as fh:
+            return json.load(fh)
+    except Exception:
+        return {}
+
+
+def regate(k=8, screen=False):
+    """Re-evaluate the best already-found candidate genomes under the CURRENT gate
+    (Wilcoxon + enlarged held-out), reusing the 900+ prior experiments instead of
+    re-running the search. Trains only the top-k on the held-out set. Adopts nothing;
+    journals mode='regate' and feeds the same replication gate."""
+    cands = _regate_candidates(_regate_load_archive_raw(), ar_memory.findings_all(), k)
+    if not cands:
+        print("[regate] no stored candidates to re-gate.")
+        return
+    obj, basis = _objective(), _score_basis()
+    ho_base_full, ho_base_contrib = _heldout_eval(HELDOUT_ASSETS, {}, train_base_cached)
+    base_contrib = {r["Asset"]: r["Score"] for r in ho_base_contrib}
+    if screen:
+        screen_base = {r["Asset"]: r["Score"]
+                       for r in train_base_cached(HELDOUT_ASSETS, screen_env({}))}
+        cands = [c for c in cands if _regate_passes_screen(c[0], screen_base)]
+    results = []
+    for g, old_score, old_nl in cands:
+        var_full, var_contrib = _heldout_eval(HELDOUT_ASSETS, genome_to_env(g), train_env)
+        nl, _d = _objective_delta(var_contrib, base_contrib, "mean")
+        nl = round(nl, 4) if _d else None
+        if basis == "neural":
+            p, value, _d, tag = holdout_stats(ho_base_contrib, var_contrib, obj)
+        else:
+            p, value, _d, tag = holdout_stats(ho_base_full, var_full, obj)
+        results.append((g, old_score, p, value, tag, nl))
+    flags = benjamini_hochberg([r[2] for r in results])
+    ts = datetime.utcnow().isoformat()
+    finding_winners = []
+    for (g, old_score, p, value, tag, nl), s in zip(results, flags):
+        ok = bool(s and value > ADOPT_MEAN_SCORE_DELTA)
+        replicated = clears = None
+        if ok:
+            gsig = genome_sig(g)
+            replicated = ar_memory.replication_seen(gsig)
+            clears = ar_memory.replication_add(gsig, ts)
+        finding_winners.append({"axis": "regate", "genome": asdict(g), "p": p,
+                                "value": value, "tag": tag, "adoptable": ok,
+                                "neural_lift": nl, "replicated": bool(replicated),
+                                "clears": clears or 0})
+        nl_str = "" if nl is None else " | neural_lift %+.2f" % nl
+        print("[regate] old %.2f -> %s | %s%s" % (
+            old_score, _gate_verdict(ok, bool(replicated), clears), tag, nl_str))
+    ar_memory.findings_append({"ts": ts, "mode": "regate", "k": k,
+                               "screen": bool(screen), "winners": finding_winners})
+    print("[regate] re-gated %d candidate(s); nothing adopted automatically." % len(results))
+
+
+def _regate_passes_screen(g, screen_base):
+    """Optional cheap CB-only prefilter: keep the candidate unless its CB-only held-out
+    mean delta vs the CB-only base is clearly negative (below the existing SCREEN_MIN
+    floor). `screen_base` is a {asset: CB-only Score} dict."""
+    try:
+        rows = train_env(HELDOUT_ASSETS, screen_env(genome_to_env(g)))
+        d, deltas = _objective_delta(rows, screen_base, "mean")
+        return (not deltas) or d >= SCREEN_MIN
+    except Exception:
+        return True
 
 
 _SAMPLE_WINDOWS = [5, 10, 20, 50]
@@ -1058,6 +1180,21 @@ def _winner_sig(axis_name, winner):
 
 
 def main():
+    import argparse
+    p = argparse.ArgumentParser(description="auto-research")
+    p.add_argument("--regate", action="store_true",
+                   help="re-gate stored candidate genomes under the current gate")
+    p.add_argument("--regate-k", type=int, default=8)
+    p.add_argument("--regate-screen", action="store_true",
+                   help="optional cheap CB-only prefilter before the full re-gate eval")
+    # parse_known_args (not parse_args): main() is called directly by the existing
+    # test suite under pytest, whose own argv (test paths, -k, -o, ...) must not
+    # make an un-flagged `ar.main()` call SystemExit(2). Real CLI invocations are
+    # unaffected since there are no extra args to discard.
+    args, _ = p.parse_known_args()
+    if args.regate:
+        regate(k=args.regate_k, screen=args.regate_screen)
+        return
     base_features = ["ret_1", "ret_5", "ret_10", "ret_20", "vol_z", "rsi",
                      "macd_hist", "bb_pos", "trend_strength", "atr"]
     names = os.getenv("GTRADE_AR_AXES", "features,labeling").split(",")

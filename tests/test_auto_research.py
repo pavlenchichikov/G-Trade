@@ -1083,6 +1083,55 @@ def test_winner_sig_stable_across_temp_envs():
         ar._winner_sig("labeling", {"window": 20, "mode": "rel_median"})
 
 
+# --- Task 1: auto-research gate power (enlarged held-out + Wilcoxon signed-rank) ---
+
+
+def test_wilcoxon_p_accepts_consistent_small_improvement():
+    import auto_research as ar
+    # 11 clear positives + 3 tiny negatives -> real magnitude-backed improvement
+    assert ar._wilcoxon_p([0.3] * 11 + [-0.1] * 3) < 0.05
+
+
+def test_wilcoxon_p_recovers_five_of_six_up_that_sign_test_rejected():
+    import auto_research as ar
+    # old one-sided sign-test on 5/6 up = p~0.109 (rejected); Wilcoxon uses magnitude
+    p = ar._wilcoxon_p([0.4, 0.5, 0.3, 0.6, 0.2, -0.05])
+    assert p < 0.05
+
+
+def test_wilcoxon_p_rejects_a_negative_set():
+    import auto_research as ar
+    assert ar._wilcoxon_p([-0.4, -0.5, 0.1, -0.3, -0.2, -0.6]) > 0.5
+
+
+def test_wilcoxon_p_degenerate_inputs_return_one():
+    import auto_research as ar
+    assert ar._wilcoxon_p([0.0] * 6) == 1.0
+    assert ar._wilcoxon_p([0.3]) == 1.0
+    assert ar._wilcoxon_p([]) == 1.0
+
+
+def test_holdout_stats_reports_wilcoxon_in_tag():
+    import auto_research as ar
+    # 6 assets: Wilcoxon on all-positive n=6 reaches p=1/64=0.016 (<0.05); n=4 could not
+    base = [{"Asset": a, "Score": 0.0} for a in ("A", "B", "C", "D", "E", "F")]
+    ext = [{"Asset": a, "Score": v} for a, v in
+           [("A", 0.6), ("B", 0.7), ("C", 0.5), ("D", 0.4), ("E", 0.55), ("F", 0.45)]]
+    p, value, deltas, tag = ar.holdout_stats(base, ext, "mean")
+    assert "wilcoxon" in tag and "sign-test" not in tag
+    assert p < 0.05 and value > 0
+
+
+def test_held_out_set_is_fourteen_disjoint_from_selection():
+    import auto_research as ar
+    from config import FULL_ASSET_MAP
+    ho = ar.HELDOUT_ASSETS.split(",")
+    sel = set(ar.SELECTION_ASSETS.split(","))
+    assert len(ho) == 14 and len(set(ho)) == 14
+    assert all(a in FULL_ASSET_MAP for a in ho)
+    assert not (set(ho) & sel)
+
+
 # --- Task 5: neural_lift metric + replication gate in run_qd() ---
 
 
@@ -1220,3 +1269,46 @@ def test_run_qd_early_stops_on_exhaustion(monkeypatch):
 
     ar.run_qd(train_fn=fake_train)
     assert n_next["n"] == 3      # stopped after GTRADE_AR_QD_MAX_MISSES, not all 20 budget steps
+
+
+def test_regate_candidates_dedup_rank_and_cap():
+    import auto_research as ar
+    g1 = {"drops": ["a"], "extra": [], "label_mode": "direction", "label_window": 30}
+    g2 = {"drops": ["b"], "extra": [], "label_mode": "rel_median", "label_window": 20}
+    g3 = {"drops": ["c"], "extra": [], "label_mode": "direction", "label_window": 30}
+    findings = [
+        {"winners": [
+            {"genome": g1, "value": 0.4, "neural_lift": 0.2},
+            {"genome": g2, "value": 0.9, "neural_lift": 0.1}]},
+        {"winners": [
+            {"genome": g1, "value": 0.8, "neural_lift": 0.3}]},  # dup of g1, higher value
+    ]
+    archive = {"0_4": {"genome": g3, "fitness": 5.0}}  # archive-only elite
+    out = ar._regate_candidates(archive, findings, k=2)
+    sigs = [ar.genome_sig(g) for (g, _s, _nl) in out]
+    # g2 (0.9) and g1 (best 0.8) are the top-2 findings winners; g3 (archive) is capped out
+    assert sigs == [ar.genome_sig(ar.Genome(**g2)), ar.genome_sig(ar.Genome(**g1))]
+    assert out[1][1] == 0.8  # g1 kept its higher stored value across the duplicate
+
+
+def test_regate_end_to_end_with_injected_trainer(tmp_path, monkeypatch):
+    import json
+    import auto_research as ar
+    import core.ar_memory as am
+    monkeypatch.setattr(am, "FINDINGS_PATH", str(tmp_path / "f.json"))
+    monkeypatch.setattr(am, "REPLICATION_PATH", str(tmp_path / "rep.json"))
+    # one stored candidate genome; isolate archive + findings from the real files
+    g = {"drops": [], "extra": [], "label_mode": "direction", "label_window": 30}
+    monkeypatch.setattr(ar, "_regate_load_archive_raw", lambda: {})
+    monkeypatch.setattr(am, "findings_all",
+                        lambda: [{"winners": [{"genome": g, "value": 0.6, "neural_lift": 0.3}]}])
+    # a fake trainer (constant Score) so no real train_hybrid is shelled; the point of
+    # this test is the end-to-end wiring + journaling, not an adopt verdict
+    def fake(subset, env):
+        return [{"Asset": a, "Score": 1.0} for a in subset.split(",")]
+    monkeypatch.setattr(ar, "train_base_cached", fake)
+    monkeypatch.setattr(ar, "train_env", fake)
+    ar.regate(k=8, screen=False)
+    recs = json.load(open(str(tmp_path / "f.json"), encoding="utf-8"))
+    assert recs and recs[-1]["mode"] == "regate"
+    assert recs[-1]["winners"] and recs[-1]["winners"][0]["axis"] == "regate"

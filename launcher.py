@@ -216,6 +216,8 @@ class GTradeLauncher(tk.Tk):
                 ("   Export Signals",   "Export signals to CSV",        self._run_export),
                 ("   Signal Log",       "Signal history",             self._run_signal_log),
                 ("   HTML Report",      "Full report in browser",      self._run_report),
+                ("   Re-gate Archive",  "Re-score stored candidates under the new gate", self._run_regate),
+                ("   Re-gate (CB scr)", "Re-gate with a fast CB-only pre-screen (opt-in)", self._run_regate_screen),
                 ("   Equity Curve",     "Capital chart",              self._run_equity),
             ]),
             ("SERVICES", [
@@ -1105,6 +1107,14 @@ class GTradeLauncher(tk.Tk):
 
     def _run_report(self):
         self._run_script([PY, os.path.join(BASE_DIR, "performance_report.py")], "HTML Report")
+
+    def _run_regate(self):
+        self._run_script([PY, os.path.join(BASE_DIR, "auto_research.py"), "--regate"],
+                         "Re-gate archive")
+
+    def _run_regate_screen(self):
+        self._run_script([PY, os.path.join(BASE_DIR, "auto_research.py"),
+                          "--regate", "--regate-screen"], "Re-gate archive (CB screen)")
 
     def _run_equity(self):
         self._run_script([PY, os.path.join(BASE_DIR, "equity_curve.py")], "Equity Curve")

@@ -7,6 +7,7 @@ tensorflow>=2.20,<3
 catboost>=1.2.8,<2
 scikit-learn>=1.8,<2
 optuna>=3.5,<5
+scipy>=1.10,<2  # auto_research adoption gate (Wilcoxon signed-rank)
 
 # Data
 pandas>=2.3,<3

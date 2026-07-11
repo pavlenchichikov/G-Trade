@@ -128,3 +128,12 @@ def test_tried_recent_returns_last_n():
     assert am.tried_recent("genome", 2) == ["sig-3", "sig-4"]   # last n, in-order
     assert am.tried_recent("genome", 10) == ["sig-0", "sig-1", "sig-2", "sig-3", "sig-4"]
     assert am.tried_recent("spec", 5) == []                     # empty / unknown kind
+
+
+def test_findings_all_returns_full_journal(tmp_path, monkeypatch):
+    import core.ar_memory as am
+    monkeypatch.setattr(am, "FINDINGS_PATH", str(tmp_path / "f.json"))
+    am.findings_append({"ts": "t1", "mode": "qd", "winners": []})
+    am.findings_append({"ts": "t2", "mode": "regate", "winners": []})
+    allf = am.findings_all()
+    assert [r["ts"] for r in allf] == ["t1", "t2"]

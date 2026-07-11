@@ -148,14 +148,22 @@ def _call_ollama(prompt):
     import openai
     base = _ollama_base_url()
     model = os.getenv("GTRADE_AR_LLM_MODEL") or _detect_ollama_model()
+    # Reasoning models (e.g. gemma) spend tokens on an internal reasoning trace before
+    # the answer; a small cap gets fully consumed by reasoning and returns EMPTY content
+    # (the silent cause of a wiki/proposer that "runs" but produces nothing). Budget
+    # generously; override with GTRADE_AR_LLM_MAX_TOKENS.
+    try:
+        max_toks = int(os.getenv("GTRADE_AR_LLM_MAX_TOKENS") or "8000")
+    except ValueError:
+        max_toks = 8000
     client = openai.OpenAI(base_url=base, api_key="ollama")
     last_err = None
     for _attempt in range(3):
         try:
             resp = client.chat.completions.create(
-                model=model, max_tokens=600,
+                model=model, max_tokens=max_toks,
                 messages=[{"role": "user", "content": prompt}])
-            return resp.choices[0].message.content.strip()
+            return (resp.choices[0].message.content or "").strip()
         except Exception as exc:
             last_err = exc
     raise RuntimeError(
