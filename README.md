@@ -16,6 +16,7 @@
 - [Features](#features)
 - [How it works](#how-it-works)
 - [Web UI](#web-ui)
+- [Screenshots](#screenshots)
 - [Auto-research agent](#auto-research-agent)
 - [Self-maintaining loop](#self-maintaining-loop)
 - [Telegram bot](#telegram-bot)
@@ -68,6 +69,20 @@ Lightweight web interface - no TensorFlow needed, reads predictions from the dat
 - `/market`, `/sectors`, `/correlations`, `/performance`, `/news`, `/models` - analytics pages
 
 Same data as JSON under `/api/...`. Pages auto-refresh; a Cmd-K palette jumps to any asset or page; a ticker tape of top movers runs along the bottom. Works from a phone on the same network.
+
+## Screenshots
+
+**Signal radar** - the home dashboard: market regime and sentiment gauges, breadth, accuracy leaders, and the strongest live signals with their track record.
+
+![Signal radar](assets/screenshot-radar.png)
+
+**Per-asset detail** - candlestick chart with the model recommendation (per-model probabilities, tuned BUY / SELL thresholds) and the champion card (ensemble mode, training score, trust status).
+
+![Per-asset detail](assets/screenshot-asset.png)
+
+**Signals on the price** - historical BUY / SELL calls plotted on the price line, with a selectable time range.
+
+![Signals on the price](assets/screenshot-signals.png)
 
 ## Auto-research agent
 
