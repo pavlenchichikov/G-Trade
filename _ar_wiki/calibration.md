@@ -1,1 +1,0 @@
-- No significant variance in signal quality (p-values) recorded for the primary winning genome structures.

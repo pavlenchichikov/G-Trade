@@ -1,1 +1,0 @@
-- Neural lift values are present across recent results; some instances show negative lifting (-1.55, -0.70, -1.73) on specific genomes [stated].

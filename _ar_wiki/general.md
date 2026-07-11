@@ -1,1 +1,0 @@
-- All identified wins occurred within "qd" mode across several sessions between 2026-07-02 and 2026-07-03.

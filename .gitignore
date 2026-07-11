@@ -82,6 +82,8 @@ _auto_features.json
 _auto_research_log.json
 _auto_research_state.json
 _qd_archive.json
+# Research wiki: distilled findings, private - must not be public
+_ar_wiki/
 
 # batfiles
 train_adaptive.bat

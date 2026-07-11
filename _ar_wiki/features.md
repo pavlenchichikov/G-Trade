@@ -1,4 +1,0 @@
-- `m74807` (ratio of `bb_pos` and `rsi`) is a frequent winner component [high].
-- `m59561` (lag 3 of `vol_z`) is frequently included in successful genomes [high].
-- `m27714` (interaction of `ret_20` and `ret_5`) appears in multi-feature winning sets [low].
-- `m5851` (lead_lag for `dxy`) appears in specific valid combinations [low].

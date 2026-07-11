@@ -1,1 +1,0 @@
-- Initial entry of qd-mode kernel metrics into wiki.

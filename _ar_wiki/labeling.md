@@ -1,2 +1,0 @@
-- `rel_median` is a primary label mode for successful genomes [high].
-- `direction` was observed as an alternative label_mode [stated].
