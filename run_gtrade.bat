@@ -44,6 +44,7 @@ echo    [W4] Top-5  90d Kelly    [B] DB Backup
 echo    [W5] Custom assets       [I] Install/Repair
 echo  SERVICES
 echo    [7] Telegram Bot  [8] Scheduler  [9] DB Audit  [F] DB Fix  [G] GUI  [0] EXIT
+echo    [SG] Publish live signals to the site (Supabase)
 echo.
 echo =======================================================
 set /p choice="Select: "
@@ -71,6 +72,7 @@ if /i "%choice%"=="W5" goto whatif_custom
 if /i "%choice%"=="P" goto paper
 if /i "%choice%"=="M" goto model_health
 if /i "%choice%"=="E" goto export
+if /i "%choice%"=="SG" goto push_signals
 if /i "%choice%"=="L" goto signal_log
 if /i "%choice%"=="H" goto report
 if /i "%choice%"=="F" goto db_fix
@@ -134,6 +136,15 @@ echo [INFO] Starting bot... (Do not close this window!)
 python alert_bot.py
 echo.
 echo [WARNING] Bot stopped. Check above for errors.
+pause
+goto menu
+
+:push_signals
+cls
+echo [Site] Publishing the latest signals snapshot to Supabase for the landing.
+echo        Needs SUPABASE_URL + SUPABASE_SERVICE_KEY in .env (service key = secret).
+echo.
+python push_signals.py
 pause
 goto menu
 

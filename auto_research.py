@@ -18,6 +18,7 @@ import json
 import math
 import os
 import random
+import shutil
 import statistics
 import subprocess
 import sys
@@ -203,9 +204,15 @@ def _train(subset, env_overrides, model_dir):
 
 def train_env(subset, env_overrides):
     """Train the subset once with the given training env overrides; returns the
-    quality_report rows ([] on failure). The generic primitive every axis uses."""
+    quality_report rows ([] on failure). The generic primitive every axis uses.
+
+    The temp model dir is removed after the rows are read back, so long runs
+    (e.g. a large re-gate) do not leak thousands of ar_* dirs into %TEMP%."""
     tmp = tempfile.mkdtemp(prefix="ar_")
-    return _train(subset, dict(env_overrides), os.path.join(tmp, "run"))
+    try:
+        return _train(subset, dict(env_overrides), os.path.join(tmp, "run"))
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
 
 
 def train_base_cached(subset, env):

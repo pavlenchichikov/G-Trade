@@ -20,6 +20,7 @@
 - [Auto-research agent](#auto-research-agent)
 - [Self-maintaining loop](#self-maintaining-loop)
 - [Telegram bot](#telegram-bot)
+- [Publishing signals to the landing site](#publishing-signals-to-the-landing-site)
 - [Tech stack](#tech-stack)
 - [Quick start](#quick-start)
 - [Training](#training)
@@ -119,6 +120,25 @@ Permanent cross-run memory: `_ar_tried.json` (no candidate is re-tested), `_ar_e
 ## Telegram bot
 
 `python alert_bot.py` runs the hourly scan over the full asset universe, scoring each asset through the same shared pipeline as `predict.py` (`core/scoring.py`), so its Telegram calls match the dashboard. It also serves `/top`, `/signal BTC`, `/risk`, `/digest` (owner only), a morning digest (`GTRADE_DIGEST_HOUR`, default 9), and degradation warnings (data older than 7 days, or accuracy below 40% on the last 20 verified signals).
+
+## Publishing signals to the landing site
+
+`push_signals.py` exports the latest signal snapshot to a Supabase project that
+backs the public landing site. It reads the per-asset latest signal and accuracy
+from the local journal (no models are loaded), then upserts a full `signals`
+table (gated behind a per-user allow-list by row-level security) and an
+anonymized `public_stats` row (the public teaser: BUY / SELL / WAIT counts,
+accuracy, breadth, and the snapshot date).
+
+Set `SUPABASE_URL` and `SUPABASE_SERVICE_KEY` in `.env` (the service key is
+secret and must never be committed or shipped to the browser), then run it after
+`predict.py`:
+
+```bash
+python push_signals.py          # or option [SG] in run_gtrade.bat
+```
+
+Run it by hand daily, or schedule it (Task Scheduler) once you are happy with it.
 
 ## Tech stack
 

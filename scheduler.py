@@ -22,6 +22,7 @@ DEFAULT_CONFIG = {
         "data_update": {"script": "data_engine.py", "interval_hours": 6, "enabled": True},
         "train": {"script": "train_hybrid.py", "interval_hours": 24, "enabled": False},
         "predict": {"script": "predict.py", "interval_hours": 4, "enabled": True},
+        "push_signals": {"script": "push_signals.py", "interval_hours": 24, "enabled": False},
         "db_check": {"script": "db_check.py", "args": ["--fix"], "interval_hours": 24, "enabled": True},
         "news_scan": {"script": "news_analyzer.py", "interval_hours": 3, "enabled": True},
         "regime_check": {"script": "regime_detector.py", "interval_hours": 6, "enabled": True},
