@@ -50,6 +50,12 @@ def test_log_prediction_tags_current_version(tmp_path, monkeypatch):
     import performance_tracker as pt
     from core.features import feature_version
     db = str(tmp_path / "m.db")
+    today = datetime.utcnow().strftime("%Y-%m-%d")
+    con = sqlite3.connect(db)
+    con.execute("CREATE TABLE btc (Date TEXT, close REAL)")
+    con.execute("INSERT INTO btc VALUES (?, 100.0)", (today,))   # real bar for today
+    con.commit()
+    con.close()
     monkeypatch.setattr(pt, "DB_PATH", db)
     monkeypatch.setattr(pt, "_ENGINE", None)
     pt.log_prediction("BTC", "BUY", 0.7)
@@ -57,6 +63,34 @@ def test_log_prediction_tags_current_version(tmp_path, monkeypatch):
     mv = con.execute("SELECT model_version FROM prediction_log").fetchone()[0]
     con.close()
     assert mv == feature_version()
+
+
+def test_log_prediction_skips_when_no_bar_for_that_day(tmp_path, monkeypatch):
+    """No price bar for the prediction date (weekend/holiday/not-fetched yet) means the
+    signal can never be reconciled, so the row must NOT be logged - otherwise it sits
+    'awaiting check' forever and inflates the pending count."""
+    import performance_tracker as pt
+    db = str(tmp_path / "nb.db")
+    today = datetime.utcnow().strftime("%Y-%m-%d")
+    con = sqlite3.connect(db)
+    con.execute("CREATE TABLE aapl (Date TEXT, close REAL)")
+    con.execute("INSERT INTO aapl VALUES ('2020-01-02', 100.0)")   # an old bar, not today
+    con.commit()
+    con.close()
+    monkeypatch.setattr(pt, "DB_PATH", db)
+    monkeypatch.setattr(pt, "_ENGINE", None)
+
+    pt.log_prediction("AAPL", "BUY", 0.7)                          # no bar for today -> skip
+    con = sqlite3.connect(db)
+    assert con.execute("SELECT COUNT(*) FROM prediction_log").fetchone()[0] == 0
+    con.execute("INSERT INTO aapl VALUES (?, 101.0)", (today,))    # today's bar arrives
+    con.commit()
+    con.close()
+
+    pt.log_prediction("AAPL", "BUY", 0.7)                          # now it logs
+    con = sqlite3.connect(db)
+    assert con.execute("SELECT COUNT(*) FROM prediction_log").fetchone()[0] == 1
+    con.close()
 
 
 def test_migrate_adds_column_and_keeps_old_rows_legacy(tmp_path, monkeypatch):
@@ -204,6 +238,11 @@ def test_log_prediction_stamps_bar_date(tmp_path, monkeypatch):
     so a weekend run for a closed market folds into the real trading-day row."""
     import performance_tracker as pt
     db = str(tmp_path / "bd.db")
+    con = sqlite3.connect(db)
+    con.execute("CREATE TABLE btc (Date TEXT, close REAL)")
+    con.execute("INSERT INTO btc VALUES ('2026-06-12', 100.0)")   # real bar for that date
+    con.commit()
+    con.close()
     monkeypatch.setattr(pt, "DB_PATH", db)
     monkeypatch.setattr(pt, "_ENGINE", None)
     pt.log_prediction("BTC", "BUY", 0.7, date="2026-06-12")
@@ -258,6 +297,12 @@ def test_log_prediction_records_meta_prob(tmp_path, monkeypatch):
     import sqlite3
     import performance_tracker as pt
     db = str(tmp_path / "mp.db")
+    today = datetime.utcnow().strftime("%Y-%m-%d")
+    con = sqlite3.connect(db)
+    con.execute("CREATE TABLE btc (Date TEXT, close REAL)")
+    con.execute("INSERT INTO btc VALUES (?, 100.0)", (today,))   # real bar for today
+    con.commit()
+    con.close()
     monkeypatch.setattr(pt, "DB_PATH", db)
     monkeypatch.setattr(pt, "_ENGINE", None)
     pt.log_prediction("BTC", "BUY", 0.7, meta_prob=0.42)

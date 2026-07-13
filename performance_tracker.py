@@ -65,6 +65,19 @@ def _prepare():
         con.commit()
 
 
+def _has_bar(cur, asset, day):
+    """True if the asset has a real price bar dated `day` (YYYY-MM-DD). False on a
+    non-trading day (weekend/holiday), a missing price table, or a bar not yet
+    fetched - i.e. when there is nothing to reconcile the prediction against."""
+    try:
+        row = cur.execute(
+            f'SELECT 1 FROM "{asset.lower()}" WHERE Date = ? LIMIT 1', (day,)
+        ).fetchone()
+        return row is not None
+    except sqlite3.OperationalError:
+        return False
+
+
 def log_prediction(asset, signal, probability, cb_prob=None, lstm_prob=None,
                    model_version=None, meta_prob=None, date=None):
     # Date the prediction by the wall clock (one row per asset per day). Non-trading
@@ -78,6 +91,12 @@ def log_prediction(asset, signal, probability, cb_prob=None, lstm_prob=None,
     with _conn() as con:
         cur = con.cursor()
         _ensure_table(cur)
+        # Only log a prediction that lands on a REAL trading bar for this asset. On a
+        # weekend/holiday (or before today's bar is fetched) there is no bar to check
+        # it against, so the row would sit "awaiting check" forever and skew the
+        # pending count - skip it instead of creating an unverifiable row.
+        if not _has_bar(cur, asset, today):
+            return
         # Skip if already logged today for this asset
         dup = cur.execute(
             "SELECT 1 FROM prediction_log WHERE date=? AND asset=?",
