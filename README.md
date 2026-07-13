@@ -22,6 +22,7 @@
 - [Telegram bot](#telegram-bot)
 - [Publishing signals to the landing site](#publishing-signals-to-the-landing-site)
 - [Tech stack](#tech-stack)
+- [Requirements](#requirements)
 - [Quick start](#quick-start)
 - [Training](#training)
 - [Network](#network)
@@ -148,6 +149,15 @@ Run it by hand daily, or schedule it (Task Scheduler) once you are happy with it
 - **Data:** SQLite (`market.db`), pandas / numpy, Yahoo Finance + MOEX
 - **Research agent:** MAP-Elites quality-diversity search; pluggable LLM proposer (Anthropic / OpenAI / local Ollama)
 - **Ops / tooling:** Ruff, pytest, GitHub Actions CI, Telegram Bot API
+
+## Requirements
+
+- **Python 3.12** (3.11+ likely works; 3.12 is what CI runs).
+- **OS:** Linux, macOS or Windows. On Windows, TensorFlow is CPU-only since 2.11 - fine for daily-bar training; for GPU use WSL2.
+- **Disk:** ~5 GB free - trained models (~4 GB for all 208 assets) plus `market.db` (~70 MB). Serving alone needs far less.
+- **RAM:** 8 GB is enough to run the dashboard and `predict.py` (no TensorFlow at serve time). Training the full universe wants ~16 GB, or train in chunks of ~15 assets (`GTRADE_ASSETS`) on a smaller box.
+- **GPU:** optional. Neural nets train on CPU by default; CatBoost can use a GPU (`GTRADE_CB_DEVICE=GPU`) but is often slower on the small per-asset datasets.
+- **Network:** outbound access to Yahoo Finance and MOEX for data (`SOCKS5_PROXY` supported).
 
 ## Quick start
 
