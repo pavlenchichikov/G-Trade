@@ -131,6 +131,13 @@ table (gated behind a per-user allow-list by row-level security) and an
 anonymized `public_stats` row (the public teaser: BUY / SELL / WAIT counts,
 accuracy, breadth, and the snapshot date).
 
+The same run also feeds the mobile app: it exports per-asset OHLC history
+(`bars`), the recent signal track record (`signal_history`) and Guru Council
+verdicts (`guru`, `guru_stats`) - all gated by the same allow-list - and, when
+`GTRADE_FCM_CREDS` points to a Firebase service-account JSON, sends a personal
+push notification with the day's top signals to registered devices of
+allow-listed users.
+
 Set `SUPABASE_URL` and `SUPABASE_SERVICE_KEY` in `.env` (the service key is
 secret and must never be committed or shipped to the browser), then run it after
 `predict.py`:

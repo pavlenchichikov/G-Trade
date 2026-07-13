@@ -37,3 +37,6 @@ tqdm>=4.67,<5
 tabulate>=0.9,<1
 joblib>=1.5,<2
 h5py>=3.15,<4
+
+# Mobile app push notifications
+firebase-admin>=6.2,<8  # send_each_for_multicast needs 6.2+; 7.x verified too
