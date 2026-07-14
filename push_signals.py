@@ -19,8 +19,10 @@ connection is reset on some networks, which used to abort the bulk history push.
 
 import datetime
 import os
+import socket
 import sys
 import time
+from urllib.parse import urlparse
 
 import requests
 
@@ -108,11 +110,38 @@ _TRANSIENT = (
 )
 
 
+_proxy_resolved = False
+_proxy_value = None
+
+
+def _alive(host, port, timeout=1.5):
+    """True if something is listening on host:port (a quick TCP probe)."""
+    try:
+        socket.create_connection((host, port), timeout=timeout).close()
+        return True
+    except OSError:
+        return False
+
+
 def _proxies():
-    """Route Supabase traffic through SOCKS5_PROXY when set (Supabase is EU and
-    a direct connection is reset on some networks); otherwise connect directly."""
+    """Route Supabase traffic through SOCKS5_PROXY when it is actually up
+    (Supabase is EU and a direct connection is reset on some networks). If the
+    proxy is unset or not listening, connect directly - so a system-wide VPN
+    keeps working without a local proxy. Resolved once per run (like net.py)."""
+    global _proxy_resolved, _proxy_value
+    if _proxy_resolved:
+        return _proxy_value
+    _proxy_resolved = True
     p = os.getenv("SOCKS5_PROXY")
-    return {"http": p, "https": p} if p else None
+    if not p:
+        return None
+    parsed = urlparse(p)
+    if parsed.hostname and parsed.port and _alive(parsed.hostname, parsed.port):
+        _proxy_value = {"http": p, "https": p}
+    else:
+        print(f"note: SOCKS5_PROXY {parsed.hostname}:{parsed.port} not reachable "
+              "- connecting directly")
+    return _proxy_value
 
 
 def _send(method, url, *, retries=5, **kw):
