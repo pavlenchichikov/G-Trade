@@ -3,9 +3,10 @@
 Three small JSON files next to the other _auto_research state:
 - _ar_tried.json: the permanent registry of every evaluated candidate
   signature (nothing is ever re-tested across runs);
-- _ar_eval_cache.json: a cache for the expensive BASE trainings, keyed by
-  data + feature-space version (Task: base runs only - candidate envs embed
-  temp-file paths and candidates never repeat anyway);
+- _ar_eval_cache.json: a cache for expensive trainings, keyed by data +
+  feature-space version. Base runs key off the env (base_key); re-gate
+  candidate runs key off the genome signature (genome_key), because their
+  envs embed temp spec-file paths and would never repeat verbatim;
 - _ar_findings.json: the cumulative findings journal (one record per run).
 
 An unreadable file is treated as empty (same tolerance as load_state)."""
@@ -22,7 +23,7 @@ TRIED_PATH = os.path.join(BASE, "_ar_tried.json")
 CACHE_PATH = os.path.join(BASE, "_ar_eval_cache.json")
 FINDINGS_PATH = os.path.join(BASE, "_ar_findings.json")
 DB_PATH = os.path.join(BASE, "market.db")
-CACHE_CAP = 50
+CACHE_CAP = 120
 REPLICATION_PATH = os.path.join(BASE, "_ar_replication.json")
 
 
@@ -136,6 +137,18 @@ def base_key(subset, env):
     from core.features import feature_version
     payload = json.dumps(
         [subset, env, feature_version(), data_fingerprint(subset)],
+        sort_keys=True, ensure_ascii=True)
+    return hashlib.sha256(payload.encode("ascii")).hexdigest()
+
+
+def genome_key(subset, gsig, kind=""):
+    """Cache key for a CANDIDATE training: the genome signature stands in for the
+    env dict (candidate envs embed temp spec-file paths, so the raw env cannot key
+    the cache). kind separates the full train from the CB-only screen train. Same
+    invalidation rules as base_key: feature space or new data means a MISS."""
+    from core.features import feature_version
+    payload = json.dumps(
+        [subset, gsig, kind, feature_version(), data_fingerprint(subset)],
         sort_keys=True, ensure_ascii=True)
     return hashlib.sha256(payload.encode("ascii")).hexdigest()
 

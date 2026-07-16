@@ -17,7 +17,6 @@ import os
 
 import joblib
 import numpy as np
-import tensorflow as tf
 from catboost import CatBoostClassifier
 
 from core import meta_sizer
@@ -25,7 +24,7 @@ from core.calibration import apply_calibrator, load_calibrator
 from core.ensemble import build_stacking_features
 from core.features import active_candidate_features
 from core.logger import get_logger
-from core.model_io import get_lookback, load_lstm_model
+from core.model_io import get_lookback, load_keras_native, load_lstm_model
 from core.scaling import load_or_fit_scaler
 
 logger = get_logger("scoring")
@@ -122,9 +121,14 @@ def score_asset(df, name, table, reg_entry, thresholds, model_dir):
         tcn_path = os.path.join(model_dir, f"{table}_tcn.keras")
         if os.path.exists(tcn_path):
             try:
-                tcn_model = tf.keras.models.load_model(tcn_path)
-                X_seq = X_all[-lookback:].reshape(1, lookback, len(features))
-                tcn_prob = float(tcn_model.predict(X_seq.astype("float32"), verbose=0).flatten()[0])
+                # load_keras_native replays the saved cast Lambda; the plain
+                # load_model call used to die at predict on every asset
+                # ("could not infer the shape of the Lambda's output").
+                tcn_model = load_keras_native(tcn_path)
+                if tcn_model is not None:
+                    tcn_lb = tcn_model.input_shape[1] or lookback
+                    X_seq = X_all[-tcn_lb:].reshape(1, tcn_lb, len(features))
+                    tcn_prob = float(tcn_model.predict(X_seq.astype("float32"), verbose=0).flatten()[0])
             except Exception as e:
                 logger.debug("TCN predict failed for %s: %s", table, e)
                 tcn_prob = None

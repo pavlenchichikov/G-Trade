@@ -163,9 +163,10 @@ def test_labeling_axis_proposes_grid_and_maps_env():
     axis = ar.make_labeling_axis()
     assert axis.kind == "select_best"
     cands = axis.propose([])
-    windows = sorted(c["window"] for c in cands)
-    assert windows == [20, 30, 60]
-    assert all(c["mode"] == "rel_median" for c in cands)
+    rel = sorted(c["window"] for c in cands if c["mode"] == "rel_median")
+    tb = sorted(c["window"] for c in cands if c["mode"] == "triple_barrier")
+    assert rel == [20, 30, 60]
+    assert tb == sorted(ar.TB_HORIZONS)
     env = axis.to_env({"mode": "rel_median", "window": 30})
     assert env == {"GTRADE_LABEL_MODE": "rel_median", "GTRADE_LABEL_WINDOW": "30"}
 
@@ -173,8 +174,11 @@ def test_labeling_axis_proposes_grid_and_maps_env():
 def test_labeling_axis_omits_logged_windows():
     axis = ar.make_labeling_axis()
     log = [{"axis": "labeling", "iter": 0, "cand": {"mode": "rel_median", "window": 20}}]
-    windows = sorted(c["window"] for c in axis.propose(log))
-    assert windows == [30, 60]
+    cands = axis.propose(log)
+    rel = sorted(c["window"] for c in cands if c["mode"] == "rel_median")
+    assert rel == [30, 60]
+    # a logged rel_median 20 does NOT shadow the triple_barrier 20 candidate
+    assert {"mode": "triple_barrier", "window": 20} in cands
 
 
 def test_build_axes_selects_by_name_and_skips_unknown(caplog):
@@ -724,8 +728,9 @@ def test_labeling_axis_respects_registry():
     from core import ar_memory
     ar_memory.tried_add(
         "label", _json.dumps({"mode": "rel_median", "window": 20}, sort_keys=True))
-    windows = sorted(c["window"] for c in ar.make_labeling_axis().propose([]))
-    assert windows == [30, 60]
+    cands = ar.make_labeling_axis().propose([])
+    rel = sorted(c["window"] for c in cands if c["mode"] == "rel_median")
+    assert rel == [30, 60]
 
 
 def test_pruning_axis_respects_registry(monkeypatch):
@@ -1291,12 +1296,22 @@ def test_regate_candidates_dedup_rank_and_cap():
     assert out[1][1] == 0.8  # g1 kept its higher stored value across the duplicate
 
 
-def test_regate_end_to_end_with_injected_trainer(tmp_path, monkeypatch):
-    import json
+def _isolate_regate_files(tmp_path, monkeypatch):
+    """Point every file the (now checkpointing + caching) regate touches at tmp_path,
+    so tests never pollute the real _ar_eval_cache.json / _regate_progress.json."""
     import auto_research as ar
     import core.ar_memory as am
     monkeypatch.setattr(am, "FINDINGS_PATH", str(tmp_path / "f.json"))
     monkeypatch.setattr(am, "REPLICATION_PATH", str(tmp_path / "rep.json"))
+    monkeypatch.setattr(am, "CACHE_PATH", str(tmp_path / "cache.json"))
+    monkeypatch.setattr(ar, "_REGATE_PROGRESS_PATH", str(tmp_path / "prog.json"))
+
+
+def test_regate_end_to_end_with_injected_trainer(tmp_path, monkeypatch):
+    import json
+    import auto_research as ar
+    import core.ar_memory as am
+    _isolate_regate_files(tmp_path, monkeypatch)
     # one stored candidate genome; isolate archive + findings from the real files
     g = {"drops": [], "extra": [], "label_mode": "direction", "label_window": 30}
     monkeypatch.setattr(ar, "_regate_load_archive_raw", lambda: {})
@@ -1312,6 +1327,61 @@ def test_regate_end_to_end_with_injected_trainer(tmp_path, monkeypatch):
     recs = json.load(open(str(tmp_path / "f.json"), encoding="utf-8"))
     assert recs and recs[-1]["mode"] == "regate"
     assert recs[-1]["winners"] and recs[-1]["winners"][0]["axis"] == "regate"
+    # a completed run clears its checkpoint
+    assert not (tmp_path / "prog.json").exists()
+
+
+def test_regate_resumes_from_checkpoint(tmp_path, monkeypatch):
+    """A candidate already in _regate_progress.json is NOT retrained on resume:
+    the checkpointed result is reused and the journal still covers everyone."""
+    import json
+    import auto_research as ar
+    import core.ar_memory as am
+    _isolate_regate_files(tmp_path, monkeypatch)
+    g = {"drops": ["rsi"], "extra": [], "label_mode": "direction", "label_window": 30}
+    monkeypatch.setattr(ar, "_regate_load_archive_raw", lambda: {})
+    monkeypatch.setattr(am, "findings_all",
+                        lambda: [{"winners": [{"genome": g, "value": 0.6, "neural_lift": 0.1}]}])
+    calls = {"candidate": 0}
+
+    def fake_base(subset, env):
+        return [{"Asset": a, "Score": 1.0} for a in subset.split(",")]
+
+    def fake_candidate(subset, env):
+        calls["candidate"] += 1
+        return [{"Asset": a, "Score": 2.0} for a in subset.split(",")]
+
+    monkeypatch.setattr(ar, "train_base_cached", fake_base)
+    monkeypatch.setattr(ar, "train_env", fake_candidate)
+    # seed the checkpoint exactly as a crashed run would have left it
+    gsig = ar.genome_sig(ar.Genome(**g))
+    base_sig = "|".join([am.base_key(ar.HELDOUT_ASSETS, {}), "mean", "raw", "noscreen"])
+    ar._regate_progress_save(base_sig, {gsig: {
+        "p": 0.02, "value": 1.0, "tag": "checkpointed", "nl": 0.1}})
+    ar.regate(k=8, screen=False)
+    assert calls["candidate"] == 0  # resumed, not retrained
+    recs = json.load(open(str(tmp_path / "f.json"), encoding="utf-8"))
+    assert recs[-1]["winners"][0]["tag"] == "checkpointed"
+
+
+def test_candidate_train_cached_reuses_rows(tmp_path, monkeypatch):
+    """The genome-keyed candidate cache: second call with the same signature does
+    not retrain; the CB screen kind caches separately from the full kind."""
+    import auto_research as ar
+    import core.ar_memory as am
+    _isolate_regate_files(tmp_path, monkeypatch)
+    monkeypatch.setattr(am, "data_fingerprint", lambda subset: "frozen")
+    calls = {"n": 0}
+
+    def fake(subset, env):
+        calls["n"] += 1
+        return [{"Asset": "X", "Score": 1.0}]
+
+    monkeypatch.setattr(ar, "train_env", fake)
+    ar._candidate_train_cached("X", {}, "sig1")
+    ar._candidate_train_cached("X", {}, "sig1")            # cache hit
+    ar._candidate_train_cached("X", {"GTRADE_SCREEN_ONLY": "1"}, "sig1")  # other kind
+    assert calls["n"] == 2
 
 
 # --- objective diversification (mean/min + median/cvar/sharpe/trimmed_mean) ---
@@ -1363,3 +1433,118 @@ def test_objective_delta_uses_the_reduction():
     v_med, _ = ar._objective_delta(var, base, "median")
     assert deltas == [1.0, 2.0, 3.0, 8.0]
     assert v_mean == 3.5 and v_med == 2.5
+
+
+# --- hyperparameter / net-hygiene / triple-barrier genes (2026-07-16) ---------
+
+
+def test_genome_sig_backward_compatible_for_default_genes():
+    """Genomes recorded before the hyper/nets genes existed must keep their exact
+    signatures (tried-registry + replication history depend on it)."""
+    g = ar.Genome(drops=["rsi"], label_mode="rel_median", label_window=20)
+    sig = ar.genome_sig(g)
+    assert "hyper" not in sig and "nets" not in sig
+    legacy = json.dumps({
+        "drops": ["rsi"], "extra": [], "label": ["rel_median", 20],
+    }, sort_keys=True)
+    assert sig == legacy
+
+
+def test_genome_sig_includes_non_default_genes():
+    g1 = ar.Genome(cb_lr_mult=2.0)
+    g2 = ar.Genome(net_seeds=3)
+    assert "hyper" in ar.genome_sig(g1) and ar.genome_sig(g1) != ar.genome_sig(ar.Genome())
+    assert "nets" in ar.genome_sig(g2) and ar.genome_sig(g2) != ar.genome_sig(g1)
+
+
+def test_genome_to_env_default_is_empty():
+    assert ar.genome_to_env(ar.Genome()) == {}
+
+
+def test_genome_to_env_maps_all_new_genes():
+    g = ar.Genome(cb_depth_delta=-1, cb_lr_mult=0.5, cb_iter_mult=1.5,
+                  lookback_delta=5, net_seeds=3, net_uniqueness=1, net_calibrate=1)
+    env = ar.genome_to_env(g)
+    assert env["GTRADE_CB_DEPTH_DELTA"] == "-1"
+    assert env["GTRADE_CB_LR_MULT"] == "0.5"
+    assert env["GTRADE_CB_ITER_MULT"] == "1.5"
+    assert env["GTRADE_LOOKBACK_DELTA"] == "5"
+    assert env["GTRADE_NET_SEEDS"] == "3"
+    assert env["GTRADE_NET_UNIQUENESS"] == "1"
+    assert env["GTRADE_NET_CALIBRATE"] == "1"
+
+
+def test_genome_to_env_triple_barrier_uses_horizon():
+    g = ar.Genome(label_mode="triple_barrier", label_window=10)
+    env = ar.genome_to_env(g)
+    assert env["GTRADE_LABEL_MODE"] == "triple_barrier"
+    assert env["GTRADE_LABEL_HORIZON"] == "10"
+    assert "GTRADE_LABEL_WINDOW" not in env
+
+
+def test_valid_rejects_off_palette_genes():
+    active = ["a%d" % i for i in range(12)]
+    assert ar.valid(ar.Genome(), active, 8)
+    assert ar.valid(ar.Genome(label_mode="triple_barrier", label_window=10), active, 8)
+    assert not ar.valid(ar.Genome(cb_depth_delta=5), active, 8)
+    assert not ar.valid(ar.Genome(cb_lr_mult=3.7), active, 8)
+    assert not ar.valid(ar.Genome(lookback_delta=13), active, 8)
+    assert not ar.valid(ar.Genome(net_seeds=7), active, 8)
+    assert not ar.valid(ar.Genome(label_mode="bogus"), active, 8)
+
+
+def test_mutate_reaches_new_genes_and_stays_valid():
+    import random as _random
+    _random.seed(7)
+    active = ["a%d" % i for i in range(12)]
+    g = ar.Genome()
+    touched = set()
+    for _ in range(300):
+        g = ar.mutate(g, active, active)
+        assert ar.valid(g, active, 8)
+        if ar._hyper_genes(g) != ar._HYPER_DEFAULTS:
+            touched.add("hyper")
+        if ar._net_genes(g) != ar._NET_DEFAULTS:
+            touched.add("nets")
+        if g.label_mode == "triple_barrier":
+            touched.add("tb")
+    assert touched == {"hyper", "nets", "tb"}
+
+
+def test_hyper_axis_proposes_and_maps(monkeypatch):
+    monkeypatch.setattr(ar.ar_memory, "tried_seen", lambda kind, sig: False)
+    axis = ar.make_hyper_axis()
+    cands = axis.propose([])
+    assert {"cb_depth_delta": -1} in cands and {"lookback_delta": 10} in cands
+    env = axis.to_env({"cb_lr_mult": 2.0})
+    assert env == {"GTRADE_CB_LR_MULT": "2.0"}
+    # already-logged candidates are not re-proposed
+    log = [{"cand": {"cb_depth_delta": -1}}]
+    assert {"cb_depth_delta": -1} not in axis.propose(log)
+
+
+def test_nets_axis_proposes_and_maps(monkeypatch):
+    monkeypatch.setattr(ar.ar_memory, "tried_seen", lambda kind, sig: False)
+    axis = ar.make_nets_axis()
+    cands = axis.propose([])
+    assert {"seeds": 3} in cands and {"seeds": 3, "calibrate": 1} in cands
+    assert all("uniqueness" not in c or len(c) > 1 for c in cands)
+    assert axis.to_env({"seeds": 3, "calibrate": 1}) == {
+        "GTRADE_NET_SEEDS": "3", "GTRADE_NET_CALIBRATE": "1"}
+
+
+def test_labeling_axis_includes_triple_barrier(monkeypatch):
+    monkeypatch.setattr(ar.ar_memory, "tried_seen", lambda kind, sig: False)
+    axis = ar.make_labeling_axis()
+    cands = axis.propose([])
+    assert {"mode": "triple_barrier", "window": 10} in cands
+    assert {"mode": "rel_median", "window": 30} in cands
+    env = axis.to_env({"mode": "triple_barrier", "window": 20})
+    assert env == {"GTRADE_LABEL_MODE": "triple_barrier", "GTRADE_LABEL_HORIZON": "20"}
+    env = axis.to_env({"mode": "rel_median", "window": 30})
+    assert env == {"GTRADE_LABEL_MODE": "rel_median", "GTRADE_LABEL_WINDOW": "30"}
+
+
+def test_build_axes_knows_hyper_and_nets():
+    axes = ar.build_axes(["hyper", "nets"], ["a", "b"])
+    assert [a.name for a in axes] == ["hyper", "nets"]

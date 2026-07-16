@@ -382,6 +382,51 @@ def _get_optuna_params(asset):
     return _optuna_params_cache.get(asset, {})
 
 
+# --- Relative hyperparameter overrides (auto-research model-hyperparameter axis) --
+# A search candidate must compose with 181 DIFFERENT per-asset baselines, so it is
+# expressed relatively (a delta or multiplier applied to each asset's tuned value),
+# never as one absolute number for all assets. Defaults = no change, so a run
+# without these env knobs is byte-identical to before.
+
+def _env_signed_int(name: str, default: int = 0) -> int:
+    """Read a signed int env override (deltas may be negative)."""
+    try:
+        return int((os.getenv(name) or "").strip())
+    except (TypeError, ValueError):
+        return default
+
+
+def _env_float(name: str, default: float) -> float:
+    try:
+        return float((os.getenv(name) or "").strip())
+    except (TypeError, ValueError):
+        return default
+
+
+def _clamp(v, lo, hi):
+    return max(lo, min(hi, v))
+
+
+def cb_params_for(opt):
+    """Per-asset CatBoost champion params: the optuna baseline (700/8/0.03 default)
+    with the relative overrides applied, clamped to sane training ranges.
+    Knobs: GTRADE_CB_ITER_MULT, GTRADE_CB_DEPTH_DELTA, GTRADE_CB_LR_MULT."""
+    iters = int(opt.get('cb_iterations', 700))
+    depth = int(opt.get('cb_depth', 8))
+    lr = float(opt.get('cb_lr', 0.03))
+    iters = _clamp(int(round(iters * _env_float("GTRADE_CB_ITER_MULT", 1.0))), 100, 3000)
+    depth = _clamp(depth + _env_signed_int("GTRADE_CB_DEPTH_DELTA", 0), 3, 10)
+    lr = _clamp(lr * _env_float("GTRADE_CB_LR_MULT", 1.0), 0.005, 0.3)
+    return iters, depth, lr
+
+
+def lookback_for(opt, profile):
+    """Per-asset sequence lookback: the optuna/profile baseline plus the
+    GTRADE_LOOKBACK_DELTA override, clamped to [5, 90] bars."""
+    base = int(opt.get('lookback', profile['lookback']))
+    return _clamp(base + _env_signed_int("GTRADE_LOOKBACK_DELTA", 0), 5, 90)
+
+
 import gc as _gc
 
 
@@ -428,7 +473,7 @@ def _train_one_asset(asset, candidate_features, prev_registry_entry):
 
         # Embargo = sequence lookback: purges overlap between train/val/test so
         # sequence models cannot peek at neighbouring windows (purged walk-forward).
-        _embargo = int(opt.get('lookback', profile['lookback']))
+        _embargo = lookback_for(opt, profile)
         splits = make_walk_forward_splits(
             len(df),
             min_train=sp['min_train'],
@@ -463,8 +508,8 @@ def _train_one_asset(asset, candidate_features, prev_registry_entry):
         else:
             selected = derive_feature_set(df, slice(0, sp['min_train']),
                                           available_features, profile['top_k_features'])
-        # Optuna lookback overrides profile default
-        lookback = int(opt.get('lookback', profile['lookback']))
+        # Optuna lookback overrides profile default (plus the relative delta knob)
+        lookback = lookback_for(opt, profile)
 
         # --- PRE-COMPUTE: all fold data computed up front ---
         precomputed = []
@@ -551,10 +596,11 @@ def _train_one_asset(asset, candidate_features, prev_registry_entry):
                                 _X_val=X_val, _y_val=y_val,
                                 _X_test=X_test, _y_test=y_test,
                                 _opt=opt):
+                _cb_iters, _cb_depth, _cb_lr = cb_params_for(_opt)
                 _cb_kwargs = dict(
-                    iterations=int(_opt.get('cb_iterations', 700)),
-                    depth=int(_opt.get('cb_depth', 8)),
-                    learning_rate=float(_opt.get('cb_lr', 0.03)),
+                    iterations=_cb_iters,
+                    depth=_cb_depth,
+                    learning_rate=_cb_lr,
                     verbose=0,
                     task_type=_CB_TASK_TYPE,
                     thread_count=_CB_THREADS,
@@ -607,7 +653,7 @@ def _train_one_asset(asset, candidate_features, prev_registry_entry):
                     # LdP average-uniqueness addresses OVERLAPPING FORWARD label windows.
                     # Both current label modes (direction and rel_median) are next-bar
                     # labels - rel_median's window sizes the TRAILING baseline, not a
-                    # forward hold - so their forward footprint is 1 bar -> horizon 1 ->
+                    # forward hold - so their forward footprint is 1 bar, horizon 1,
                     # all-ones (an honest no-op today). A future multi-bar forward label
                     # (triple-barrier) sets GTRADE_LABEL_HORIZON to its barrier horizon to
                     # activate real down-weighting.
@@ -621,7 +667,7 @@ def _train_one_asset(asset, candidate_features, prev_registry_entry):
 
                 # SP-2 Task 2: seed-averaging closure.  When GTRADE_NET_SEEDS is unset
                 # (default), net_seeds()==1 and _fit_all_nets() runs once with NO
-                # set_random_seed call -> structurally identical to the original code.
+                # set_random_seed call, structurally identical to the original code.
                 def _fit_all_nets(multi_seed=False):
                     if k == 1:
                         _placed = tf.constant(1.0).device
@@ -833,7 +879,7 @@ def _train_one_asset(asset, candidate_features, prev_registry_entry):
             # SP-2 Task 4: per-net calibration + abstention (off by default). When
             # GTRADE_NET_CALIBRATE is set, calibrate each NET's probs (not CatBoost)
             # on validation and abstain near 0.5, so the meta-learner sees honest,
-            # decisive net inputs. Unset -> lstm_val_cal/lstm_test_cal are the raw
+            # decisive net inputs. When unset, lstm_val_cal/lstm_test_cal are the raw
             # slices and tf/tcn stay unchanged (byte-identical to before).
             if net_hygiene.calibrate_nets_on():
                 _cal_eps = net_hygiene.abstain_eps()
@@ -998,7 +1044,7 @@ def _train_one_asset(asset, candidate_features, prev_registry_entry):
                 _calib = fit_calibrator(best_fold.get('val_prob'), best_fold.get('val_target'))
                 save_calibrator(_calib, MODEL_DIR, table)
                 # SP-6 Phase 2b: optionally train + persist a per-asset meta-sizing model
-                # (P(CB correct)). Env-gated (GTRADE_META_SIZING); default off -> skipped.
+                # (P(CB correct)). Env-gated (GTRADE_META_SIZING); default off = skipped.
                 # Never allowed to break champion training.
                 if meta_sizer.meta_enabled() != "off":
                     if meta_sizer.train_and_save(asset, df):
@@ -1388,9 +1434,16 @@ def train_system():
     save_registry(registry)
 
     if exp_rows:
-        stamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        with open(os.path.join(EXPERIMENTS_DIR, f'experiment_{stamp}.json'), 'w', encoding='utf-8') as f:
-            json.dump(exp_rows, f, ensure_ascii=False, indent=2)
+        # A cosmetic log must never crash the end of a run: the isolated model dirs
+        # auto_research spins up can lack the experiments subdir at this point
+        # (FileNotFoundError observed 2026-07-13 during a re-gate).
+        try:
+            os.makedirs(EXPERIMENTS_DIR, exist_ok=True)
+            stamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            with open(os.path.join(EXPERIMENTS_DIR, f'experiment_{stamp}.json'), 'w', encoding='utf-8') as f:
+                json.dump(exp_rows, f, ensure_ascii=False, indent=2)
+        except OSError as e:
+            print(f"  WARNING: experiment log not written: {e}")
 
     # elapsed = time.time() - _t_start  # removed: _t_start not defined
     print()

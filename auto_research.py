@@ -304,14 +304,50 @@ def train_rows(subset, specs, extra_names):
     return train_env(subset, _feature_env(specs, extra_names))
 
 
+# Gene palettes for the model-hyperparameter and net-hygiene groups. Values are
+# RELATIVE (deltas/multipliers on each asset's tuned baseline - see train_hybrid
+# cb_params_for/lookback_for), so one candidate composes with 181 baselines.
+DEPTH_DELTAS = (-2, -1, 0, 1, 2)
+LR_MULTS = (0.5, 0.7, 1.0, 1.5, 2.0)
+ITER_MULTS = (0.7, 1.0, 1.5)
+LOOKBACK_DELTAS = (-10, -5, 0, 5, 10)
+NET_SEED_CHOICES = (1, 3)
+LABEL_MODES = ("direction", "rel_median", "triple_barrier")
+TB_HORIZONS = (5, 10, 20)  # triple_barrier reuses label_window as the horizon H
+
+_HYPER_DEFAULTS = (0, 1.0, 1.0, 0)
+_NET_DEFAULTS = (1, 0, 0)
+
+
 @dataclass
 class Genome:
-    """A composable cross-axis experiment: feature drops + extra DSL specs + labeling.
-    The objective is NOT here (it is the QD fitness). Empty == production default."""
+    """A composable cross-axis experiment: feature drops + extra DSL specs + labeling
+    + relative model hyperparameters + net-hygiene toggles. The objective is NOT here
+    (it is the QD fitness). Empty == production default.
+
+    label_window doubles as the horizon H when label_mode == "triple_barrier".
+    net_uniqueness is a SEPARATE gene from the label on purpose: the negative
+    2026-07-11 triple-barrier A/B bundled them, so the agent could never tell which
+    one hurt - now it can test the label with and without uniqueness weighting."""
     drops: list = field(default_factory=list)
     extra: list = field(default_factory=list)
     label_mode: str = "direction"
     label_window: int = 30
+    cb_depth_delta: int = 0
+    cb_lr_mult: float = 1.0
+    cb_iter_mult: float = 1.0
+    lookback_delta: int = 0
+    net_seeds: int = 1
+    net_uniqueness: int = 0
+    net_calibrate: int = 0
+
+
+def _hyper_genes(g):
+    return (g.cb_depth_delta, g.cb_lr_mult, g.cb_iter_mult, g.lookback_delta)
+
+
+def _net_genes(g):
+    return (g.net_seeds, g.net_uniqueness, g.net_calibrate)
 
 
 def genome_to_env(g):
@@ -319,9 +355,26 @@ def genome_to_env(g):
     env = dict(_feature_env(g.extra, [s["name"] for s in g.extra]))
     if g.drops:
         env["GTRADE_DROP_FEATURES"] = ",".join(g.drops)
-    if g.label_mode != "direction":
+    if g.label_mode == "triple_barrier":
+        env["GTRADE_LABEL_MODE"] = "triple_barrier"
+        env["GTRADE_LABEL_HORIZON"] = str(g.label_window)
+    elif g.label_mode != "direction":
         env["GTRADE_LABEL_MODE"] = g.label_mode
         env["GTRADE_LABEL_WINDOW"] = str(g.label_window)
+    if g.cb_depth_delta:
+        env["GTRADE_CB_DEPTH_DELTA"] = str(g.cb_depth_delta)
+    if g.cb_lr_mult != 1.0:
+        env["GTRADE_CB_LR_MULT"] = str(g.cb_lr_mult)
+    if g.cb_iter_mult != 1.0:
+        env["GTRADE_CB_ITER_MULT"] = str(g.cb_iter_mult)
+    if g.lookback_delta:
+        env["GTRADE_LOOKBACK_DELTA"] = str(g.lookback_delta)
+    if g.net_seeds > 1:
+        env["GTRADE_NET_SEEDS"] = str(g.net_seeds)
+    if g.net_uniqueness:
+        env["GTRADE_NET_UNIQUENESS"] = "1"
+    if g.net_calibrate:
+        env["GTRADE_NET_CALIBRATE"] = "1"
     return env
 
 
@@ -340,12 +393,22 @@ def _canon_genome(g):
 
 def genome_sig(g):
     """Canonical cross-run identity of a genome (drop order and the arbitrary
-    spec NAMES are ignored; only the spec signatures matter)."""
-    return json.dumps({
+    spec NAMES are ignored; only the spec signatures matter).
+
+    The hyper/nets gene groups enter the signature ONLY when they differ from the
+    production default, so every genome signature recorded before those genes
+    existed stays byte-identical - the tried-registry and the replication gate
+    keep their history."""
+    d = {
         "drops": sorted(g.drops),
         "extra": sorted(json.dumps(_spec_signature(s)) for s in g.extra),
         "label": [g.label_mode, g.label_window],
-    }, sort_keys=True)
+    }
+    if _hyper_genes(g) != _HYPER_DEFAULTS:
+        d["hyper"] = list(_hyper_genes(g))
+    if _net_genes(g) != _NET_DEFAULTS:
+        d["nets"] = list(_net_genes(g))
+    return json.dumps(d, sort_keys=True)
 
 
 def valid(g, active, prune_min):
@@ -359,9 +422,19 @@ def valid(g, active, prune_min):
     cols = aset | extra_names
     if any(not validate_spec(s, cols) for s in g.extra):
         return False
-    if g.label_mode not in ("direction", "rel_median"):
+    if g.label_mode not in LABEL_MODES:
         return False
     if g.label_window <= 0:
+        return False
+    if g.cb_depth_delta not in DEPTH_DELTAS:
+        return False
+    if g.cb_lr_mult not in LR_MULTS or g.cb_iter_mult not in ITER_MULTS:
+        return False
+    if g.lookback_delta not in LOOKBACK_DELTAS:
+        return False
+    if g.net_seeds not in NET_SEED_CHOICES:
+        return False
+    if g.net_uniqueness not in (0, 1) or g.net_calibrate not in (0, 1):
         return False
     if len(aset) - len(set(g.drops)) < prune_min:
         return False
@@ -379,17 +452,51 @@ def random_genome(active, base_features):
         spec = _random_spec(base_features, "g%d_%d" % (random.randint(0, 99999), i), None)
         if spec and spec["name"] not in g.drops:
             g.extra.append(spec)
-    if random.random() < 0.5:
+    r = random.random()
+    if r < 0.35:
         g.label_mode = "rel_median"
         g.label_window = random.choice([20, 30, 60])
+    elif r < 0.5:
+        g.label_mode = "triple_barrier"
+        g.label_window = random.choice(TB_HORIZONS)
+    if random.random() < 0.3:
+        _mutate_hyper(g)
+    if random.random() < 0.2:
+        _mutate_nets(g)
     return g if valid(g, active, prune_min) else Genome()
+
+
+def _mutate_hyper(g):
+    """Set one random hyperparameter gene to a random palette value (may be the
+    default - that is how a gene walks back to baseline)."""
+    gene = random.choice(("depth", "lr", "iter", "lookback"))
+    if gene == "depth":
+        g.cb_depth_delta = random.choice(DEPTH_DELTAS)
+    elif gene == "lr":
+        g.cb_lr_mult = random.choice(LR_MULTS)
+    elif gene == "iter":
+        g.cb_iter_mult = random.choice(ITER_MULTS)
+    else:
+        g.lookback_delta = random.choice(LOOKBACK_DELTAS)
+
+
+def _mutate_nets(g):
+    """Flip one net-hygiene gene."""
+    gene = random.choice(("seeds", "uniq", "calib"))
+    if gene == "seeds":
+        g.net_seeds = random.choice([s for s in NET_SEED_CHOICES if s != g.net_seeds])
+    elif gene == "uniq":
+        g.net_uniqueness = 1 - g.net_uniqueness
+    else:
+        g.net_calibrate = 1 - g.net_calibrate
 
 
 def mutate(g, active, base_features):
     """One random gene change; always returns a valid genome (or the input if no valid
     single change exists)."""
     prune_min = int(os.getenv("GTRADE_AR_PRUNE_MIN", "8"))
-    ops = ["add_drop", "rm_drop", "add_extra", "rm_extra", "flip_label", "win"]
+    ops = ["add_drop", "rm_drop", "add_extra", "rm_extra", "flip_label", "win",
+           "hyper", "nets"]
     random.shuffle(ops)
     for op in ops:
         ng = copy.deepcopy(g)
@@ -409,9 +516,17 @@ def mutate(g, active, base_features):
             if ng.extra:
                 ng.extra.pop(random.randrange(len(ng.extra)))
         elif op == "flip_label":
-            ng.label_mode = "rel_median" if ng.label_mode == "direction" else "direction"
+            ng.label_mode = random.choice([m for m in LABEL_MODES if m != ng.label_mode])
+            if ng.label_mode == "triple_barrier" and ng.label_window not in TB_HORIZONS:
+                ng.label_window = random.choice(TB_HORIZONS)
         elif op == "win":
-            ng.label_window = random.choice([w for w in (20, 30, 60) if w != ng.label_window] or [30])
+            pool = TB_HORIZONS if ng.label_mode == "triple_barrier" else (20, 30, 60)
+            ng.label_window = random.choice(
+                [w for w in pool if w != ng.label_window] or [pool[1]])
+        elif op == "hyper":
+            _mutate_hyper(ng)
+        elif op == "nets":
+            _mutate_nets(ng)
         if ng != g and valid(ng, active, prune_min):
             return ng
     return g
@@ -428,6 +543,12 @@ def crossover(g1, g2, active):
         child.label_mode, child.label_window = g1.label_mode, g1.label_window
     else:
         child.label_mode, child.label_window = g2.label_mode, g2.label_window
+    hp = g1 if random.random() < 0.5 else g2
+    child.cb_depth_delta, child.cb_lr_mult = hp.cb_depth_delta, hp.cb_lr_mult
+    child.cb_iter_mult, child.lookback_delta = hp.cb_iter_mult, hp.lookback_delta
+    np_ = g1 if random.random() < 0.5 else g2
+    child.net_seeds, child.net_uniqueness = np_.net_seeds, np_.net_uniqueness
+    child.net_calibrate = np_.net_calibrate
     aset = set(active)
     cols = aset | {s.get("name") for s in child.extra}
     child.extra = [s for s in child.extra if validate_spec(s, cols)]
@@ -733,25 +854,101 @@ def _regate_load_archive_raw():
         return {}
 
 
+_REGATE_PROGRESS_PATH = os.path.join(BASE, "_regate_progress.json")
+
+
+def _say(msg):
+    """Print + mirror into the shared log file, so a lost console (the way the
+    2026-07-13 re-gate died silently) never loses the run trail."""
+    print(msg)
+    logger.info(msg)
+
+
+def _regate_progress_load(base_sig):
+    """Per-candidate checkpoint of a re-gate run: {gsig: result fields}. Discarded
+    (fresh start) when the stored base signature no longer matches - results are only
+    comparable within one data snapshot + objective/basis/screen config."""
+    try:
+        with open(_REGATE_PROGRESS_PATH, encoding="utf-8") as fh:
+            saved = json.load(fh)
+    except Exception:
+        return {}
+    return saved.get("done", {}) if saved.get("base_sig") == base_sig else {}
+
+
+def _regate_progress_save(base_sig, done):
+    with open(_REGATE_PROGRESS_PATH, "w", encoding="utf-8") as fh:
+        json.dump({"base_sig": base_sig, "done": done}, fh, ensure_ascii=True, indent=2)
+
+
+def _regate_progress_clear():
+    try:
+        os.remove(_REGATE_PROGRESS_PATH)
+    except OSError:
+        pass
+
+
+def _candidate_train_cached(subset, env, gsig):
+    """train_env with a cross-run cache keyed by the genome signature (the env embeds
+    temp spec-file paths, so the raw env cannot key the cache). The CB-only screen
+    train and the full train cache under different kinds; the screen's CB train is
+    therefore REUSED by the held-out eval instead of being trained twice. A resumed
+    or repeated re-gate reuses every finished candidate train (hours each)."""
+    kind = "cb" if env.get("GTRADE_SCREEN_ONLY") else "full"
+    key = ar_memory.genome_key(subset, gsig, kind)
+    rows = ar_memory.cache_get(key)
+    if rows is not None:
+        _say("[regate] candidate cache hit (%s): %s" % (kind, gsig[:12]))
+        return rows
+    rows = train_env(subset, env)
+    if rows:
+        ar_memory.cache_put(key, rows)
+    return rows
+
+
 def regate(k=8, screen=False):
     """Re-evaluate the best already-found candidate genomes under the CURRENT gate
     (Wilcoxon + enlarged held-out), reusing the 900+ prior experiments instead of
     re-running the search. Trains only the top-k on the held-out set. Adopts nothing;
-    journals mode='regate' and feeds the same replication gate."""
+    journals mode='regate' and feeds the same replication gate.
+
+    Crash-safe: every finished candidate checkpoints to _regate_progress.json and its
+    trains cache by genome signature, so an interrupted run RESUMES (same data + gate
+    config) instead of restarting from zero."""
     cands = _regate_candidates(_regate_load_archive_raw(), ar_memory.findings_all(), k)
     if not cands:
-        print("[regate] no stored candidates to re-gate.")
+        _say("[regate] no stored candidates to re-gate.")
         return
     obj, basis = _objective(), _score_basis()
+    _say("[regate] %d candidate(s) | objective=%s basis=%s screen=%s"
+         % (len(cands), obj, basis, screen))
     ho_base_full, ho_base_contrib = _heldout_eval(HELDOUT_ASSETS, {}, train_base_cached)
     base_contrib = {r["Asset"]: r["Score"] for r in ho_base_contrib}
+    base_sig = "|".join([ar_memory.base_key(HELDOUT_ASSETS, {}), obj, basis,
+                         "screen" if screen else "noscreen"])
+    done = _regate_progress_load(base_sig)
+    if done:
+        _say("[regate] resuming: %d candidate(s) already evaluated." % len(done))
     if screen:
         screen_base = {r["Asset"]: r["Score"]
                        for r in train_base_cached(HELDOUT_ASSETS, screen_env({}))}
-        cands = [c for c in cands if _regate_passes_screen(c[0], screen_base)]
+        cands = [c for c in cands
+                 if genome_sig(c[0]) in done or _regate_passes_screen(c[0], screen_base)]
+        _say("[regate] %d candidate(s) after the CB-only screen." % len(cands))
     results = []
-    for g, old_score, old_nl in cands:
-        var_full, var_contrib = _heldout_eval(HELDOUT_ASSETS, genome_to_env(g), train_env)
+    for i, (g, old_score, old_nl) in enumerate(cands, start=1):
+        gsig = genome_sig(g)
+        if gsig in done:
+            r = done[gsig]
+            results.append((g, old_score, r["p"], r["value"], r["tag"], r["nl"]))
+            continue
+        _say("[regate] %d/%d evaluating %s (stored score %.2f)..."
+             % (i, len(cands), gsig[:12], old_score))
+
+        def _fn(s, e, _sig=gsig):
+            return _candidate_train_cached(s, e, _sig)
+
+        var_full, var_contrib = _heldout_eval(HELDOUT_ASSETS, genome_to_env(g), _fn)
         nl, _d = _objective_delta(var_contrib, base_contrib, "mean")
         nl = round(nl, 4) if _d else None
         if basis == "neural":
@@ -759,6 +956,9 @@ def regate(k=8, screen=False):
         else:
             p, value, _d, tag = holdout_stats(ho_base_full, var_full, obj)
         results.append((g, old_score, p, value, tag, nl))
+        done[gsig] = {"p": p, "value": value, "tag": tag, "nl": nl}
+        _regate_progress_save(base_sig, done)
+        _say("[regate] %d/%d done: %s" % (i, len(cands), tag))
     flags = benjamini_hochberg([r[2] for r in results])
     ts = datetime.utcnow().isoformat()
     finding_winners = []
@@ -774,19 +974,22 @@ def regate(k=8, screen=False):
                                 "neural_lift": nl, "replicated": bool(replicated),
                                 "clears": clears or 0})
         nl_str = "" if nl is None else " | neural_lift %+.2f" % nl
-        print("[regate] old %.2f - %s | %s%s" % (
+        _say("[regate] old %.2f - %s | %s%s" % (
             old_score, _gate_verdict(ok, bool(replicated), clears), tag, nl_str))
     ar_memory.findings_append({"ts": ts, "mode": "regate", "k": k,
                                "screen": bool(screen), "winners": finding_winners})
-    print("[regate] re-gated %d candidate(s); nothing adopted automatically." % len(results))
+    _regate_progress_clear()
+    _say("[regate] re-gated %d candidate(s); nothing adopted automatically." % len(results))
 
 
 def _regate_passes_screen(g, screen_base):
     """Optional cheap CB-only prefilter: keep the candidate unless its CB-only held-out
     mean delta vs the CB-only base is clearly negative (below the existing SCREEN_MIN
-    floor). `screen_base` is a {asset: CB-only Score} dict."""
+    floor). `screen_base` is a {asset: CB-only Score} dict. The train is cached by
+    genome signature, so the held-out eval reuses it as its CB side."""
     try:
-        rows = train_env(HELDOUT_ASSETS, screen_env(genome_to_env(g)))
+        rows = _candidate_train_cached(HELDOUT_ASSETS, screen_env(genome_to_env(g)),
+                                       genome_sig(g))
         d, deltas = _objective_delta(rows, screen_base, "mean")
         return (not deltas) or d >= SCREEN_MIN
     except Exception:
@@ -1099,24 +1302,118 @@ def make_features_axis(base_features):
 LABEL_WINDOWS = (20, 30, 60)
 
 
+def _label_env(cand):
+    """Env overrides for one labeling candidate. triple_barrier's window is its
+    horizon H (same convention as the genome's label_window)."""
+    if cand["mode"] == "triple_barrier":
+        return {"GTRADE_LABEL_MODE": "triple_barrier",
+                "GTRADE_LABEL_HORIZON": str(cand["window"])}
+    return {"GTRADE_LABEL_MODE": cand["mode"],
+            "GTRADE_LABEL_WINDOW": str(cand["window"])}
+
+
 def make_labeling_axis():
-    """Sweep the rel_median label window (direction is the base). select_best: keep
-    the single best window whose mean Score delta beats the base."""
+    """Sweep the alternative label modes (direction is the base): rel_median windows
+    and triple_barrier horizons. select_best: keep the single best candidate whose
+    mean Score delta beats the base. Unlike the 2026-07-11 manual A/B, a
+    triple_barrier candidate here does NOT bundle uniqueness weighting - that is a
+    separate net-hygiene gene/axis, so the two effects are measured apart."""
     def _propose(log):
-        tried = {e["cand"]["window"] for e in log
+        tried = {(e["cand"].get("mode"), e["cand"].get("window")) for e in log
                  if isinstance(e.get("cand"), dict) and "window" in e["cand"]}
-        cands = [{"mode": "rel_median", "window": w}
-                 for w in LABEL_WINDOWS if w not in tried]
+        cands = ([{"mode": "rel_median", "window": w} for w in LABEL_WINDOWS]
+                 + [{"mode": "triple_barrier", "window": h} for h in TB_HORIZONS])
+        cands = [c for c in cands if (c["mode"], c["window"]) not in tried]
         return [c for c in cands if not ar_memory.tried_seen(
             "label", json.dumps(c, sort_keys=True))]
 
     return Axis(
         name="labeling",
         propose=_propose,
-        to_env=lambda cand: {"GTRADE_LABEL_MODE": cand["mode"],
-                             "GTRADE_LABEL_WINDOW": str(cand["window"])},
+        to_env=_label_env,
         kind="select_best",
         sig=lambda c: ("label", json.dumps(c, sort_keys=True)),
+    )
+
+
+# --- model-hyperparameter axis (relative deltas/multipliers, see Genome) -----
+
+HYPER_CANDIDATES = (
+    {"cb_depth_delta": -1}, {"cb_depth_delta": 1},
+    {"cb_lr_mult": 0.5}, {"cb_lr_mult": 2.0},
+    {"cb_iter_mult": 1.5}, {"cb_iter_mult": 0.7},
+    {"lookback_delta": -5}, {"lookback_delta": 5}, {"lookback_delta": 10},
+)
+
+_HYPER_ENV_KEYS = {
+    "cb_depth_delta": "GTRADE_CB_DEPTH_DELTA",
+    "cb_lr_mult": "GTRADE_CB_LR_MULT",
+    "cb_iter_mult": "GTRADE_CB_ITER_MULT",
+    "lookback_delta": "GTRADE_LOOKBACK_DELTA",
+}
+
+
+def hyper_env(cand):
+    """Env overrides for one hyperparameter candidate dict (one or more genes)."""
+    return {_HYPER_ENV_KEYS[k]: str(v) for k, v in cand.items()}
+
+
+def make_hyper_axis():
+    """One-gene-at-a-time sweep of the relative model-hyperparameter overrides
+    (train_hybrid applies them on top of each asset's optuna baseline).
+    select_best: keep the single best override whose delta beats the base."""
+    def _propose(log):
+        tried = {json.dumps(e["cand"], sort_keys=True) for e in log
+                 if isinstance(e.get("cand"), dict)}
+        cands = [c for c in HYPER_CANDIDATES
+                 if json.dumps(c, sort_keys=True) not in tried]
+        return [c for c in cands if not ar_memory.tried_seen(
+            "hyper", json.dumps(c, sort_keys=True))]
+
+    return Axis(
+        name="hyper",
+        propose=_propose,
+        to_env=hyper_env,
+        kind="select_best",
+        sig=lambda c: ("hyper", json.dumps(c, sort_keys=True)),
+    )
+
+
+# --- net-hygiene axis (SP-2 levers as searchable candidates) ------------------
+
+NETS_CANDIDATES = (
+    {"seeds": 3},
+    {"calibrate": 1},
+    {"seeds": 3, "calibrate": 1},
+)
+
+_NETS_ENV_KEYS = {"seeds": "GTRADE_NET_SEEDS", "uniqueness": "GTRADE_NET_UNIQUENESS",
+                  "calibrate": "GTRADE_NET_CALIBRATE"}
+
+
+def nets_env(cand):
+    return {_NETS_ENV_KEYS[k]: str(v) for k, v in cand.items()}
+
+
+def make_nets_axis():
+    """Sweep the net-hygiene levers (seed-averaging, per-net calibration).
+    Uniqueness weighting is intentionally NOT proposed alone - it is a no-op under
+    the next-bar base label (needs GTRADE_LABEL_HORIZON > 1); the QD genome can
+    still combine it with a triple_barrier label."""
+    def _propose(log):
+        tried = {json.dumps(e["cand"], sort_keys=True) for e in log
+                 if isinstance(e.get("cand"), dict)}
+        cands = [c for c in NETS_CANDIDATES
+                 if json.dumps(c, sort_keys=True) not in tried]
+        return [c for c in cands if not ar_memory.tried_seen(
+            "nets", json.dumps(c, sort_keys=True))]
+
+    return Axis(
+        name="nets",
+        propose=_propose,
+        to_env=nets_env,
+        kind="select_best",
+        sig=lambda c: ("nets", json.dumps(c, sort_keys=True)),
     )
 
 
@@ -1182,6 +1479,8 @@ def build_axes(names, base_features):
         "features": lambda: make_features_axis(base_features),
         "labeling": make_labeling_axis,
         "pruning": lambda: make_pruning_axis(base_features),
+        "hyper": make_hyper_axis,
+        "nets": make_nets_axis,
     }
     axes = []
     for n in names:

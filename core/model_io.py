@@ -6,7 +6,10 @@ and signal_engine.py, so importing it from the backtest script was wrong.
 
 import json
 import os
+import threading
+import types
 
+import tensorflow as tf
 from tensorflow.keras.layers import (
     LSTM, Dense, Dropout, Flatten, Input, Multiply, Permute, RepeatVector,
 )
@@ -16,6 +19,58 @@ from core.architectures import ReduceSumLayer, build_lstm_attention
 from core.logger import get_logger
 
 logger = get_logger("model_io")
+
+
+_SERVE_CUSTOM_OBJECTS = {"ReduceSumLayer": ReduceSumLayer}
+_LAMBDA_PATCH_LOCK = threading.Lock()
+
+
+def _lambda_cast_call(self, inputs, mask=None, training=None):
+    """Replacement body for reloaded Lambda layers. Every Lambda this project
+    ever saved is the dtype cast `lambda t: tf.cast(t, compute_dt)`; Keras 3
+    reloads a marshalled lambda without its globals (`tf` missing) and without
+    an output shape, so the original dies at first call. Replaying the cast
+    (shape-preserving) restores the saved model's real behavior."""
+    return tf.cast(inputs, tf.keras.mixed_precision.global_policy().compute_dtype)
+
+
+def _lambda_identity_shape(self, input_shape):
+    return input_shape
+
+
+def load_keras_native(path):
+    """The straight Keras 3 load of a natively saved .keras champion - the format
+    every model since the 2026-06 full retrain is in. Returns the model or None.
+
+    This must be tried FIRST: the legacy V50/V49 rebuild paths reconstruct
+    fixed-size architectures (192/96, 128/64) and cannot fit the adaptive-sized
+    champions - their name-matched partial weight loads used to leave layers at
+    random init and the member quietly predicted ~0.5 noise.
+
+    Lambda handling: custom_objects cannot override the builtin Lambda class, so
+    the class is patched (see _lambda_cast_call) only for the duration of the
+    load, then the cast is pinned onto the loaded Lambda INSTANCES and the class
+    restored - process-wide Lambda behavior is untouched."""
+    lam_cls = tf.keras.layers.Lambda
+    with _LAMBDA_PATCH_LOCK:
+        orig_call = lam_cls.call
+        orig_shape = lam_cls.compute_output_shape
+        lam_cls.call = _lambda_cast_call
+        lam_cls.compute_output_shape = _lambda_identity_shape
+        try:
+            model = tf.keras.models.load_model(
+                path, safe_mode=False, custom_objects=_SERVE_CUSTOM_OBJECTS)
+        except Exception as e:
+            logger.debug("Native keras load failed for %s: %s", path, e)
+            return None
+        finally:
+            lam_cls.call = orig_call
+            lam_cls.compute_output_shape = orig_shape
+    for layer in model.layers:
+        if isinstance(layer, lam_cls):
+            layer.call = types.MethodType(_lambda_cast_call, layer)
+            layer.compute_output_shape = types.MethodType(_lambda_identity_shape, layer)
+    return model
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MODEL_DIR = os.path.join(BASE_DIR, "models")
@@ -133,6 +188,15 @@ def load_lstm_model(lstm_path, lookback, n_features):
         h5_path = None
 
     try:
+        # Method 0: native Keras 3 load - the correct path for every champion
+        # saved since the 2026-06 retrain (adaptive sizes live in the saved
+        # config, so no rebuilt skeleton can drift from them).
+        if fmt == 'zip':
+            model = load_keras_native(lstm_path)
+            if model is not None:
+                native_lb = getattr(model, 'input_shape', (None, lookback))[1] or lookback
+                return model, "DUAL (AI)", int(native_lb)
+
         # Auto-detect lookback from saved weights (handles frozen champions with outdated optuna params)
         detected_lb = detect_lookback_from_h5(weights_path if fmt == 'hdf5' else lstm_path)
         if detected_lb is not None and detected_lb != lookback:
