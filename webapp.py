@@ -277,6 +277,20 @@ def asset_page(request: Request, name: str):
     markers = pos["markers"]
     taleb = dashboard.taleb_for_asset(name)
     soft_cap, hard_cap = RISK_CONFIG["taleb_soft_cap"], RISK_CONFIG["taleb_risk_cap"]
+
+    # asset_track doesn't carry the live-gate columns; pull the gated display
+    # value + reason from latest_gated() so the chip matches the radar page.
+    current = dict(track[0]) if track else None
+    if current:
+        gated = track_record.latest_gated(name)
+        if gated:
+            current["signal"] = gated["signal"]
+            current["signal_raw"] = gated["signal_raw"]
+            current["gate_reason"] = gated["gate_reason"]
+        else:
+            current["signal_raw"] = current.get("signal")
+            current["gate_reason"] = None
+
     return templates.TemplateResponse(request, "asset.html", {
         "asset": name,
         "ticker": FULL_ASSET_MAP[name],
@@ -289,7 +303,7 @@ def asset_page(request: Request, name: str):
         "track": track,
         "acc": acc,
         "stats": stats,
-        "current": track[0] if track else None,
+        "current": current,
         "position": pos["current"],
         "trades": pos["trades"],
         "segments": pos["segments"],

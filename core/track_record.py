@@ -23,12 +23,15 @@ def _connect(db_path=None):
     return sqlite3.connect(db_path or DB_PATH)
 
 
-def _has_model_version(con) -> bool:
+def _plog_cols(con):
     try:
-        cols = [r[1] for r in con.execute("PRAGMA table_info(prediction_log)").fetchall()]
+        return [r[1] for r in con.execute("PRAGMA table_info(prediction_log)").fetchall()]
     except sqlite3.OperationalError:
-        return False
-    return "model_version" in cols
+        return []
+
+
+def _has_model_version(con) -> bool:
+    return "model_version" in _plog_cols(con)
 
 
 def _accuracy(con, asset: str, last_n: int) -> dict:
@@ -59,11 +62,18 @@ def asset_accuracy(asset: str, last_n: int = ACC_LAST_N, db_path=None) -> dict:
 
 
 def latest_signals(db_path=None, acc_last_n: int = ACC_LAST_N) -> list:
-    """Latest signal per asset plus accuracy over the most recent verified ones."""
+    """Latest signal per asset plus accuracy over the most recent verified ones.
+
+    `signal` is the DISPLAY value (the live-gated sig_shown when the gate
+    suppressed the raw call); `signal_raw` keeps the model's own call and
+    `gate_reason` says why they differ. Consumers that act on signals (webapp
+    radar, push_signals) read `signal` and inherit the gate for free."""
     with _connect(db_path) as con:
+        gated = "sig_shown" in _plog_cols(con)
+        extra = ", p.sig_shown, p.gate_reason" if gated else ", NULL, NULL"
         try:
             rows = con.execute(
-                "SELECT p.asset, p.date, p.signal, p.probability "
+                "SELECT p.asset, p.date, p.signal, p.probability" + extra + " "
                 "FROM prediction_log p "
                 "JOIN (SELECT asset, MAX(date) AS d FROM prediction_log GROUP BY asset) m "
                 "ON p.asset = m.asset AND p.date = m.d "
@@ -72,15 +82,39 @@ def latest_signals(db_path=None, acc_last_n: int = ACC_LAST_N) -> list:
         except sqlite3.OperationalError:
             return []
         out = []
-        for asset, date, signal, prob in rows:
+        for asset, date, signal, prob, shown, reason in rows:
             out.append({
                 "asset": asset,
                 "date": date,
-                "signal": signal,
+                "signal": shown or signal,
+                "signal_raw": signal,
+                "gate_reason": reason,
                 "probability": prob,
                 "acc": _accuracy(con, asset, acc_last_n),
             })
         return out
+
+
+def latest_gated(asset: str, db_path=None) -> dict:
+    """Gated display values of one asset's LATEST prediction row:
+    {"signal": <sig_shown or raw>, "signal_raw": raw, "gate_reason": reason}.
+    Empty dict when the asset has no rows or the table/columns are absent."""
+    with _connect(db_path) as con:
+        gated = "sig_shown" in _plog_cols(con)
+        extra = ", sig_shown, gate_reason" if gated else ", NULL, NULL"
+        try:
+            row = con.execute(
+                "SELECT signal" + extra + " FROM prediction_log "
+                "WHERE asset=? ORDER BY date DESC LIMIT 1",
+                (asset,),
+            ).fetchone()
+        except sqlite3.OperationalError:
+            return {}
+        if not row:
+            return {}
+        signal, shown, reason = row
+        return {"signal": shown or signal, "signal_raw": signal,
+                "gate_reason": reason}
 
 
 def asset_track(asset: str, limit: int = 30, db_path=None) -> list:

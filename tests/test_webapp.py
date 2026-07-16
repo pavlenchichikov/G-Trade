@@ -657,3 +657,14 @@ def test_api_research(client):
 def test_palette_has_research(client):
     d = client.get("/api/palette").json()
     assert any(p[0] == "Research" for p in d["pages"])
+
+
+def test_radar_shows_live_gate_badge(client, monkeypatch):
+    import core.dashboard as dash
+    dash.cache_clear()
+    sig = {"asset": "EURUSD", "date": "2026-07-16", "signal": "WAIT",
+           "signal_raw": "BUY", "gate_reason": "live-gate: FOREX MAJORS 34% (n=126)",
+           "probability": 0.9, "acc": {"n": 20, "correct": 6, "acc": 0.3}}
+    monkeypatch.setattr(track_record, "latest_signals", lambda *a, **k: [sig])
+    html = client.get("/").text
+    assert "gated" in html and "live-gate" in html

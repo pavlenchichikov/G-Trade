@@ -136,3 +136,73 @@ def test_stale_assets_missing_table_reported(db):
     )
     assert stale[0]["asset"] == "GOLD"
     assert stale[0]["last_date"] is None
+
+
+def test_latest_signals_prefers_gated_display(tmp_path):
+    import sqlite3
+    from core import track_record
+    db = str(tmp_path / "m.db")
+    con = sqlite3.connect(db)
+    con.execute("CREATE TABLE prediction_log (date TEXT, asset TEXT, signal TEXT,"
+                " probability REAL, actual_next_ret REAL, correct INTEGER,"
+                " cb_prob REAL, lstm_prob REAL, model_version TEXT, meta_prob REAL,"
+                " sig_shown TEXT, gate_reason TEXT)")
+    con.execute("INSERT INTO prediction_log VALUES ('2026-07-16','EURUSD','BUY',0.9,"
+                "NULL,NULL,NULL,NULL,NULL,NULL,'WAIT','live-gate: FOREX MAJORS 34% (n=126)')")
+    con.execute("INSERT INTO prediction_log VALUES ('2026-07-16','AAPL','SELL',0.3,"
+                "NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL)")
+    con.commit(); con.close()
+    rows = {r["asset"]: r for r in track_record.latest_signals(db_path=db)}
+    assert rows["EURUSD"]["signal"] == "WAIT"
+    assert rows["EURUSD"]["signal_raw"] == "BUY"
+    assert "live-gate" in rows["EURUSD"]["gate_reason"]
+    assert rows["AAPL"]["signal"] == "SELL" and rows["AAPL"]["gate_reason"] is None
+
+
+def test_latest_signals_pre_migration_schema(tmp_path):
+    import sqlite3
+    from core import track_record
+    db = str(tmp_path / "m.db")
+    con = sqlite3.connect(db)
+    con.execute("CREATE TABLE prediction_log (date TEXT, asset TEXT, signal TEXT,"
+                " probability REAL, correct INTEGER)")
+    con.execute("INSERT INTO prediction_log VALUES ('2026-07-16','BTC','BUY',0.6,NULL)")
+    con.commit(); con.close()
+    rows = track_record.latest_signals(db_path=db)
+    assert rows[0]["signal"] == "BUY" and rows[0]["gate_reason"] is None
+
+
+def test_latest_gated_picks_newest_row_post_migration(tmp_path):
+    db = str(tmp_path / "m.db")
+    con = sqlite3.connect(db)
+    con.execute("CREATE TABLE prediction_log (date TEXT, asset TEXT, signal TEXT,"
+                " probability REAL, actual_next_ret REAL, correct INTEGER,"
+                " cb_prob REAL, lstm_prob REAL, model_version TEXT, meta_prob REAL,"
+                " sig_shown TEXT, gate_reason TEXT)")
+    con.execute("INSERT INTO prediction_log VALUES ('2026-07-15','EURUSD','SELL',0.4,"
+                "NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL)")
+    con.execute("INSERT INTO prediction_log VALUES ('2026-07-16','EURUSD','BUY',0.9,"
+                "NULL,NULL,NULL,NULL,NULL,NULL,'WAIT','live-gate: FOREX MAJORS 34% (n=126)')")
+    con.commit(); con.close()
+    gated = track_record.latest_gated("EURUSD", db_path=db)
+    assert gated["signal"] == "WAIT"
+    assert gated["signal_raw"] == "BUY"
+    assert "live-gate" in gated["gate_reason"]
+
+
+def test_latest_gated_pre_migration_schema(tmp_path):
+    db = str(tmp_path / "m.db")
+    con = sqlite3.connect(db)
+    con.execute("CREATE TABLE prediction_log (date TEXT, asset TEXT, signal TEXT,"
+                " probability REAL, correct INTEGER)")
+    con.execute("INSERT INTO prediction_log VALUES ('2026-07-16','BTC','BUY',0.6,NULL)")
+    con.commit(); con.close()
+    gated = track_record.latest_gated("BTC", db_path=db)
+    assert gated["signal"] == "BUY"
+    assert gated["gate_reason"] is None
+
+
+def test_latest_gated_missing_table(tmp_path):
+    path = str(tmp_path / "empty.db")
+    sqlite3.connect(path).close()
+    assert track_record.latest_gated("BTC", db_path=path) == {}

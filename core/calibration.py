@@ -71,3 +71,51 @@ def load_calibrator(model_dir: str, table: str):
         return joblib.load(path)
     except Exception:
         return None
+
+
+# --- global LIVE calibration layer (fitted on real outcomes) -----------------
+# A second isotonic layer over the per-asset calibrators, fitted by
+# recalibrate_live.py on verified prediction_log outcomes. Missing file =
+# identity, so nothing changes until the owner runs the CLI. The pkl stores
+# {"model": IsotonicRegression, ...metadata...}; a tiny mtime cache avoids a
+# disk read per asset per radar run.
+
+LIVE_GLOBAL_FILENAME = "live_calib_global.pkl"
+_LIVE_CACHE = {}
+
+
+def live_global_path(model_dir: str) -> str:
+    return os.path.join(model_dir, LIVE_GLOBAL_FILENAME)
+
+
+def save_live_global(model, meta: dict, model_dir: str) -> str:
+    path = live_global_path(model_dir)
+    joblib.dump({"model": model, **meta}, path)
+    _LIVE_CACHE.pop(path, None)
+    return path
+
+
+def _load_live_global(model_dir: str):
+    path = live_global_path(model_dir)
+    try:
+        mtime = os.path.getmtime(path)
+    except OSError:
+        return None
+    hit = _LIVE_CACHE.get(path)
+    if hit is not None and hit[0] == mtime:
+        return hit[1]
+    try:
+        entry = joblib.load(path)
+    except Exception:
+        entry = None
+    _LIVE_CACHE[path] = (mtime, entry)
+    return entry
+
+
+def apply_live_global(prob: float, model_dir: str) -> float:
+    """Second calibration layer fitted on LIVE outcomes. Identity when the
+    pkl is absent or unreadable."""
+    entry = _load_live_global(model_dir)
+    if not isinstance(entry, dict) or entry.get("model") is None:
+        return float(prob)
+    return float(apply_calibrator(entry["model"], np.array([prob]))[0])

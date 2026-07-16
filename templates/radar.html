@@ -145,7 +145,7 @@
       {% for s in g.rows %}
       <tr data-asset="{{ s.asset }}" data-signal="{{ s.signal }}">
         <td><a class="asset-link" href="/asset/{{ s.asset }}">{{ s.asset }}</a><span class="chip-cat chip-cat-{{ s.cat }}">{{ s.cat }}</span></td>
-        <td class="c-sig"><span class="chip chip-{{ s.signal }}">{{ s.signal }}</span></td>
+        <td class="c-sig"><span class="chip chip-{{ s.signal }}">{{ s.signal }}</span>{% if s.gate_reason %} <span class="chip taleb-elevated" title="{{ s.gate_reason }}">gated</span>{% endif %}</td>
         <td class="num mono c-prob">{{ "%.2f"|format(s.probability) }}</td>
         <td class="cell-prob">
           <span class="probbar"><i class="probbar-fill {{ 'pb-buy' if s.signal == 'BUY' else ('pb-sell' if s.signal == 'SELL' else 'pb-wait') }}" style="width: {{ ((s.probability - 0.5) * 200) | abs | round(0) }}%"></i></span>

@@ -72,11 +72,14 @@ def _load_json(path):
 
 
 def _predict_asset(name, registry, thresholds):
-    """Returns (sig, prob, price, mode, meta_prob, cb_prob, lstm_prob) or None on
-    failure. prob is the ensemble probability; cb_prob/lstm_prob are the individual
-    member probs logged to the journal (lstm_prob is None for a CB-only champion).
-    meta_prob is None unless GTRADE_META_SIZING is on (the SP-6 Phase 2b meta-sizing
-    gate)."""
+    """Returns full scoring dict or None on failure.
+
+    The dict contains: sig (gated), sig_raw, prob, prob_raw, price, mode,
+    meta_prob, cb_prob, lstm_prob, gate_reason.
+
+    sig_raw and prob_raw are the raw measurement stream (before gating);
+    sig/prob are the gated values shown to the user.
+    """
     table = name.lower().replace("^", "").replace(".", "").replace("-", "")
     cb_path = os.path.join(MODEL_DIR, f"{table}_cb.cbm")
     if not os.path.exists(cb_path):
@@ -102,10 +105,7 @@ def _predict_asset(name, registry, thresholds):
     # Model scoring is shared with alert_bot.py through core.scoring so the two
     # serve paths cannot drift apart (see core/scoring.py).
     res = score_asset(df, name, table, reg_entry, thresholds, MODEL_DIR)
-    if res is None:
-        return None
-    return (res["sig"], res["prob"], res["price"], res["mode"],
-            res["meta_prob"], res["cb_prob"], res["lstm_prob"])
+    return res  # full dict (or None); run_radar unpacks what it needs
 
 
 def run_radar():
@@ -139,13 +139,18 @@ def run_radar():
         sys.stdout.flush()
         res = _predict_asset(name, registry, thresholds)
         if res:
-            results[name] = res
-            # Log prediction for performance tracking
+            # display tuple keeps the OLD shape so the print section is untouched;
+            # sig is the GATED signal (what the user acts on)
+            results[name] = (res["sig"], res["prob"], res["price"], res["mode"],
+                             res["meta_prob"], res["cb_prob"], res["lstm_prob"])
+            # Log the RAW signal + RAW probability - the measurement stream that
+            # rehabilitates a gated class; the gated view goes to sig_shown.
             if _do_log:
-                sig, prob, price, mode, meta_p, cb_p, lstm_p = res
                 try:
-                    log_prediction(name, sig, prob, cb_prob=cb_p, lstm_prob=lstm_p,
-                                   meta_prob=meta_p)
+                    log_prediction(name, res["sig_raw"], res["prob_raw"],
+                                   cb_prob=res["cb_prob"], lstm_prob=res["lstm_prob"],
+                                   meta_prob=res["meta_prob"],
+                                   sig_shown=res["sig"], gate_reason=res["gate_reason"])
                     logged += 1
                 except Exception as e:
                     logger.debug("Log prediction failed for %s: %s", name, e)

@@ -310,3 +310,44 @@ def test_log_prediction_records_meta_prob(tmp_path, monkeypatch):
     val = con.execute("SELECT meta_prob FROM prediction_log").fetchone()[0]
     con.close()
     assert abs(val - 0.42) < 1e-9
+
+
+def test_log_prediction_records_gated_display(tmp_path, monkeypatch):
+    """signal stays the raw model output; sig_shown/gate_reason capture what the
+    live gate actually displayed to the user (Task 6 passes both, Task 7 reads them)."""
+    import performance_tracker as pt
+    db = str(tmp_path / "gate.db")
+    today = datetime.utcnow().strftime("%Y-%m-%d")
+    con = sqlite3.connect(db)
+    con.execute("CREATE TABLE btc (Date TEXT, close REAL)")
+    con.execute("INSERT INTO btc VALUES (?, 100.0)", (today,))   # real bar for today
+    con.commit()
+    con.close()
+    monkeypatch.setattr(pt, "DB_PATH", db)
+    monkeypatch.setattr(pt, "_ENGINE", None)
+    pt.log_prediction("BTC", "BUY", 0.7, sig_shown="WAIT",
+                      gate_reason="live-gate: anti-calibrated tail")
+    con = sqlite3.connect(db)
+    row = con.execute(
+        "SELECT signal, sig_shown, gate_reason FROM prediction_log"
+    ).fetchone()
+    con.close()
+    assert row == ("BUY", "WAIT", "live-gate: anti-calibrated tail")
+
+
+def test_migration_adds_gate_columns(tmp_path, monkeypatch):
+    import performance_tracker as pt
+    db = str(tmp_path / "legacy_gate.db")
+    con = sqlite3.connect(db)
+    con.execute("CREATE TABLE prediction_log (date TEXT, asset TEXT, signal TEXT,"
+                " probability REAL, actual_next_ret REAL, correct INTEGER,"
+                " cb_prob REAL, lstm_prob REAL)")   # pre-migration shape
+    con.commit()
+    con.close()
+    monkeypatch.setattr(pt, "DB_PATH", db)
+    monkeypatch.setattr(pt, "_ENGINE", None)
+    con = sqlite3.connect(db)
+    pt._ensure_table(con.cursor())
+    cols = [r[1] for r in con.execute("PRAGMA table_info(prediction_log)").fetchall()]
+    con.close()
+    assert "sig_shown" in cols and "gate_reason" in cols

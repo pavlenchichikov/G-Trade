@@ -19,8 +19,8 @@ import joblib
 import numpy as np
 from catboost import CatBoostClassifier
 
-from core import meta_sizer
-from core.calibration import apply_calibrator, load_calibrator
+from core import live_gate, meta_sizer
+from core.calibration import apply_calibrator, apply_live_global, load_calibrator
 from core.ensemble import build_stacking_features
 from core.features import active_candidate_features
 from core.logger import get_logger
@@ -53,15 +53,18 @@ def score_asset(df, name, table, reg_entry, thresholds, model_dir):
     / scoring raised:
 
         {
-            "sig":       "BUY" | "SELL" | "WAIT",
-            "prob":      float,   # calibrated ensemble probability
-            "price":     float,   # last close
-            "mode":      str,     # STACK / CB / LSTM (+ " low-q" if suppressed)
-            "cb_prob":   float,
-            "lstm_prob": float | None,
-            "tf_prob":   float | None,
-            "tcn_prob":  float | None,
-            "meta_prob": float | None,   # None unless GTRADE_META_SIZING is on
+            "sig":         "BUY" | "SELL" | "WAIT",   # post live-gate
+            "prob":        float,   # calibrated + live-global-adjusted probability
+            "price":       float,   # last close
+            "mode":        str,     # STACK / CB / LSTM (+ " low-q" if suppressed)
+            "sig_raw":     "BUY" | "SELL" | "WAIT",   # pre live-gate
+            "prob_raw":    float,   # pre live-global-layer probability
+            "gate_reason": str | None,   # why sig_raw was gated, None if not gated
+            "cb_prob":     float,
+            "lstm_prob":   float | None,
+            "tf_prob":     float | None,
+            "tcn_prob":    float | None,
+            "meta_prob":   float | None,   # None unless GTRADE_META_SIZING is on
         }
     """
     cb_path = os.path.join(model_dir, f"{table}_cb.cbm")
@@ -165,8 +168,14 @@ def score_asset(df, name, table, reg_entry, thresholds, model_dir):
         else:
             prob = cb_prob
 
-        # Calibrate into an honest up-move frequency (identity when no calibrator).
+        # Calibrate into an honest up-move frequency (identity when no calibrator),
+        # then apply the GLOBAL live-outcome layer (identity until
+        # recalibrate_live.py has produced models/live_calib_global.pkl).
+        # prob_raw (pre-live-layer) is what performance_tracker logs, so refits
+        # always train on a homogeneous raw -> P(up) history.
         prob = float(apply_calibrator(load_calibrator(model_dir, table), np.array([prob]))[0])
+        prob_raw = prob
+        prob = apply_live_global(prob, model_dir)
 
         thr = thresholds.get(name, {})
         buy_thr = thr.get("buy", 0.55)
@@ -199,8 +208,15 @@ def score_asset(df, name, table, reg_entry, thresholds, model_dir):
             except Exception as e:
                 logger.debug("meta-sizing skipped for %s: %s", name, e)
 
+        # Live-accuracy gate: the displayed/acted-on signal may be suppressed,
+        # but sig_raw keeps flowing into the tracker so a gated segment can
+        # rehabilitate itself with fresh statistics.
+        sig_raw = sig
+        sig, gate_reason = live_gate.gate(name, prob, sig)
+
         return {
             "sig": sig, "prob": prob, "price": curr_price, "mode": mode,
+            "sig_raw": sig_raw, "prob_raw": prob_raw, "gate_reason": gate_reason,
             "cb_prob": cb_prob, "lstm_prob": lstm_prob,
             "tf_prob": tf_prob, "tcn_prob": tcn_prob, "meta_prob": meta_p,
         }

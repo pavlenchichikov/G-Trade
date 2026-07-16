@@ -122,6 +122,21 @@ Permanent cross-run memory: `_ar_tried.json` (no candidate is re-tested), `_ar_e
 
 `loop_cycle.py` runs the safe daily pipeline (data, predict, reconcile) and scans every asset for drift - rolling accuracy below a floor, a drop from the trained baseline, model age, or stale data. Proposals surface on `/loop`. Approving one runs `loop_retrain.py`, a RAM-safe champion-challenger retrain that replaces a champion only if the fresh model beats it. **The loop never retrains on its own; retraining always waits for your approval.** Register `run_loop.bat` with Task Scheduler to run daily. Drift thresholds live in `core/drift.py` (`DRIFT_CONFIG`).
 
+## Live-accuracy gate and live recalibration
+
+Signals whose SEGMENT is provably bad in the live track record are suppressed
+to WAIT before display (`core/live_gate.py`): an asset class below 45%
+verified accuracy (n >= 100), an asset below 40% (n >= 20), or an
+anti-calibrated extreme probability (>= 0.85 / <= 0.15). The tracker keeps
+logging the RAW signal, so a gated segment rehabilitates itself when fresh
+statistics improve; the radar and the web UI show a "gated" badge with the
+reason. `GTRADE_LIVE_GATE=0` disables the gate; the thresholds live in
+`GTRADE_LIVE_GATE_*` env knobs.
+
+`python recalibrate_live.py` (weekly) fits a global isotonic layer mapping
+raw serve probabilities to the live P(up) from verified outcomes
+(`models/live_calib_global.pkl`; delete the file to roll back).
+
 ## Telegram bot
 
 `python alert_bot.py` runs the hourly scan over the full asset universe, scoring each asset through the same shared pipeline as `predict.py` (`core/scoring.py`), so its Telegram calls match the dashboard. It also serves `/top`, `/signal BTC`, `/risk`, `/digest` (owner only), a morning digest (`GTRADE_DIGEST_HOUR`, default 9), and degradation warnings (data older than 7 days, or accuracy below 40% on the last 20 verified signals).

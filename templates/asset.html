@@ -11,7 +11,7 @@
   </div>
   {% if current %}
   <div class="asset-signal">
-    <span class="chip chip-{{ current.signal }} chip-lg">{{ current.signal }}</span>
+    <span class="chip chip-{{ current.signal }} chip-lg">{{ current.signal }}</span>{% if current.gate_reason %} <span class="chip taleb-elevated" title="{{ current.gate_reason }}">gated</span>{% endif %}
     <span class="mono asset-prob">p = {{ "%.2f"|format(current.probability) }}</span>
     <span class="dim mono">{{ current.date }}</span>
   </div>
