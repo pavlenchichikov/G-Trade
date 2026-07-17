@@ -43,7 +43,7 @@ echo    [W3] Top-5 180d equal  OTHER
 echo    [W4] Top-5  90d Kelly    [B] DB Backup
 echo    [W5] Custom assets       [I] Install/Repair
 echo  SERVICES
-echo    [7] Telegram Bot  [8] Scheduler  [9] DB Audit  [F] DB Fix  [G] GUI  [0] EXIT
+echo    [7] Telegram Bot  [8] Scheduler  [9] DB Audit  [F] DB Fix  [0] EXIT
 echo    [SG] Publish live signals to the site (Supabase)
 echo.
 echo =======================================================
@@ -78,7 +78,6 @@ if /i "%choice%"=="H" goto report
 if /i "%choice%"=="F" goto db_fix
 if /i "%choice%"=="B" goto backup
 if /i "%choice%"=="I" goto install_fix
-if /i "%choice%"=="G" goto gui
 if /i "%choice%"=="Q" goto equity
 if /i "%choice%"=="T" goto optuna
 if "%choice%"=="0" exit
@@ -248,11 +247,6 @@ goto menu
 cls
 python optuna_tune.py
 pause
-goto menu
-
-:gui
-cls
-start "" python launcher.py
 goto menu
 
 :whatif_top5

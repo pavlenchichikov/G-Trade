@@ -86,7 +86,7 @@ echo =============================================================
 echo.
 echo  Environment: gtrade_gpu
 echo  Activate:    conda activate gtrade_gpu
-echo  Run:         run_gtrade.bat or gtrade_gui.bat
+echo  Run:         run_gtrade.bat
 echo.
 if "%HAS_GPU%"=="0" (
     echo  NOTE: Running on CPU. Training will be slower but functional.

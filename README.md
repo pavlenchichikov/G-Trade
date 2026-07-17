@@ -226,7 +226,7 @@ python predict.py             # console signals
 streamlit run app.py          # dashboard
 ```
 
-`python launcher.py` opens a text menu over all of the above (full cycle, dashboard, web UI, predict, DB audit, and more). `python db_check.py` runs a read-only audit of `market.db` (`--fix` repairs duplicates and date formats). `python scheduler.py` runs as a daemon: data every 6h, predictions every 4h, a daily DB check.
+`run_gtrade.bat` opens a text menu over all of the above (full cycle, dashboard, web UI, predict, DB audit, and more). `python db_check.py` runs a read-only audit of `market.db` (`--fix` repairs duplicates and date formats). `python scheduler.py` runs as a daemon: data every 6h, predictions every 4h, a daily DB check.
 
 ## Training
 
@@ -284,7 +284,7 @@ guru_report.py        Guru Council fundamentals overlay
 auto_research.py      autonomous research agent (run via auto_research.bat)
 push_signals.py       publish the snapshot to Supabase (web + mobile)
 scheduler.py          daemon: data / predict / DB-check on a schedule
-launcher.py           text menu over the whole pipeline
+run_gtrade.bat        Windows text menu over the whole pipeline
 core/                 shared library: features, ensemble, scoring, calibration,
                       backtesting, risk, live_gate, guru, dashboard, ...
 tests/                pytest suite (600+ tests)
@@ -494,7 +494,7 @@ python predict.py             # сигналы в консоль
 streamlit run app.py          # дашборд
 ```
 
-`python launcher.py` открывает текстовое меню над всем вышеперечисленным (полный цикл, дашборд, веб-интерфейс, predict, аудит БД и не только). `python db_check.py` гоняет read-only аудит `market.db` (`--fix` чинит дубликаты и форматы дат). `python scheduler.py` работает демоном: данные каждые 6ч, предсказания каждые 4ч, ежедневная проверка БД.
+`run_gtrade.bat` открывает текстовое меню над всем вышеперечисленным (полный цикл, дашборд, веб-интерфейс, predict, аудит БД и не только). `python db_check.py` гоняет read-only аудит `market.db` (`--fix` чинит дубликаты и форматы дат). `python scheduler.py` работает демоном: данные каждые 6ч, предсказания каждые 4ч, ежедневная проверка БД.
 
 ## Обучение
 
@@ -545,7 +545,7 @@ guru_report.py        фундаментальный оверлей «Совет
 auto_research.py      автономный исследовательский агент (через auto_research.bat)
 push_signals.py       публикация снимка в Supabase (веб + мобильное)
 scheduler.py          демон: данные / предсказание / проверка БД по расписанию
-launcher.py           текстовое меню над всем пайплайном
+run_gtrade.bat        текстовое меню (Windows) над всем пайплайном
 core/                 общая библиотека: признаки, ансамбль, скоринг, калибровка,
                       бэктест, риск, live_gate, guru, dashboard, ...
 tests/                pytest-набор (600+ тестов)
