@@ -175,20 +175,30 @@ def apply_regime_filter(
     sma200: np.ndarray,
     taleb: np.ndarray,
     risk_cap: float,
+    mode: str = "both",
 ) -> np.ndarray:
     """Suppress signals during high-risk regimes.
 
     - Blocks all signals when taleb_risk > risk_cap
     - Blocks BUY when close < SMA200 (downtrend)
     - Blocks SELL when close > SMA200 (uptrend)
-    """
+
+    mode (auto-research regime axis; default = today's exact behavior):
+    "both" applies the Taleb cap and the trend blocks; "off" returns an
+    untouched copy; "sma_only" skips the Taleb cap; "taleb_only" skips the
+    trend blocks. An unknown mode falls back to "both"."""
+    if mode == "off":
+        return signals.copy()
+    if mode not in ("both", "sma_only", "taleb_only"):
+        mode = "both"
     filt = signals.copy()
     for i in range(len(filt)):
-        if taleb[i] > risk_cap:
+        if mode != "sma_only" and taleb[i] > risk_cap:
             filt[i] = 0
             continue
-        if filt[i] > 0 and close[i] < sma200[i]:
-            filt[i] = 0
-        if filt[i] < 0 and close[i] > sma200[i]:
-            filt[i] = 0
+        if mode != "taleb_only":
+            if filt[i] > 0 and close[i] < sma200[i]:
+                filt[i] = 0
+            if filt[i] < 0 and close[i] > sma200[i]:
+                filt[i] = 0
     return filt

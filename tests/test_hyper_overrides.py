@@ -51,3 +51,45 @@ def test_garbage_env_falls_back_to_default(monkeypatch):
     monkeypatch.setenv("GTRADE_CB_ITER_MULT", "abc")
     monkeypatch.setenv("GTRADE_CB_DEPTH_DELTA", "")
     assert th.cb_params_for(OPT) == (1000, 6, 0.05)
+
+
+def _clear_thr(monkeypatch):
+    for k in ("GTRADE_THR_MARGIN", "GTRADE_BAND_DELTA"):
+        monkeypatch.delenv(k, raising=False)
+
+
+def test_thr_margin_default_identity(monkeypatch):
+    _clear_thr(monkeypatch)
+    assert th.apply_thr_margin(0.55, 0.45) == (0.55, 0.45)
+
+
+def test_thr_margin_shifts_outward(monkeypatch):
+    _clear_thr(monkeypatch)
+    monkeypatch.setenv("GTRADE_THR_MARGIN", "0.02")
+    b, s = th.apply_thr_margin(0.55, 0.45)
+    assert b == pytest.approx(0.57) and s == pytest.approx(0.43)
+
+
+def test_thr_margin_clamps_and_caps(monkeypatch):
+    _clear_thr(monkeypatch)
+    monkeypatch.setenv("GTRADE_THR_MARGIN", "0.05")
+    b, s = th.apply_thr_margin(0.94, 0.06)
+    assert b == 0.95 and s == pytest.approx(0.05)
+    # an absurd env margin is capped at 0.10, never disabling the shift
+    monkeypatch.setenv("GTRADE_THR_MARGIN", "0.30")
+    b, s = th.apply_thr_margin(0.52, 0.48)
+    assert b == pytest.approx(0.62) and s == pytest.approx(0.38)
+    # palette margins always take effect on realistic tight gaps
+    monkeypatch.setenv("GTRADE_THR_MARGIN", "0.05")
+    b, s = th.apply_thr_margin(0.54, 0.46)
+    assert b == pytest.approx(0.59) and s == pytest.approx(0.41)
+
+
+def test_band_for_delta_and_floor(monkeypatch):
+    _clear_thr(monkeypatch)
+    prof = {"no_trade_band": 0.01}
+    assert th.band_for(prof) == pytest.approx(0.01)
+    monkeypatch.setenv("GTRADE_BAND_DELTA", "0.01")
+    assert th.band_for(prof) == pytest.approx(0.02)
+    monkeypatch.setenv("GTRADE_BAND_DELTA", "-0.05")
+    assert th.band_for(prof) == 0.0

@@ -314,9 +314,13 @@ LOOKBACK_DELTAS = (-10, -5, 0, 5, 10)
 NET_SEED_CHOICES = (1, 3)
 LABEL_MODES = ("direction", "rel_median", "triple_barrier")
 TB_HORIZONS = (5, 10, 20)  # triple_barrier reuses label_window as the horizon H
+THR_MARGINS = (0, 0.02, 0.05)
+BAND_DELTAS = (-0.01, 0, 0.01, 0.02)
+REGIME_MODES = ("both", "off", "sma_only", "taleb_only")
 
 _HYPER_DEFAULTS = (0, 1.0, 1.0, 0)
 _NET_DEFAULTS = (1, 0, 0)
+_TUNING_DEFAULTS = (0.0, 0.0, "both")
 
 
 @dataclass
@@ -340,6 +344,9 @@ class Genome:
     net_seeds: int = 1
     net_uniqueness: int = 0
     net_calibrate: int = 0
+    thr_margin: float = 0.0
+    band_delta: float = 0.0
+    regime_mode: str = "both"
 
 
 def _hyper_genes(g):
@@ -348,6 +355,10 @@ def _hyper_genes(g):
 
 def _net_genes(g):
     return (g.net_seeds, g.net_uniqueness, g.net_calibrate)
+
+
+def _tuning_genes(g):
+    return (float(g.thr_margin), float(g.band_delta), g.regime_mode)
 
 
 def genome_to_env(g):
@@ -375,6 +386,12 @@ def genome_to_env(g):
         env["GTRADE_NET_UNIQUENESS"] = "1"
     if g.net_calibrate:
         env["GTRADE_NET_CALIBRATE"] = "1"
+    if g.thr_margin:
+        env["GTRADE_THR_MARGIN"] = str(g.thr_margin)
+    if g.band_delta:
+        env["GTRADE_BAND_DELTA"] = str(g.band_delta)
+    if g.regime_mode != "both":
+        env["GTRADE_REGIME_MODE"] = g.regime_mode
     return env
 
 
@@ -408,6 +425,8 @@ def genome_sig(g):
         d["hyper"] = list(_hyper_genes(g))
     if _net_genes(g) != _NET_DEFAULTS:
         d["nets"] = list(_net_genes(g))
+    if _tuning_genes(g) != _TUNING_DEFAULTS:
+        d["tuning"] = list(_tuning_genes(g))
     return json.dumps(d, sort_keys=True)
 
 
@@ -436,6 +455,10 @@ def valid(g, active, prune_min):
         return False
     if g.net_uniqueness not in (0, 1) or g.net_calibrate not in (0, 1):
         return False
+    if g.thr_margin not in THR_MARGINS or g.band_delta not in BAND_DELTAS:
+        return False
+    if g.regime_mode not in REGIME_MODES:
+        return False
     if len(aset) - len(set(g.drops)) < prune_min:
         return False
     return True
@@ -463,6 +486,8 @@ def random_genome(active, base_features):
         _mutate_hyper(g)
     if random.random() < 0.2:
         _mutate_nets(g)
+    if random.random() < 0.2:
+        _mutate_tuning(g)
     return g if valid(g, active, prune_min) else Genome()
 
 
@@ -491,12 +516,23 @@ def _mutate_nets(g):
         g.net_calibrate = 1 - g.net_calibrate
 
 
+def _mutate_tuning(g):
+    """Set one random tuning gene to a random palette value."""
+    gene = random.choice(("margin", "band", "regime"))
+    if gene == "margin":
+        g.thr_margin = random.choice(THR_MARGINS)
+    elif gene == "band":
+        g.band_delta = random.choice(BAND_DELTAS)
+    else:
+        g.regime_mode = random.choice(REGIME_MODES)
+
+
 def mutate(g, active, base_features):
     """One random gene change; always returns a valid genome (or the input if no valid
     single change exists)."""
     prune_min = int(os.getenv("GTRADE_AR_PRUNE_MIN", "8"))
     ops = ["add_drop", "rm_drop", "add_extra", "rm_extra", "flip_label", "win",
-           "hyper", "nets"]
+           "hyper", "nets", "tuning"]
     random.shuffle(ops)
     for op in ops:
         ng = copy.deepcopy(g)
@@ -527,6 +563,8 @@ def mutate(g, active, base_features):
             _mutate_hyper(ng)
         elif op == "nets":
             _mutate_nets(ng)
+        elif op == "tuning":
+            _mutate_tuning(ng)
         if ng != g and valid(ng, active, prune_min):
             return ng
     return g
@@ -549,6 +587,9 @@ def crossover(g1, g2, active):
     np_ = g1 if random.random() < 0.5 else g2
     child.net_seeds, child.net_uniqueness = np_.net_seeds, np_.net_uniqueness
     child.net_calibrate = np_.net_calibrate
+    tp = g1 if random.random() < 0.5 else g2
+    child.thr_margin, child.band_delta = tp.thr_margin, tp.band_delta
+    child.regime_mode = tp.regime_mode
     aset = set(active)
     cols = aset | {s.get("name") for s in child.extra}
     child.extra = [s for s in child.extra if validate_spec(s, cols)]
@@ -568,16 +609,36 @@ def _bin(value, edges):
     return bisect.bisect_right(edges, value)
 
 
+def _gene_group(genome):
+    """Categorical lever-group for the v2 niche descriptor: which non-feature
+    lever the genome touches. 0 none/features-only, 1 label, 2 hyper, 3 nets,
+    4 tuning (thresholds/regime), 5 mixed. Keeps one lever class from
+    monopolizing the archive - each group competes in its own niches."""
+    touched = []
+    if genome.label_mode != "direction":
+        touched.append(1)
+    if _hyper_genes(genome) != _HYPER_DEFAULTS:
+        touched.append(2)
+    if _net_genes(genome) != _NET_DEFAULTS:
+        touched.append(3)
+    if _tuning_genes(genome) != _TUNING_DEFAULTS:
+        touched.append(4)
+    if not touched:
+        return 0
+    return touched[0] if len(touched) == 1 else 5
+
+
 def fitness(rows, base_score):
     """Archive cell quality: the MEAN paired Score delta."""
     return _objective_delta(rows, base_score, "mean")[0]
 
 
 def behavior(genome, rows, base_score, active):
-    """Behavior descriptors: (worst-asset delta bin = floor lift, feature-count bin)."""
+    """Behavior descriptors: (worst-asset delta bin, feature-count bin,
+    lever-group bin) - the v2 descriptor."""
     min_delta = _objective_delta(rows, base_score, "min")[0]
     count = len(active) - len(set(genome.drops)) + len(genome.extra)
-    return _bin(min_delta, _FLOOR_EDGES), _bin(count, _COUNT_EDGES)
+    return _bin(min_delta, _FLOOR_EDGES), _bin(count, _COUNT_EDGES), _gene_group(genome)
 
 
 _QD_ARCHIVE_PATH = os.path.join(BASE, "_qd_archive.json")
@@ -587,7 +648,7 @@ def archive_put(archive, genome, rows, base_score, active):
     """Place a genome in its (floor, complexity) niche if it beats the niche's mean
     fitness (or the niche is empty). Returns True when stored."""
     bd = behavior(genome, rows, base_score, active)
-    key = "%d_%d" % bd
+    key = "%d_%d_%d" % bd
     f = fitness(rows, base_score)
     cur = archive.get(key)
     if cur is None or f > cur["fitness"]:
@@ -604,14 +665,20 @@ def _qd_save(archive):
 
 
 def _qd_load():
-    """Reload the archive (genomes only; rows are re-derived on resume) or {}."""
+    """Reload the archive (genomes only; rows are re-derived on resume) or {}.
+    Old two-part "f_c" keys (pre lever-group descriptor) are migrated in place
+    by appending the genome's lever-group bin - lossless, no retraining."""
     if not os.path.exists(_QD_ARCHIVE_PATH):
         return {}
     try:
         with open(_QD_ARCHIVE_PATH, encoding="utf-8") as fh:
             raw = json.load(fh)
-        return {k: {"genome": Genome(**v["genome"]), "fitness": v["fitness"], "rows": []}
-                for k, v in raw.items()}
+        out = {}
+        for k, v in raw.items():
+            g = Genome(**v["genome"])
+            key = k if k.count("_") == 2 else "%s_%d" % (k, _gene_group(g))
+            out[key] = {"genome": g, "fitness": v["fitness"], "rows": []}
+        return out
     except Exception:
         return {}
 
@@ -761,10 +828,18 @@ def run_qd(train_fn=None):
         obj = _objective()
         basis = _score_basis()
         ho_base_full, ho_base_contrib = _heldout_eval(HELDOUT_ASSETS, {}, base_fn)
+        qd_tier_base = _tier_base(base_fn) if tier_on() else None
         base_contrib = {r["Asset"]: r["Score"] for r in ho_base_contrib}
         results = []
         for e in elites:
             g = e["genome"]
+            if qd_tier_base is not None:
+                tp, td = _passes_tier(genome_to_env(g), genome_sig(g),
+                                      qd_tier_base, obj, train_fn=train_fn)
+                if not tp:
+                    print("[qd] elite tiered out (mini dScore %+.2f): drops=%s "
+                          "label=%s/%d" % (td, g.drops, g.label_mode, g.label_window))
+                    continue
             var_full, var_contrib = _heldout_eval(
                 HELDOUT_ASSETS, genome_to_env(g), train_fn)
             nl, _d = _objective_delta(var_contrib, base_contrib, "mean")
@@ -1136,6 +1211,66 @@ def _passes_screen(axis, selected, train_fn, screen_base, screen_min, objective=
     return delta > screen_min, delta
 
 
+# --- tier ladder (axis J): a cheap mini-eval between the CB screen and the ----
+# full train. 4 assets at roughly half epochs; drop rule mirrors the screen
+# (clearly-negative candidates only; an infra failure passes through).
+
+TIER_ENV = {"GTRADE_EPOCHS_LSTM": "45", "GTRADE_EPOCHS_TF": "30",
+            "GTRADE_EPOCHS_TCN": "25"}
+
+
+def tier_on():
+    return (os.getenv("GTRADE_AR_TIER", "1") or "1").strip() not in (
+        "0", "false", "False")
+
+
+def tier_assets():
+    return os.getenv("GTRADE_AR_TIER_ASSETS") or "SP500,BTC,EURUSD,GOLD"
+
+
+def tier_env(env):
+    return {**env, **TIER_ENV}
+
+
+def _tier_base(base_fn):
+    """Mini-tier BASE rows (cached via base_fn = train_base_cached)."""
+    return base_fn(tier_assets(), tier_env({}))
+
+
+def _tier_key(axis, cand):
+    """Stable cache identity for an axis candidate (genomes use genome_sig)."""
+    if axis.sig is not None:
+        cands = cand if isinstance(cand, list) else [cand]
+        return "|".join(axis.sig(c)[1] for c in cands)
+    return json.dumps(cand, sort_keys=True, default=str)
+
+
+def _passes_tier(env, cache_key, tier_base, objective="mean", train_fn=None):
+    """(passed, delta). Candidate mini rows are cached by cache_key (kind
+    "mini") so a resumed or repeated search reuses them, like the regate.
+    train_fn defaults to train_env, resolved at call time (like _passes_screen,
+    the caller's injected trainer flows through)."""
+    if not tier_base:
+        return True, 0.0
+    if train_fn is None:
+        train_fn = train_env
+    key = ar_memory.genome_key(tier_assets(), cache_key, "mini")
+    rows = ar_memory.cache_get(key)
+    if rows is None:
+        rows = train_fn(tier_assets(), tier_env(env))
+        if rows:
+            ar_memory.cache_put(key, rows)
+    if not rows:
+        return True, 0.0
+    base_score = {r["Asset"]: r.get("Score", 0.0) for r in tier_base}
+    d, deltas = _objective_delta(rows, base_score, objective)
+    try:
+        tier_min = float(os.getenv("GTRADE_AR_TIER_MIN") or "0.0")
+    except ValueError:
+        tier_min = 0.0
+    return (not deltas) or d >= tier_min, d
+
+
 _STATE_PATH = os.path.join(BASE, "_auto_research_state.json")
 _LOG_PATH = os.path.join(BASE, "_auto_research_log.json")
 
@@ -1181,7 +1316,7 @@ class Axis:
 
 
 def run_axis(axis, budget, base_rows, train_fn, screen_df=None, prior_log=None, persist=None,
-             screen_base=None, screen_min=0.0):
+             screen_base=None, screen_min=0.0, tier_base=None):
     """Generalized search over one axis, sharing the mean-delta gate.
 
     additive: forward-selection - keep the running list when the cumulative mean
@@ -1226,6 +1361,16 @@ def run_axis(axis, budget, base_rows, train_fn, screen_df=None, prior_log=None, 
                     _mark_tried(new)
                     persist(log)
                     continue
+            if tier_base is not None:
+                tpassed, tdelta = _passes_tier(axis.to_env(cand),
+                                               _tier_key(axis, new), tier_base, objective,
+                                               train_fn=train_fn)
+                if not tpassed:
+                    log.append({"axis": axis.name, "iter": i, "cand": new,
+                                "tier_delta": tdelta, "note": "tiered out"})
+                    _mark_tried(new)
+                    persist(log)
+                    continue
             rows = score_rows(SELECTION_ASSETS, axis.to_env(cand), train_fn)
             delta, _ = _objective_delta(rows, base_score, objective)
             entry = {"axis": axis.name, "iter": i, "cand": new,
@@ -1260,6 +1405,17 @@ def run_axis(axis, budget, base_rows, train_fn, screen_df=None, prior_log=None, 
             if not passed:
                 log.append({"axis": axis.name, "iter": i, "cand": cand,
                             "screen_delta": sdelta, "note": "screened out"})
+                _mark_tried(cand)
+                persist(log)
+                i += 1
+                continue
+        if tier_base is not None:
+            tpassed, tdelta = _passes_tier(axis.to_env(cand),
+                                           _tier_key(axis, cand), tier_base, objective,
+                                           train_fn=train_fn)
+            if not tpassed:
+                log.append({"axis": axis.name, "iter": i, "cand": cand,
+                            "tier_delta": tdelta, "note": "tiered out"})
                 _mark_tried(cand)
                 persist(log)
                 i += 1
@@ -1417,6 +1573,69 @@ def make_nets_axis():
     )
 
 
+# --- threshold axis (margin + neutral band over the tuned per-asset values) --
+
+THRESHOLD_CANDIDATES = (
+    {"thr_margin": 0.02}, {"thr_margin": 0.05},
+    {"band_delta": -0.01}, {"band_delta": 0.01}, {"band_delta": 0.02},
+    {"thr_margin": 0.02, "band_delta": 0.01},
+)
+
+_THRESHOLD_ENV_KEYS = {"thr_margin": "GTRADE_THR_MARGIN",
+                       "band_delta": "GTRADE_BAND_DELTA"}
+
+
+def thresholds_env(cand):
+    return {_THRESHOLD_ENV_KEYS[k]: str(v) for k, v in cand.items()}
+
+
+def make_thresholds_axis():
+    """One-candidate-at-a-time sweep of the relative threshold overrides
+    (train_hybrid shifts each asset's own tuned thresholds/band). select_best."""
+    def _propose(log):
+        tried = {json.dumps(e["cand"], sort_keys=True) for e in log
+                 if isinstance(e.get("cand"), dict)}
+        cands = [c for c in THRESHOLD_CANDIDATES
+                 if json.dumps(c, sort_keys=True) not in tried]
+        return [c for c in cands if not ar_memory.tried_seen(
+            "thresholds", json.dumps(c, sort_keys=True))]
+
+    return Axis(
+        name="thresholds",
+        propose=_propose,
+        to_env=thresholds_env,
+        kind="select_best",
+        sig=lambda c: ("thresholds", json.dumps(c, sort_keys=True)),
+    )
+
+
+# --- regime axis (selection-time regime-filter variants) ---------------------
+
+
+def regime_env(cand):
+    return {"GTRADE_REGIME_MODE": cand["regime_mode"]}
+
+
+def make_regime_axis():
+    """Sweep the selection-time regime-filter modes ("both" is the base and is
+    not proposed). Measures whether the SMA200/Taleb filter earns its keep."""
+    def _propose(log):
+        tried = {e["cand"].get("regime_mode") for e in log
+                 if isinstance(e.get("cand"), dict)}
+        cands = [{"regime_mode": m} for m in REGIME_MODES
+                 if m != "both" and m not in tried]
+        return [c for c in cands if not ar_memory.tried_seen(
+            "regime", json.dumps(c, sort_keys=True))]
+
+    return Axis(
+        name="regime",
+        propose=_propose,
+        to_env=regime_env,
+        kind="select_best",
+        sig=lambda c: ("regime", json.dumps(c, sort_keys=True)),
+    )
+
+
 def make_pruning_axis(base_features):
     """Backward-elimination over the active candidate features. select-drop additive:
     propose dropping one feature at a time, keep a drop when it lifts the cumulative
@@ -1481,6 +1700,8 @@ def build_axes(names, base_features):
         "pruning": lambda: make_pruning_axis(base_features),
         "hyper": make_hyper_axis,
         "nets": make_nets_axis,
+        "thresholds": make_thresholds_axis,
+        "regime": make_regime_axis,
     }
     axes = []
     for n in names:
@@ -1559,6 +1780,7 @@ def main():
 
     base_rows = score_rows(SELECTION_ASSETS, {}, train_base_cached)  # shared base
     screen_base = train_base_cached(SELECTION_ASSETS, {"GTRADE_SCREEN_ONLY": "1"}) if _screen_on() else None
+    tier_base = _tier_base(train_base_cached) if tier_on() else None
     obj = _objective()
     basis = _score_basis()
     winners = []   # (axis_name, winner, p, value, tag, neural_lift)
@@ -1568,7 +1790,7 @@ def main():
             prior = load_state().get("by_axis", {}).get(axis.name)
             res = run_axis(axis, BUDGET, base_rows, train_env, screen_df=screen_df,
                            prior_log=prior, persist=lambda log, a=axis.name: _persist(a, log),
-                           screen_base=screen_base, screen_min=SCREEN_MIN)
+                           screen_base=screen_base, screen_min=SCREEN_MIN, tier_base=tier_base)
             winner = res.get("kept") or res.get("best")
             if not winner:
                 print("[auto-research] axis %s: nothing beat the base." % axis.name)

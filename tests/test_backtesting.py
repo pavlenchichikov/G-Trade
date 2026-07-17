@@ -252,3 +252,26 @@ class TestRegimeFilter:
         taleb = np.array([1.0, 1.0, 1.0])
         filt = apply_regime_filter(signals, close, sma200, taleb, risk_cap=5.0)
         assert (filt == 0).all()
+
+    def test_regime_filter_modes(self):
+        sig = np.array([1, -1, 1, -1])
+        close = np.array([90.0, 110.0, 110.0, 90.0])
+        sma = np.array([100.0, 100.0, 100.0, 100.0])
+        taleb = np.array([0.0, 0.0, 9.0, 9.0])
+        cap = 5.0
+        # default (both): i0 BUY below SMA blocked, i1 SELL above SMA blocked,
+        # i2/i3 taleb-capped
+        assert apply_regime_filter(sig, close, sma, taleb, cap).tolist() == [0, 0, 0, 0]
+        # explicit mode="both" identical to the default
+        assert apply_regime_filter(sig, close, sma, taleb, cap, mode="both").tolist() == [0, 0, 0, 0]
+        # off: untouched copy
+        out = apply_regime_filter(sig, close, sma, taleb, cap, mode="off")
+        assert out.tolist() == [1, -1, 1, -1]
+        out[0] = 0
+        assert sig[0] == 1  # copy, not a view
+        # sma_only: taleb ignored -> i2 BUY above SMA survives, i3 SELL below SMA survives
+        assert apply_regime_filter(sig, close, sma, taleb, cap, mode="sma_only").tolist() == [0, 0, 1, -1]
+        # taleb_only: trend ignored -> i0/i1 survive, i2/i3 capped
+        assert apply_regime_filter(sig, close, sma, taleb, cap, mode="taleb_only").tolist() == [1, -1, 0, 0]
+        # unknown mode falls back to both
+        assert apply_regime_filter(sig, close, sma, taleb, cap, mode="bogus").tolist() == [0, 0, 0, 0]

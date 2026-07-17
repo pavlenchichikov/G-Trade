@@ -610,9 +610,10 @@ def test_behavior_floor_and_count():
     base = {"A": 1.0, "B": 1.0}
     rows = _rows2({"A": 3.0, "B": 0.5})        # min delta = -0.5 - floor bin 1
     g = ar.Genome(drops=["rsi", "atr"], extra=[_spec("gx")])   # count 10 - 2 + 1 = 9
-    bd1, bd2 = ar.behavior(g, rows, base, active)
+    bd1, bd2, bd3 = ar.behavior(g, rows, base, active)
     assert bd1 == 1                             # -0.5 in [-1.0, -0.25) - bin 1
     assert bd2 == 0                             # 9 < 12 - count bin 0
+    assert bd3 == 0                             # no non-feature genes touched - group 0
 
 
 _QD_ACTIVE = ["ret_1", "ret_5", "ret_10", "ret_20", "rsi", "atr",
@@ -1457,6 +1458,44 @@ def test_genome_sig_includes_non_default_genes():
     assert "nets" in ar.genome_sig(g2) and ar.genome_sig(g2) != ar.genome_sig(g1)
 
 
+# --- QD descriptor v2: lever-group niche + archive migration (2026-07-17) ----
+
+
+def test_gene_group_bins():
+    assert ar._gene_group(ar.Genome()) == 0
+    assert ar._gene_group(ar.Genome(drops=["rsi"])) == 0  # features do not count
+    assert ar._gene_group(ar.Genome(label_mode="rel_median")) == 1
+    assert ar._gene_group(ar.Genome(cb_lr_mult=2.0)) == 2
+    assert ar._gene_group(ar.Genome(net_seeds=3)) == 3
+    assert ar._gene_group(ar.Genome(thr_margin=0.02)) == 4
+    assert ar._gene_group(ar.Genome(regime_mode="off")) == 4
+    assert ar._gene_group(ar.Genome(label_mode="rel_median", net_seeds=3)) == 5
+
+
+def test_behavior_carries_gene_group():
+    rows = [{"Asset": "X", "Score": 1.0}]
+    base = {"X": 0.5}
+    bd = ar.behavior(ar.Genome(thr_margin=0.02), rows, base, ["a"] * 20)
+    assert len(bd) == 3 and bd[2] == 4
+
+
+def test_qd_load_migrates_old_keys(tmp_path, monkeypatch):
+    import json as _json
+    old = {"2_1": {"genome": {"drops": [], "extra": [],
+                              "label_mode": "rel_median", "label_window": 20},
+                   "fitness": 3.5}}
+    path = str(tmp_path / "_qd_archive.json")
+    with open(path, "w", encoding="utf-8") as fh:
+        _json.dump(old, fh)
+    monkeypatch.setattr(ar, "_QD_ARCHIVE_PATH", path)
+    archive = ar._qd_load()
+    assert list(archive.keys()) == ["2_1_1"]  # gene group 1 (label) appended
+    assert archive["2_1_1"]["fitness"] == 3.5
+    # new-format keys load unchanged
+    ar._qd_save(archive)
+    assert list(ar._qd_load().keys()) == ["2_1_1"]
+
+
 def test_genome_to_env_default_is_empty():
     assert ar.genome_to_env(ar.Genome()) == {}
 
@@ -1548,3 +1587,149 @@ def test_labeling_axis_includes_triple_barrier(monkeypatch):
 def test_build_axes_knows_hyper_and_nets():
     axes = ar.build_axes(["hyper", "nets"], ["a", "b"])
     assert [a.name for a in axes] == ["hyper", "nets"]
+
+
+# --- tuning genes: thresholds + regime (axes E/F) ---
+
+
+def test_genome_sig_ignores_default_tuning_genes():
+    g = ar.Genome(drops=["rsi"])
+    assert "tuning" not in ar.genome_sig(g)
+    g2 = ar.Genome(drops=["rsi"], thr_margin=0.02)
+    assert "tuning" in ar.genome_sig(g2)
+    assert ar.genome_sig(g2) != ar.genome_sig(g)
+    g3 = ar.Genome(drops=["rsi"], regime_mode="off")
+    assert ar.genome_sig(g3) != ar.genome_sig(g2)
+
+
+def test_genome_to_env_maps_tuning_genes():
+    g = ar.Genome(thr_margin=0.05, band_delta=-0.01, regime_mode="sma_only")
+    env = ar.genome_to_env(g)
+    assert env["GTRADE_THR_MARGIN"] == "0.05"
+    assert env["GTRADE_BAND_DELTA"] == "-0.01"
+    assert env["GTRADE_REGIME_MODE"] == "sma_only"
+    assert ar.genome_to_env(ar.Genome()) == {}
+
+
+def test_valid_rejects_off_palette_tuning():
+    active = ["a%d" % i for i in range(12)]
+    assert ar.valid(ar.Genome(thr_margin=0.02, band_delta=0.01,
+                              regime_mode="taleb_only"), active, 8)
+    assert not ar.valid(ar.Genome(thr_margin=0.5), active, 8)
+    assert not ar.valid(ar.Genome(band_delta=0.5), active, 8)
+    assert not ar.valid(ar.Genome(regime_mode="bogus"), active, 8)
+
+
+def test_mutate_reaches_tuning_genes():
+    import random as _random
+    _random.seed(11)
+    active = ["a%d" % i for i in range(12)]
+    g = ar.Genome()
+    hit = False
+    for _ in range(300):
+        g = ar.mutate(g, active, active)
+        assert ar.valid(g, active, 8)
+        if ar._tuning_genes(g) != ar._TUNING_DEFAULTS:
+            hit = True
+    assert hit
+
+
+def test_thresholds_axis_proposes_and_maps(monkeypatch):
+    monkeypatch.setattr(ar.ar_memory, "tried_seen", lambda kind, sig: False)
+    axis = ar.make_thresholds_axis()
+    assert axis.kind == "select_best"
+    cands = axis.propose([])
+    assert {"thr_margin": 0.02} in cands and {"band_delta": 0.02} in cands
+    assert {"thr_margin": 0.02, "band_delta": 0.01} in cands
+    assert axis.to_env({"thr_margin": 0.05}) == {"GTRADE_THR_MARGIN": "0.05"}
+    assert axis.to_env({"band_delta": -0.01}) == {"GTRADE_BAND_DELTA": "-0.01"}
+    log = [{"cand": {"thr_margin": 0.02}}]
+    assert {"thr_margin": 0.02} not in axis.propose(log)
+
+
+def test_regime_axis_proposes_and_maps(monkeypatch):
+    monkeypatch.setattr(ar.ar_memory, "tried_seen", lambda kind, sig: False)
+    axis = ar.make_regime_axis()
+    cands = axis.propose([])
+    assert {"regime_mode": "off"} in cands
+    assert {"regime_mode": "sma_only"} in cands
+    assert {"regime_mode": "taleb_only"} in cands
+    assert {"regime_mode": "both"} not in cands  # the base is not a candidate
+    assert axis.to_env({"regime_mode": "off"}) == {"GTRADE_REGIME_MODE": "off"}
+
+
+def test_build_axes_knows_thresholds_and_regime():
+    axes = ar.build_axes(["thresholds", "regime"], ["a", "b"])
+    assert [a.name for a in axes] == ["thresholds", "regime"]
+
+
+# --- tier ladder (axis J) -----------------------------------------------------
+
+
+def test_tier_env_and_assets_defaults(monkeypatch):
+    monkeypatch.delenv("GTRADE_AR_TIER_ASSETS", raising=False)
+    monkeypatch.delenv("GTRADE_AR_TIER", raising=False)
+    assert ar.tier_on()
+    assert ar.tier_assets() == "SP500,BTC,EURUSD,GOLD"
+    env = ar.tier_env({"X": "1"})
+    assert env["X"] == "1"
+    assert env["GTRADE_EPOCHS_LSTM"] == "45"
+    assert env["GTRADE_EPOCHS_TF"] == "30"
+    assert env["GTRADE_EPOCHS_TCN"] == "25"
+    monkeypatch.setenv("GTRADE_AR_TIER", "0")
+    assert not ar.tier_on()
+
+
+def test_passes_tier_gates_and_caches(tmp_path, monkeypatch):
+    monkeypatch.setattr(ar.ar_memory, "data_fingerprint", lambda subset: "frozen")
+    tier_base = [{"Asset": "SP500", "Score": 2.0}, {"Asset": "BTC", "Score": 2.0}]
+    calls = {"n": 0}
+
+    def fake(subset, env):
+        calls["n"] += 1
+        return [{"Asset": "SP500", "Score": 1.0}, {"Asset": "BTC", "Score": 1.0}]
+
+    monkeypatch.setattr(ar, "train_env", fake)
+    passed, delta = ar._passes_tier({}, "sigA", tier_base)
+    assert not passed and delta == -1.0  # clearly negative -> tiered out
+    # cached: the second call for the same key does not retrain
+    ar._passes_tier({}, "sigA", tier_base)
+    assert calls["n"] == 1
+    # infra failure (empty rows) passes through
+    monkeypatch.setattr(ar, "train_env", lambda subset, env: [])
+    assert ar._passes_tier({}, "sigB", tier_base)[0]
+    # empty tier base passes through
+    assert ar._passes_tier({}, "sigC", [])[0]
+
+
+def test_run_axis_tier_drops_candidate(monkeypatch):
+    monkeypatch.setattr(ar.ar_memory, "tried_seen", lambda k, s: False)
+    monkeypatch.setattr(ar.ar_memory, "tried_add", lambda k, s: None)
+    monkeypatch.setattr(ar.ar_memory, "data_fingerprint", lambda subset: "frozen")
+    base_rows = [{"Asset": "SP500", "Score": 1.0}]
+    tier_base = [{"Asset": "SP500", "Score": 5.0}]
+
+    def fake_train(subset, env):
+        return [{"Asset": "SP500", "Score": 1.0}]  # far below the tier base
+
+    axis = ar.Axis(name="t", propose=lambda log: [{"x": 1}],
+                   to_env=lambda c: {}, kind="select_best")
+    out = ar.run_axis(axis, budget=1, base_rows=base_rows, train_fn=fake_train,
+                      tier_base=tier_base)
+    assert out["best"] is None
+    assert any(e.get("note") == "tiered out" for e in out["log"])
+
+
+def test_run_axis_tier_off_is_old_flow(monkeypatch):
+    monkeypatch.setattr(ar.ar_memory, "tried_seen", lambda k, s: False)
+    monkeypatch.setattr(ar.ar_memory, "tried_add", lambda k, s: None)
+    base_rows = [{"Asset": "SP500", "Score": 1.0}]
+
+    def fake_train(subset, env):
+        return [{"Asset": "SP500", "Score": 3.0}]
+
+    axis = ar.Axis(name="t", propose=lambda log: [{"x": 1}],
+                   to_env=lambda c: {}, kind="select_best")
+    out = ar.run_axis(axis, budget=1, base_rows=base_rows, train_fn=fake_train,
+                      tier_base=None)
+    assert out["best"] == {"x": 1}

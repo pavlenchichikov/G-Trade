@@ -427,6 +427,25 @@ def lookback_for(opt, profile):
     return _clamp(base + _env_signed_int("GTRADE_LOOKBACK_DELTA", 0), 5, 90)
 
 
+def apply_thr_margin(buy_thr, sell_thr):
+    """Shift the tuned thresholds OUTWARD by GTRADE_THR_MARGIN (auto-research
+    threshold axis): buy up (capped 0.95), sell down (floored 0.05). An
+    outward shift can never invert the pair, so it always applies; the margin
+    itself is capped at 0.10 to absorb absurd env values. Default 0 =
+    byte-identical."""
+    m = min(_env_float("GTRADE_THR_MARGIN", 0.0), 0.10)
+    if m <= 0:
+        return buy_thr, sell_thr
+    return min(0.95, buy_thr + m), max(0.05, sell_thr - m)
+
+
+def band_for(profile):
+    """profile['no_trade_band'] plus GTRADE_BAND_DELTA, clamped at >= 0
+    (auto-research threshold axis; default delta 0 = byte-identical)."""
+    return max(0.0, float(profile['no_trade_band'])
+               + _env_float("GTRADE_BAND_DELTA", 0.0))
+
+
 import gc as _gc
 
 
@@ -919,13 +938,14 @@ def _train_one_asset(asset, candidate_features, prev_registry_entry):
             # threshold tuning on validation (top-3 averaging for stability)
             comm = FOREX_COMMISSION if asset in FOREX else COMMISSION
             slip = FOREX_SLIPPAGE if asset in FOREX else SLIPPAGE
+            _regime_mode = (os.getenv("GTRADE_REGIME_MODE") or "both").strip() or "both"
             all_configs = []
             for b in profile['thr_buy_grid']:
                 for s in profile['thr_sell_grid']:
                     if s >= b:
                         continue
-                    sig = make_signals(val_prob, b, s, profile['no_trade_band'])
-                    sig = apply_regime_filter(sig, val_close, val_sma200, val_taleb, profile['regime_risk_cap'])
+                    sig = make_signals(val_prob, b, s, band_for(profile))
+                    sig = apply_regime_filter(sig, val_close, val_sma200, val_taleb, profile['regime_risk_cap'], mode=_regime_mode)
                     ret_stream = [(float(np.clip((r if g > 0 else -r), -MAX_TRADE_RET, MAX_TRADE_RET)) - (comm + slip)) for g, r in zip(sig, val_ret) if g != 0 and not np.isnan(r)]
                     p, t, w = pnl_from_signals(sig, val_ret, commission=comm, slippage=slip)
                     mdd = max_drawdown_from_returns(ret_stream)
@@ -936,13 +956,14 @@ def _train_one_asset(asset, candidate_features, prev_registry_entry):
             top3 = sorted(all_configs, key=lambda x: x[6], reverse=True)[:3]
             buy_thr = float(np.mean([c[0] for c in top3]))
             sell_thr = float(np.mean([c[1] for c in top3]))
+            buy_thr, sell_thr = apply_thr_margin(buy_thr, sell_thr)
             val_profit = top3[0][2]
             top3[0][3]
             top3[0][4]
             val_mdd = top3[0][5]
 
-            sig_test = make_signals(test_prob, buy_thr, sell_thr, profile['no_trade_band'])
-            sig_test = apply_regime_filter(sig_test, test_close, test_sma200, test_taleb, profile['regime_risk_cap'])
+            sig_test = make_signals(test_prob, buy_thr, sell_thr, band_for(profile))
+            sig_test = apply_regime_filter(sig_test, test_close, test_sma200, test_taleb, profile['regime_risk_cap'], mode=_regime_mode)
             test_returns = [(float(np.clip((r if g > 0 else -r), -MAX_TRADE_RET, MAX_TRADE_RET)) - (comm + slip)) for g, r in zip(sig_test, test_ret) if g != 0 and not np.isnan(r)]
             test_profit, test_trades, test_win = pnl_from_signals(sig_test, test_ret, commission=comm, slippage=slip)
             test_mdd = max_drawdown_from_returns(test_returns)
