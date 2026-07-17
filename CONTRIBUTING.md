@@ -1,7 +1,7 @@
 # Contributing
 
-Thanks for your interest in Atratus. This is a personal research project licensed under
-**CC BY-NC 4.0** (non-commercial) - please keep that in mind for any reuse or contribution.
+Thanks for your interest in Atratus. This is a personal research project licensed under the
+**PolyForm Noncommercial License 1.0.0** (non-commercial) - please keep that in mind for any reuse or contribution.
 
 ## Development setup
 

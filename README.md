@@ -5,7 +5,7 @@
 [![CI](https://github.com/pavlenchichikov/Atratus/actions/workflows/ci.yml/badge.svg)](https://github.com/pavlenchichikov/Atratus/actions/workflows/ci.yml)
 [![Python 3.12](https://img.shields.io/badge/python-3.12-blue.svg)](https://www.python.org/)
 [![Lint: Ruff](https://img.shields.io/badge/lint-ruff-261230.svg)](https://github.com/astral-sh/ruff)
-[![License: CC BY-NC 4.0](https://img.shields.io/badge/license-CC%20BY--NC%204.0-lightgrey.svg)](LICENSE)
+[![License: PolyForm Noncommercial 1.0.0](https://img.shields.io/badge/license-PolyForm%20Noncommercial%201.0.0-lightgrey.svg)](LICENSE)
 
 <details open>
 <summary><b>English</b></summary>
@@ -300,7 +300,7 @@ ruff check .
 
 ## License
 
-Creative Commons Attribution-NonCommercial 4.0 (CC BY-NC 4.0). See [`LICENSE`](LICENSE).
+PolyForm Noncommercial License 1.0.0. Free to use, modify and share for any noncommercial purpose (personal, research, education, nonprofits); commercial use requires a separate license from the owner. See [`LICENSE`](LICENSE).
 
 ## Disclaimer
 
@@ -561,7 +561,7 @@ ruff check .
 
 ## Лицензия
 
-Creative Commons Attribution-NonCommercial 4.0 (CC BY-NC 4.0). См. [`LICENSE`](LICENSE).
+PolyForm Noncommercial License 1.0.0. Свободно использовать, изменять и распространять в любых некоммерческих целях (личное использование, исследования, образование, некоммерческие организации); коммерческое использование требует отдельной лицензии у владельца. См. [`LICENSE`](LICENSE).
 
 ## Дисклеймер
 
