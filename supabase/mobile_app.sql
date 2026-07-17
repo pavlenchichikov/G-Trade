@@ -69,20 +69,3 @@ returns table (token text) language sql security definer as $$
   join access_list a on lower(a.email) = lower(u.email);
 $$;
 revoke execute on function allowed_device_tokens() from anon, authenticated;
-
--- Risk & positions snapshot for the mobile Risk screen (single row, id=1).
--- positions/limits are JSONB so the shape can evolve without migrations.
-create table if not exists risk (
-  id            integer primary key,
-  halted        boolean,
-  halt_reason   text,
-  capital       double precision,
-  peak_capital  double precision,
-  drawdown      double precision,
-  positions     jsonb,
-  limits        jsonb,
-  snapshot_date date
-);
-alter table risk enable row level security;
-drop policy if exists risk_read on risk;
-create policy risk_read on risk for select using (is_allowed());
