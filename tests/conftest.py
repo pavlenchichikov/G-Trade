@@ -20,5 +20,5 @@ def _isolate_ar_memory(tmp_path, monkeypatch):
     # (observed 2026-07-16: a suite run started Ollama). Tests that exercise these
     # paths inject fakes and set the vars explicitly.
     for var in ("GTRADE_AR_WIKI", "GTRADE_AR_PROPOSER", "GTRADE_AR_REFLECT",
-                "GTRADE_AR_LLM", "GTRADE_AR_LLM_MODEL"):
+                "GTRADE_AR_LLM", "GTRADE_AR_LLM_MODEL", "GTRADE_AR_RL"):
         monkeypatch.delenv(var, raising=False)

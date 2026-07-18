@@ -25,6 +25,7 @@ FINDINGS_PATH = os.path.join(BASE, "_ar_findings.json")
 DB_PATH = os.path.join(BASE, "market.db")
 CACHE_CAP = 120
 REPLICATION_PATH = os.path.join(BASE, "_ar_replication.json")
+_RL_BLOB_DIR = BASE
 
 
 def _load(path, default):
@@ -40,6 +41,16 @@ def _load(path, default):
 def _save(path, obj):
     with open(path, "w", encoding="utf-8") as f:
         json.dump(obj, f, ensure_ascii=True, indent=2)
+
+
+def blob_get(name, default=None):
+    """Generic named JSON blob (used by core.ar_rl for scheduler state)."""
+    return _load(os.path.join(_RL_BLOB_DIR, "%s.json" % name), default)
+
+
+def blob_put(name, obj):
+    """Store a named JSON blob."""
+    _save(os.path.join(_RL_BLOB_DIR, "%s.json" % name), obj)
 
 
 def tried_seen(kind, sig):

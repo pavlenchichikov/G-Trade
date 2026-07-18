@@ -1733,3 +1733,117 @@ def test_run_axis_tier_off_is_old_flow(monkeypatch):
     out = ar.run_axis(axis, budget=1, base_rows=base_rows, train_fn=fake_train,
                       tier_base=None)
     assert out["best"] == {"x": 1}
+
+
+class TestContinuousValid:
+    def test_off_palette_rejected_by_default(self):
+        import auto_research as ar
+        g = ar.Genome(thr_margin=0.037)
+        active = ["ret_1", "ret_5", "ret_10", "ret_20", "vol_z", "rsi",
+                  "macd_hist", "bb_pos", "trend_strength", "atr"]
+        assert ar.valid(g, active, prune_min=8) is False
+
+    def test_off_palette_accepted_continuous(self):
+        import auto_research as ar
+        g = ar.Genome(thr_margin=0.037, cb_lr_mult=1.23)
+        active = ["ret_1", "ret_5", "ret_10", "ret_20", "vol_z", "rsi",
+                  "macd_hist", "bb_pos", "trend_strength", "atr"]
+        assert ar.valid(g, active, prune_min=8, continuous=True) is True
+
+    def test_out_of_hull_rejected_continuous(self):
+        import auto_research as ar
+        g = ar.Genome(thr_margin=0.99)
+        active = ["ret_1", "ret_5", "ret_10", "ret_20", "vol_z", "rsi",
+                  "macd_hist", "bb_pos", "trend_strength", "atr"]
+        assert ar.valid(g, active, prune_min=8, continuous=True) is False
+
+    def test_canon_rounds_numeric(self):
+        import auto_research as ar
+        g = ar.Genome(thr_margin=0.0333333333, lookback_delta=3.0)
+        g = ar._canon_genome(g)
+        assert g.thr_margin == 0.0333
+        assert g.lookback_delta == 3 and isinstance(g.lookback_delta, int)
+
+
+class TestRlIntegration:
+    def _archive(self, ar):
+        g = ar.Genome()
+        return {"2_1_0": {"genome": g, "fitness": 1.0, "rows": []}}
+
+    def test_off_path_never_touches_rl(self, monkeypatch):
+        import auto_research as ar
+        from core import ar_rl
+        monkeypatch.delenv("GTRADE_AR_RL", raising=False)
+
+        def boom(*a, **k):
+            raise AssertionError("RL touched with flag off")
+
+        monkeypatch.setattr(ar_rl, "Scheduler", boom)
+        monkeypatch.setattr(ar.ar_memory, "blob_get", boom)
+        child = ar.next_child(self._archive(ar),
+                              ["ret_1", "ret_5", "ret_10", "ret_20", "vol_z",
+                               "rsi", "macd_hist", "bb_pos", "trend_strength",
+                               "atr"],
+                              ["ret_1", "vol_z"])
+        # child may be None (dedup) - the assertion is that boom never fired
+        assert child is None or child != ()
+
+    def test_mutate_ops_restriction(self):
+        import auto_research as ar
+        import random as _r
+        _r.seed(3)
+        g = ar.Genome()
+        active = ["ret_1", "ret_5", "ret_10", "ret_20", "vol_z", "rsi",
+                  "macd_hist", "bb_pos", "trend_strength", "atr", "extra_a",
+                  "extra_b"]
+        for _ in range(20):
+            ng = ar.mutate(g, active, ["ret_1"], ops=["tuning"])
+            # only tuning genes may differ
+            assert ng.drops == g.drops and ng.extra == g.extra
+            assert ng.label_mode == g.label_mode
+            assert ar._hyper_genes(ng) == ar._hyper_genes(g)
+            assert ar._net_genes(ng) == ar._net_genes(g)
+
+    def test_rl_next_child_returns_valid_unseen(self, monkeypatch, tmp_path):
+        import auto_research as ar
+        monkeypatch.setenv("GTRADE_AR_RL", "1")
+        monkeypatch.setattr(ar.ar_memory, "blob_get", lambda *a, **k: None)
+        monkeypatch.setattr(ar.ar_memory, "blob_put", lambda *a, **k: None)
+        monkeypatch.setattr(ar.ar_memory, "tried_seen", lambda k, s: False)
+        ar._rl_controller_reset_for_tests()
+        active = ["ret_1", "ret_5", "ret_10", "ret_20", "vol_z", "rsi",
+                  "macd_hist", "bb_pos", "trend_strength", "atr", "extra_a",
+                  "extra_b"]
+        child = ar.next_child(self._archive(ar), active, ["ret_1", "vol_z"])
+        assert child is not None
+        assert ar.valid(child, active, prune_min=8, continuous=True)
+
+    def test_reward_and_origin_flow(self, monkeypatch):
+        import auto_research as ar
+        monkeypatch.setenv("GTRADE_AR_RL", "1")
+        monkeypatch.setattr(ar.ar_memory, "blob_get", lambda *a, **k: None)
+        monkeypatch.setattr(ar.ar_memory, "blob_put", lambda *a, **k: None)
+        ar._rl_controller_reset_for_tests()
+        ctl = ar._rl_controller()
+        ctl._note_origin("sigX", "feat", "fill")
+        before = ctl.sched.posterior_mean("feat", "fill")
+        ctl.on_result("sigX", stored=True)
+        assert ctl.sched.posterior_mean("feat", "fill") > before
+        ctl._note_origin("sigY", "cma", "fill")
+        b2 = ctl.sched.posterior_mean("cma", "fill")
+        ctl.on_adopt("sigY")
+        assert ctl.sched.posterior_mean("cma", "fill") > b2
+
+    def test_fallback_disables_scheduler(self, monkeypatch):
+        import auto_research as ar
+        monkeypatch.setenv("GTRADE_AR_RL", "1")
+        monkeypatch.setattr(ar.ar_memory, "blob_get", lambda *a, **k: None)
+        monkeypatch.setattr(ar.ar_memory, "blob_put", lambda *a, **k: None)
+        ar._rl_controller_reset_for_tests()
+        ctl = ar._rl_controller()
+        for _ in range(30):
+            ctl.monitor.record(True, True)
+        for i in range(50):
+            ctl._note_origin("s%d" % i, "feat", "fill")
+            ctl.on_result("s%d" % i, stored=False)
+        assert ctl.disabled is True

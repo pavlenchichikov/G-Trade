@@ -26,6 +26,16 @@ REM  LLM proposer (or it defaults to Anthropic and needs ANTHROPIC_API_KEY). Off
 REM  by default, so it is byte-identical. When on, this script also offers a wiki lint
 REM  (reconcile contradictions + prune stale claims) after the run.
 REM
+REM  RL scheduler (menu item 7): a learned budget allocator over the QD child
+REM  sources (GTRADE_AR_RL). A discounted Thompson bandit learns which of the
+REM  nine emitters (feature/hyper/nets/tuning mutations, crossover, LLM,
+REM  surrogate, CMA over the numeric genes, novelty targeting of empty niches)
+REM  actually produce archive improvements, plus curiosity-based parent
+REM  selection. The statistical adoption gate is untouched - the scheduler only
+REM  decides what to TRY. Off by default (byte-identical uniform search); it
+REM  self-disables within a run if it underperforms the uniform baseline.
+REM  State: rl_scheduler_v1.json (posteriors are printed at run start/end).
+REM
 REM  Advanced knobs (screen, prune floor, QD sizes, seed, base URL, exhaustion
 REM  cutoff) live below as set lines; the menu only asks the everyday questions.
 REM ===========================================================================
@@ -158,10 +168,19 @@ set "GTRADE_AR_WIKI="
 if "%WIKI%"=="2" set "GTRADE_AR_WIKI=1"
 
 echo.
+echo [7] RL scheduler?  (learned budget allocation over the QD child sources;
+echo     Thompson bandit + CMA/novelty emitters; the adoption gate is untouched)
+echo     1 = off (default)   2 = on
+set "RL=1"
+set /p "RL=    choice [1]: "
+set "GTRADE_AR_RL="
+if "%RL%"=="2" set "GTRADE_AR_RL=1"
+
+echo.
 echo ------------------------------------------------------------
 echo   axes=%GTRADE_AR_AXES%  proposer=%GTRADE_AR_PROPOSER%  llm=%GTRADE_AR_LLM%
 echo   model=%GTRADE_AR_LLM_MODEL%  maxtok=%GTRADE_AR_LLM_MAX_TOKENS%  chronos=%GTRADE_CHRONOS%  wiki=%GTRADE_AR_WIKI%
-echo   budget=%AR_BUDGET%  objective=%GTRADE_AR_OBJECTIVE%
+echo   budget=%AR_BUDGET%  objective=%GTRADE_AR_OBJECTIVE%  rl=%GTRADE_AR_RL%
 echo ------------------------------------------------------------
 set "GO=Y"
 set /p "GO=Start? [Y/n]: "
@@ -180,6 +199,7 @@ if /i "%LINT%"=="y" python -c "from core import ar_wiki; ar_wiki.lint_wiki()"
 echo.
 echo Done. Review _auto_research_log.json / _qd_archive.json / _ar_findings.json.
 if "%GTRADE_AR_WIKI%"=="1" echo Research wiki: _ar_wiki\*.md  (also on the /research Web UI page).
+if "%GTRADE_AR_RL%"=="1" echo RL scheduler state: rl_scheduler_v1.json  (arm posteriors are in the run log above).
 pause
 goto :end
 

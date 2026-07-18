@@ -27,6 +27,7 @@ from dataclasses import asdict, dataclass, field
 from datetime import datetime
 
 from core import ar_memory
+from core import ar_rl
 from core import ar_wiki
 from core import llm_proposer
 from core import qd_surrogate
@@ -405,6 +406,12 @@ def _canon_genome(g):
     """direction ignores the window; canonicalize so equivalent genomes dedup."""
     if g.label_mode == "direction":
         g.label_window = 30
+    g.thr_margin = round(float(g.thr_margin), 4)
+    g.band_delta = round(float(g.band_delta), 4)
+    g.cb_lr_mult = round(float(g.cb_lr_mult), 4)
+    g.cb_iter_mult = round(float(g.cb_iter_mult), 4)
+    g.cb_depth_delta = int(g.cb_depth_delta)
+    g.lookback_delta = int(g.lookback_delta)
     return g
 
 
@@ -430,7 +437,7 @@ def genome_sig(g):
     return json.dumps(d, sort_keys=True)
 
 
-def valid(g, active, prune_min):
+def valid(g, active, prune_min, continuous=False):
     """Well-formedness against the active feature set and the prune floor."""
     aset = set(active)
     extra_names = {s.get("name") for s in g.extra}
@@ -445,17 +452,26 @@ def valid(g, active, prune_min):
         return False
     if g.label_window <= 0:
         return False
-    if g.cb_depth_delta not in DEPTH_DELTAS:
-        return False
-    if g.cb_lr_mult not in LR_MULTS or g.cb_iter_mult not in ITER_MULTS:
-        return False
-    if g.lookback_delta not in LOOKBACK_DELTAS:
-        return False
+    if continuous:
+        from core.ar_rl import CMA_DIMS
+        for name, lo, hi, is_int in CMA_DIMS:
+            v = getattr(g, name)
+            if not (lo <= v <= hi):
+                return False
+            if is_int and v != int(v):
+                return False
+    else:
+        if g.cb_depth_delta not in DEPTH_DELTAS:
+            return False
+        if g.cb_lr_mult not in LR_MULTS or g.cb_iter_mult not in ITER_MULTS:
+            return False
+        if g.lookback_delta not in LOOKBACK_DELTAS:
+            return False
+        if g.thr_margin not in THR_MARGINS or g.band_delta not in BAND_DELTAS:
+            return False
     if g.net_seeds not in NET_SEED_CHOICES:
         return False
     if g.net_uniqueness not in (0, 1) or g.net_calibrate not in (0, 1):
-        return False
-    if g.thr_margin not in THR_MARGINS or g.band_delta not in BAND_DELTAS:
         return False
     if g.regime_mode not in REGIME_MODES:
         return False
@@ -527,12 +543,14 @@ def _mutate_tuning(g):
         g.regime_mode = random.choice(REGIME_MODES)
 
 
-def mutate(g, active, base_features):
+def mutate(g, active, base_features, ops=None):
     """One random gene change; always returns a valid genome (or the input if no valid
-    single change exists)."""
+    single change exists). ops=None keeps today's behavior byte-identical; a list
+    restricts which ops are tried."""
     prune_min = int(os.getenv("GTRADE_AR_PRUNE_MIN", "8"))
-    ops = ["add_drop", "rm_drop", "add_extra", "rm_extra", "flip_label", "win",
-           "hyper", "nets", "tuning"]
+    all_ops = ["add_drop", "rm_drop", "add_extra", "rm_extra", "flip_label",
+               "win", "hyper", "nets", "tuning"]
+    ops = list(all_ops if ops is None else ops)
     random.shuffle(ops)
     for op in ops:
         ng = copy.deepcopy(g)
@@ -740,6 +758,9 @@ def _surrogate_child(archive, active, base_features):
 def next_child(archive, active, base_features, attempts=10):
     """One unseen child genome for the QD loop: LLM-proposed (when the llm proposer is selected, with probability GTRADE_AR_QD_LLM_P) else mutate/crossover retried against the tried-registry.
     None when the archive is empty or every attempt lands on an already-tried genome."""
+    if ar_rl.rl_on():
+        return _rl_controller().next_child(archive, active, base_features,
+                                           attempts=attempts)
     elites = list(archive.values())
     if not elites:
         return None
@@ -767,6 +788,199 @@ def next_child(archive, active, base_features, attempts=10):
         if not ar_memory.tried_seen("genome", genome_sig(child)):
             return child
     return None
+
+
+_FEAT_OPS = ["add_drop", "rm_drop", "add_extra", "rm_extra", "flip_label", "win"]
+_GROUP_TO_OPS = {2: ["hyper"], 3: ["nets"], 4: ["tuning"], 1: ["flip_label", "win"]}
+_TOTAL_CELLS = (len(_FLOOR_EDGES) + 1) * (len(_COUNT_EDGES) + 1) * 6
+
+
+class _RlController:
+    """Wires core.ar_rl into the QD loop. Exists only under GTRADE_AR_RL=1."""
+
+    def __init__(self):
+        state = ar_memory.blob_get(ar_rl.STATE_KEY) or {}
+        self.sched = ar_rl.Scheduler(state.get("scheduler"))
+        self.cur = ar_rl.CuriosityMap(state.get("curiosity"))
+        self.cma = ar_rl.CmaEmitter(state.get("cma"))
+        self.monitor = ar_rl.FallbackMonitor(state.get("monitor"))
+        self.origin = dict(state.get("origin") or {})
+        self.disabled = False
+        base = ar_memory.base_key(SELECTION_ASSETS, {})
+        if state.get("base_key") and state["base_key"] != base:
+            self.sched.halve()
+        self.base_key = base
+
+    # -- persistence -------------------------------------------------------
+    def save(self):
+        ar_memory.blob_put(ar_rl.STATE_KEY, {
+            "version": 1, "base_key": self.base_key,
+            "scheduler": self.sched.to_state(),
+            "curiosity": self.cur.to_state(),
+            "cma": self.cma.to_state(),
+            "monitor": self.monitor.to_state(),
+            "origin": dict(list(self.origin.items())[-ar_rl.ORIGIN_CAP:]),
+        })
+
+    def _note_origin(self, sig, arm, phase):
+        self.origin[sig] = [arm, phase]
+        if len(self.origin) > ar_rl.ORIGIN_CAP:
+            self.origin = dict(list(self.origin.items())[-ar_rl.ORIGIN_CAP:])
+
+    # -- child generation --------------------------------------------------
+    def _pick_parent(self, archive, rng):
+        sigs = {genome_sig(e["genome"]): e for e in archive.values()}
+        sig = self.cur.pick(list(sigs.keys()), rng)
+        return sigs[sig]["genome"], sig
+
+    def next_child(self, archive, active, base_features, attempts=10):
+        elites = list(archive.values())
+        if not elites:
+            return None
+        occupancy = len(archive) / float(_TOTAL_CELLS)
+        phase = ar_rl.phase_of(occupancy)
+        available = ["feat", "hyper", "nets", "tuning", "novelty"]
+        if len(elites) >= 2:
+            available.append("cross")
+        if llm_proposer.llm_selected():
+            available.append("llm")
+        if qd_surrogate.surrogate_on():
+            available.append("surr")
+        available.append("cma")
+        for _ in range(attempts):
+            if self.disabled:
+                arm, was_floor = random.choice(available), True
+            else:
+                arm, was_floor = self.sched.choose(available, phase)
+            child = self._emit(arm, archive, active, base_features)
+            if child is None:
+                continue
+            child = _canon_genome(child)
+            cont = arm == "cma"
+            prune_min = int(os.getenv("GTRADE_AR_PRUNE_MIN", "8"))
+            if not valid(child, active, prune_min, continuous=cont):
+                continue
+            sig = genome_sig(child)
+            if ar_memory.tried_seen("genome", sig):
+                continue
+            self._note_origin(sig, arm, phase)
+            self._last_draw = (arm, phase, was_floor)
+            self._last_parent_sig = getattr(self, "_pending_parent_sig", None)
+            return child
+        return None
+
+    def _emit(self, arm, archive, active, base_features):
+        elites = list(archive.values())
+        parent, psig = self._pick_parent(archive, random)
+        self._pending_parent_sig = psig
+        if arm == "feat":
+            return mutate(parent, active, base_features, ops=_FEAT_OPS)
+        if arm == "hyper":
+            return mutate(parent, active, base_features, ops=["hyper"])
+        if arm == "nets":
+            return mutate(parent, active, base_features, ops=["nets"])
+        if arm == "tuning":
+            return mutate(parent, active, base_features, ops=["tuning"])
+        if arm == "cross":
+            other, _ = self._pick_parent(archive, random)
+            return crossover(parent, other, active)
+        if arm == "llm":
+            return _llm_child(elites, active, base_features)
+        if arm == "surr":
+            try:
+                return _surrogate_child(archive, active, base_features)
+            except Exception:
+                return None
+        if arm == "cma":
+            best = max(elites, key=lambda e: e["fitness"])
+            if not self.cma.to_state()["evals"]:
+                self.cma.seed_from(best["genome"])
+            return self.cma.ask(parent)
+        if arm == "novelty":
+            emitter = ar_rl.NoveltyEmitter(
+                count_bins=len(_COUNT_EDGES) + 1, groups=6, rng=random)
+
+            def mutate_toward(p, tbin, tgroup):
+                ops = _GROUP_TO_OPS.get(tgroup, _FEAT_OPS)
+                cand = mutate(p, active, base_features, ops=ops)
+                cnt = len(active) - len(set(cand.drops)) + len(cand.extra)
+                pcnt = len(active) - len(set(p.drops)) + len(p.extra)
+                cb, pb = _bin(cnt, _COUNT_EDGES), _bin(pcnt, _COUNT_EDGES)
+                good_group = tgroup in (0, 5) or _gene_group(cand) == tgroup
+                if good_group and (cb == tbin or abs(cb - tbin) < abs(pb - tbin)):
+                    return cand
+                return None
+
+            return emitter.emit(
+                list(archive.keys()), elites,
+                count_of=lambda g: len(active) - len(set(g.drops)) + len(g.extra),
+                group_of=_gene_group,
+                count_bin_of=lambda c: _bin(c, _COUNT_EDGES),
+                mutate_toward=mutate_toward)
+        return None
+
+    # -- rewards -----------------------------------------------------------
+    def on_result(self, sig, stored):
+        info = self.origin.get(sig)
+        if info is None:
+            return
+        arm, phase = info
+        was_floor = getattr(self, "_last_draw", (None, None, False))[2]
+        if not self.disabled:
+            self.sched.update(arm, phase, stored)
+        self.monitor.record(was_floor, stored)
+        if self.monitor.tripped() and not self.disabled:
+            self.disabled = True
+            _say("[rl] fallback tripped: scheduler underperforms the uniform "
+                 "floor - reverting to uniform for the rest of this run.")
+        psig = getattr(self, "_last_parent_sig", None)
+        if psig:
+            self.cur.reward(psig) if stored else self.cur.penalize(psig)
+        if arm == "cma":
+            pass  # cma.tell happens in run_qd where fitness is known
+        self.save()
+
+    def on_adopt(self, sig):
+        info = self.origin.get(sig)
+        if info is None:
+            return
+        arm, phase = info
+        self.sched.bonus(arm, phase)
+        self.save()
+
+    # -- ranking + telemetry ----------------------------------------------
+    def rank_bonus(self, elite):
+        info = self.origin.get(genome_sig(elite["genome"]))
+        if info is None:
+            return 0.0
+        arm, phase = info
+        return 0.5 * self.sched.posterior_mean(arm, phase)
+
+    def report(self, tag):
+        lines = ["[rl] %s scheduler snapshot:" % tag]
+        for p in ar_rl.PHASES:
+            means = ", ".join("%s=%.2f" % (a, self.sched.posterior_mean(a, p))
+                              for a in ar_rl.ARMS)
+            lines.append("[rl]   %s: %s" % (p, means))
+        lines.append("[rl]   curiosity top: %s" % self.cur.top(5))
+        lines.append("[rl]   disabled=%s" % self.disabled)
+        for ln in lines:
+            _say(ln)
+
+
+_RL_CTL = None
+
+
+def _rl_controller():
+    global _RL_CTL
+    if _RL_CTL is None:
+        _RL_CTL = _RlController()
+    return _RL_CTL
+
+
+def _rl_controller_reset_for_tests():
+    global _RL_CTL
+    _RL_CTL = None
 
 
 def run_qd(train_fn=None):
@@ -816,11 +1030,34 @@ def run_qd(train_fn=None):
                 break
             continue
         misses = 0
-        ar_memory.tried_add("genome", genome_sig(child))
-        archive_put(archive, child, _screen_eval(child), base_score, active)
+        csig = genome_sig(child)
+        ar_memory.tried_add("genome", csig)
+        crows = _screen_eval(child)
+        stored = archive_put(archive, child, crows, base_score, active)
+        if ar_rl.rl_on():
+            ctl = _rl_controller()
+            ctl.on_result(csig, stored)
+            info = ctl.origin.get(csig)
+            if info and info[0] == "cma":
+                ctl.cma.tell(ctl.cma.vector_of(child),
+                             fitness(crows, base_score))
+                ctl.save()
         _qd_save(archive)
 
-    elites = sorted(archive.values(), key=lambda e: e["fitness"], reverse=True)[:n_final]
+    if ar_rl.rl_on():
+        ctl = _rl_controller()
+        ctl.report("run start")
+        fits = [e["fitness"] for e in archive.values()]
+        mu = sum(fits) / len(fits) if fits else 0.0
+        sd = (sum((f - mu) ** 2 for f in fits) / len(fits)) ** 0.5 if fits else 1.0
+        sd = sd or 1.0
+        elites = sorted(
+            archive.values(),
+            key=lambda e: (e["fitness"] - mu) / sd + ctl.rank_bonus(e),
+            reverse=True)[:n_final]
+    else:
+        elites = sorted(archive.values(),
+                        key=lambda e: e["fitness"], reverse=True)[:n_final]
     if not elites:
         print("[qd] no elites in the archive.")
         finding_winners = []
@@ -859,6 +1096,8 @@ def run_qd(train_fn=None):
                 gsig = genome_sig(g)
                 replicated = ar_memory.replication_seen(gsig)
                 clears = ar_memory.replication_add(gsig, ts_qd)
+                if ar_rl.rl_on():
+                    _rl_controller().on_adopt(gsig)
                 if ar_wiki.wiki_on() and clears >= 2:
                     ar_wiki.note_replicated(gsig, "replicated (%d clears)" % clears)
             finding_winners.append({"axis": "qd", "genome": asdict(g), "p": p,
@@ -878,6 +1117,20 @@ def run_qd(train_fn=None):
     print("[auto-research] memory: %d experiments tried, %d adoptable, %d replicated so far."
           % (mem["experiments"], mem["adoptable"], mem["replicated"]))
     print("[qd] %d niches illuminated; review _qd_archive.json; nothing auto-adopted." % len(archive))
+    if ar_rl.rl_on():
+        ctl = _rl_controller()
+        ctl.cur.prune({genome_sig(e["genome"]) for e in archive.values()})
+        ctl.save()
+        ctl.report("run end")
+        if ar_wiki.wiki_on():
+            try:
+                ar_wiki.note_replicated(
+                    "rl-scheduler",
+                    "posteriors: " + ", ".join(
+                        "%s/%s=%.2f" % (p, a, ctl.sched.posterior_mean(a, p))
+                        for p in ar_rl.PHASES for a in ar_rl.ARMS))
+            except Exception:
+                pass
     return archive
 
 
