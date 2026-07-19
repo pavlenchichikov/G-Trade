@@ -219,6 +219,32 @@ class TestCmaEmitter:
         assert len(e2.to_state()["evals"]) == 1
 
 
+class TestCmaEmitterDims:
+    DIMS = (("a", 0.0, 1.0, False), ("b", -5.0, 5.0, True))
+
+    class _Obj:
+        def __init__(self):
+            self.a = 0.5
+            self.b = 0
+
+    def test_custom_dims_ask_in_hull(self):
+        e = ar_rl.CmaEmitter(rng=random.Random(9), dims=self.DIMS)
+        for _ in range(50):
+            child = e.ask(self._Obj())
+            assert 0.0 <= child.a <= 1.0
+            assert -5 <= child.b <= 5 and isinstance(child.b, int)
+
+    def test_default_dims_unchanged(self):
+        e = ar_rl.CmaEmitter(rng=random.Random(9))
+        assert [d[0] for d in e.dims] == [d[0] for d in ar_rl.CMA_DIMS]
+
+    def test_state_dims_mismatch_falls_back_fresh(self):
+        e6 = ar_rl.CmaEmitter(rng=random.Random(9))
+        e2 = ar_rl.CmaEmitter(state=e6.to_state(), rng=random.Random(9),
+                              dims=self.DIMS)
+        assert len(e2.mean) == 2  # fresh init for 2 dims, not the 6-dim state
+
+
 class TestNoveltyEmitter:
     def _setup(self):
         # 3 count bins x 2 groups; archive occupies (0,0) and (1,0)

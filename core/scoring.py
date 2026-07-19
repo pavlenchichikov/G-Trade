@@ -19,7 +19,7 @@ import joblib
 import numpy as np
 from catboost import CatBoostClassifier
 
-from core import live_gate, meta_sizer
+from core import live_gate, meta_sizer, timing_policy
 from core.calibration import apply_calibrator, apply_live_global, load_calibrator
 from core.ensemble import build_stacking_features
 from core.features import active_candidate_features
@@ -65,6 +65,8 @@ def score_asset(df, name, table, reg_entry, thresholds, model_dir):
             "tf_prob":     float | None,
             "tcn_prob":    float | None,
             "meta_prob":   float | None,   # None unless GTRADE_META_SIZING is on
+            "timing_action": str | None,   # shadow-only; None unless GTRADE_TIMING_POLICY=1
+            "timing_reason": str | None,   # and timing_policy.json exists
         }
     """
     cb_path = os.path.join(model_dir, f"{table}_cb.cbm")
@@ -214,11 +216,42 @@ def score_asset(df, name, table, reg_entry, thresholds, model_dir):
         sig_raw = sig
         sig, gate_reason = live_gate.gate(name, prob, sig)
 
+        # Timing-policy shadow (GTRADE_TIMING_POLICY; default off = no-op). Never
+        # allowed to affect sig/prob/gate_reason above, and any failure here must
+        # not break scoring - hence the guard clause plus its own try/except.
+        timing_action = timing_reason = None
+        if timing_policy.timing_on():
+            pol = timing_policy.load_policy()
+            if pol is not None:
+                try:
+                    from performance_tracker import timing_state
+                    import config as _cfg
+                    risky = any(name in _cfg.ASSET_TYPES.get(g, ())
+                                for g in ("CRYPTO", "FOREX MAJORS",
+                                          "FOREX CROSSES", "FOREX EXOTIC"))
+                    atr_now = float(df["atr"].iloc[-1]) if "atr" in df else 0.0
+                    from core.features import latest_taleb_risk
+                    taleb_val = latest_taleb_risk(df["close"])
+                    taleb_now = taleb_val is not None and taleb_val > 0.7
+                    st = timing_state(
+                        name, cooldown_days=int(pol.params.get("cooldown_days", 0)))
+                    act, reason, st2 = timing_policy.policy_step(
+                        pol, prob, buy_thr, sell_thr, atr_now, taleb_now,
+                        risky, st)
+                    timing_action = (
+                        f"ENTER:{'+1' if st2['pos'] == 1 else '-1'}"
+                        if act == "ENTER" else act)
+                    timing_reason = reason
+                except Exception as e:
+                    logger.debug("Timing-policy shadow skipped for %s: %s", name, e)
+                    timing_action = timing_reason = None
+
         return {
             "sig": sig, "prob": prob, "price": curr_price, "mode": mode,
             "sig_raw": sig_raw, "prob_raw": prob_raw, "gate_reason": gate_reason,
             "cb_prob": cb_prob, "lstm_prob": lstm_prob,
             "tf_prob": tf_prob, "tcn_prob": tcn_prob, "meta_prob": meta_p,
+            "timing_action": timing_action, "timing_reason": timing_reason,
         }
 
     except Exception as e:

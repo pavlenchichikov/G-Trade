@@ -42,6 +42,10 @@ def _migrate(cur):
         cur.execute("ALTER TABLE prediction_log ADD COLUMN sig_shown TEXT")
     if cols and "gate_reason" not in cols:
         cur.execute("ALTER TABLE prediction_log ADD COLUMN gate_reason TEXT")
+    if cols and "timing_action" not in cols:
+        cur.execute("ALTER TABLE prediction_log ADD COLUMN timing_action TEXT")
+    if cols and "timing_reason" not in cols:
+        cur.execute("ALTER TABLE prediction_log ADD COLUMN timing_reason TEXT")
 
 
 def _ensure_table(cur):
@@ -58,7 +62,9 @@ def _ensure_table(cur):
             model_version TEXT,
             meta_prob REAL,
             sig_shown TEXT,
-            gate_reason TEXT
+            gate_reason TEXT,
+            timing_action TEXT,
+            timing_reason TEXT
         )
     """)
     _migrate(cur)
@@ -86,7 +92,8 @@ def _has_bar(cur, asset, day):
 
 def log_prediction(asset, signal, probability, cb_prob=None, lstm_prob=None,
                    model_version=None, meta_prob=None, date=None,
-                   sig_shown=None, gate_reason=None):
+                   sig_shown=None, gate_reason=None,
+                   timing_action=None, timing_reason=None):
     # Date the prediction by the wall clock (one row per asset per day). Non-trading
     # days for an asset (a stock predicted on a weekend/holiday) are not stamped onto
     # a neighbouring bar here; update_actuals() reconciles only exact trading-bar dates
@@ -114,12 +121,92 @@ def log_prediction(asset, signal, probability, cb_prob=None, lstm_prob=None,
         cur.execute(
             """INSERT INTO prediction_log
                (date, asset, signal, probability, actual_next_ret, correct,
-                cb_prob, lstm_prob, model_version, meta_prob, sig_shown, gate_reason)
-               VALUES (?, ?, ?, ?, NULL, NULL, ?, ?, ?, ?, ?, ?)""",
+                cb_prob, lstm_prob, model_version, meta_prob, sig_shown, gate_reason,
+                timing_action, timing_reason)
+               VALUES (?, ?, ?, ?, NULL, NULL, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (today, asset, signal, probability, cb_prob, lstm_prob,
-             model_version, meta_prob, sig_shown, gate_reason),
+             model_version, meta_prob, sig_shown, gate_reason,
+             timing_action, timing_reason),
         )
         con.commit()
+
+
+def timing_state(asset, cooldown_days=0):
+    """Rebuild the timing policy's position state from the shadow log.
+
+    Scans the asset's logged `timing_action` history oldest-first: an
+    ``ENTER:+1``/``ENTER:-1`` row sets the position and resets the segment,
+    an ``EXIT`` row flattens it, and any other row (HOLD/STAY_OUT) just
+    ages the open position by one bar. `actual_next_ret` (filled in later by
+    update_actuals) feeds the running segment return/peak used by the
+    trailing-stop rule. Returns a FRESH_STATE-shaped dict; a shadow-history-
+    free asset gets FRESH_STATE back unchanged.
+
+    `streak`/`last_raw`/`cooldown_left` are rebuilt from the same rows' raw
+    `signal` column (the model's un-gated BUY/SELL/WAIT call for that bar):
+      - `last_raw`: the LAST row's signal mapped to BUY->1, SELL->-1, else 0.
+      - `streak`: count of consecutive trailing rows whose signal maps to the
+        same non-zero side as `last_raw` (0 when `last_raw` is 0).
+      - `cooldown_left`: `cooldown_days` minus the number of rows logged after
+        the last ``EXIT`` row (floored at 0; 0 when no EXIT has ever fired).
+    These three values represent the state AS OF the last logged row - i.e.
+    exactly what policy_step's `state` argument expects (yesterday's closing
+    state). policy_step itself folds in TODAY's bar: it recomputes streak
+    from state["last_raw"] + today's raw signal, and decrements
+    cooldown_left at the top of the call - so rebuilding through the last
+    logged row (and no further) is correct, not off-by-one."""
+    from core.timing_policy import FRESH_STATE
+    _prepare()
+    st = dict(FRESH_STATE)
+    with _conn() as con:
+        rows = con.execute(
+            "SELECT date, timing_action, actual_next_ret, signal FROM prediction_log "
+            "WHERE asset=? AND timing_action IS NOT NULL ORDER BY date",
+            (asset,)).fetchall()
+    for _day, action, ret, _signal in rows:
+        if action.startswith("ENTER"):
+            st.update(pos=1 if action.endswith("+1") else -1, days_held=0,
+                      seg_peak=0.0, seg_ret=0.0)
+        elif action == "EXIT":
+            st.update(pos=0, days_held=0, seg_peak=0.0, seg_ret=0.0)
+        elif st["pos"] != 0:
+            st["days_held"] += 1
+        if st["pos"] != 0 and ret is not None:
+            st["seg_ret"] += st["pos"] * float(ret)
+            st["seg_peak"] = max(st["seg_peak"], st["seg_ret"])
+
+    def _raw_side(signal):
+        if signal == "BUY":
+            return 1
+        if signal == "SELL":
+            return -1
+        return 0
+
+    last_raw = _raw_side(rows[-1][3]) if rows else 0
+    streak = 0
+    if last_raw != 0:
+        for _day, _action, _ret, signal in reversed(rows):
+            if _raw_side(signal) == last_raw:
+                streak += 1
+            else:
+                break
+
+    cooldown_left = 0
+    if cooldown_days:
+        rows_after = 0
+        found_exit = False
+        for _day, action, _ret, _signal in reversed(rows):
+            if action == "EXIT":
+                found_exit = True
+                break
+            rows_after += 1
+        if found_exit:
+            cooldown_left = max(0, int(cooldown_days) - rows_after)
+
+    st["last_raw"] = last_raw
+    st["streak"] = streak
+    st["cooldown_left"] = cooldown_left
+    return st
 
 
 def _load_bars(asset, cache):

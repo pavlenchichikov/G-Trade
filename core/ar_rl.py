@@ -189,16 +189,17 @@ class CmaEmitter:
     ask(): sample N(mean, diag(sigma^2)), clip to the palette hull, round.
     tell(): after _CMA_LAMBDA evals, rank-mu update of mean and sigma."""
 
-    def __init__(self, state=None, rng=None):
+    def __init__(self, state=None, rng=None, dims=None):
         self.rng = rng or random.Random()
-        spans = [hi - lo for _, lo, hi, _ in CMA_DIMS]
-        self.mean = [lo + (hi - lo) / 2.0 for _, lo, hi, _ in CMA_DIMS]
+        self.dims = tuple(dims) if dims is not None else CMA_DIMS
+        spans = [hi - lo for _, lo, hi, _ in self.dims]
+        self.mean = [lo + (hi - lo) / 2.0 for _, lo, hi, _ in self.dims]
         self.sigma = [0.25 * s for s in spans]
         self.evals = []
         if isinstance(state, dict):
             try:
-                if (len(state["mean"]) == len(CMA_DIMS)
-                        and len(state["sigma"]) == len(CMA_DIMS)):
+                if (len(state["mean"]) == len(self.dims)
+                        and len(state["sigma"]) == len(self.dims)):
                     self.mean = [float(v) for v in state["mean"]]
                     self.sigma = [float(v) for v in state["sigma"]]
                     self.evals = [(list(map(float, x)), float(f))
@@ -207,14 +208,14 @@ class CmaEmitter:
                 pass
 
     def vector_of(self, genome):
-        return [float(getattr(genome, name)) for name, _, _, _ in CMA_DIMS]
+        return [float(getattr(genome, name)) for name, _, _, _ in self.dims]
 
     def seed_from(self, genome):
         self.mean = self.vector_of(genome)
 
     def ask(self, parent_genome):
         child = copy.deepcopy(parent_genome)
-        for i, (name, lo, hi, is_int) in enumerate(CMA_DIMS):
+        for i, (name, lo, hi, is_int) in enumerate(self.dims):
             v = self.rng.gauss(self.mean[i], self.sigma[i])
             v = min(hi, max(lo, v))
             v = int(round(v)) if is_int else round(v, 4)
@@ -231,8 +232,8 @@ class CmaEmitter:
         wsum = sum(weights)
         weights = [w / wsum for w in weights]
         new_mean = [sum(w * e[0][j] for w, e in zip(weights, ranked))
-                    for j in range(len(CMA_DIMS))]
-        for j, (_, lo, hi, _) in enumerate(CMA_DIMS):
+                    for j in range(len(self.dims))]
+        for j, (_, lo, hi, _) in enumerate(self.dims):
             span = hi - lo
             var = sum(w * (e[0][j] - new_mean[j]) ** 2
                       for w, e in zip(weights, ranked))
@@ -242,7 +243,8 @@ class CmaEmitter:
         self.evals = []
 
     def to_state(self):
-        return {"mean": self.mean, "sigma": self.sigma, "evals": self.evals}
+        return {"mean": self.mean, "sigma": self.sigma, "evals": self.evals,
+                "dims_n": len(self.dims)}
 
 
 class NoveltyEmitter:
