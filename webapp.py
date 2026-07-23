@@ -306,6 +306,15 @@ def asset_page(request: Request, name: str):
             current["signal_raw"] = current.get("signal")
             current["gate_reason"] = None
 
+        current["timing_label"] = None
+        if timing_policy.timing_on() and timing_policy.load_policy() is not None:
+            act = current.get("timing_action") or (gated or {}).get("timing_action")
+            if act:
+                text, _div = timing_policy.display_label(
+                    act, current.get("timing_reason")
+                    or (gated or {}).get("timing_reason"))
+                current["timing_label"] = text
+
     return templates.TemplateResponse(request, "asset.html", {
         "asset": name,
         "ticker": FULL_ASSET_MAP[name],

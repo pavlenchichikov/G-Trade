@@ -765,3 +765,17 @@ def test_radar_no_badge_when_flag_off(tmp_path, monkeypatch):
     monkeypatch.setattr(timing_policy, "timing_on", lambda: False)
     r = client.get("/")
     assert "policy:" not in r.text
+
+
+def test_asset_page_shows_full_timing_state(tmp_path, monkeypatch):
+    client = _client_with_timing(tmp_path, monkeypatch, "HOLD", "ok")
+    r = client.get("/asset/BTC")
+    assert "policy: holding" in r.text  # shown even though not a divergence
+
+
+def test_asset_page_no_timing_when_flag_off(tmp_path, monkeypatch):
+    client = _client_with_timing(tmp_path, monkeypatch, "HOLD", "ok")
+    from core import timing_policy
+    monkeypatch.setattr(timing_policy, "timing_on", lambda: False)
+    r = client.get("/asset/BTC")
+    assert "policy:" not in r.text
