@@ -1,5 +1,6 @@
 """Unit tests for push_signals.build_payload (pure, no network / no DB)."""
 
+from core import timing_policy
 from push_signals import _rest_base, build_payload
 
 
@@ -169,7 +170,9 @@ def test_send_push_noop_without_creds(monkeypatch):
     assert push_signals.send_push("https://x.supabase.co", "k", [], {}) == 0
 
 
-def test_build_payload_includes_timing_label_on_divergence():
+def test_build_payload_includes_timing_label_on_divergence(monkeypatch):
+    monkeypatch.setattr(timing_policy, "timing_on", lambda: True)
+    monkeypatch.setattr(timing_policy, "load_policy", lambda path=None: object())
     sigs = [{"asset": "BTC", "signal": "BUY", "probability": 0.6,
              "acc": {"acc": None}, "date": "2026-07-23",
              "timing_action": "STAY_OUT", "timing_reason": "confirm"}]
@@ -180,7 +183,9 @@ def test_build_payload_includes_timing_label_on_divergence():
     assert row["timing_label"] == "policy: waiting for confirmation"
 
 
-def test_build_payload_timing_label_none_when_aligned():
+def test_build_payload_timing_label_none_when_aligned(monkeypatch):
+    monkeypatch.setattr(timing_policy, "timing_on", lambda: True)
+    monkeypatch.setattr(timing_policy, "load_policy", lambda path=None: object())
     sigs = [{"asset": "BTC", "signal": "BUY", "probability": 0.6,
              "acc": {"acc": None}, "date": "2026-07-23",
              "timing_action": "HOLD", "timing_reason": "ok"}]
@@ -194,3 +199,15 @@ def test_build_payload_timing_none_when_absent():
     rows, _stats = build_payload(sigs)
     assert rows[0]["timing_action"] is None
     assert rows[0]["timing_label"] is None
+
+
+def test_build_payload_no_timing_when_flag_off(monkeypatch):
+    monkeypatch.setattr(timing_policy, "timing_on", lambda: False)
+    sigs = [{"asset": "BTC", "signal": "BUY", "probability": 0.6,
+             "acc": {"acc": None}, "date": "2026-07-23",
+             "timing_action": "STAY_OUT", "timing_reason": "confirm"}]
+    rows, _stats = build_payload(sigs)
+    row = rows[0]
+    assert row["timing_action"] is None
+    assert row["timing_reason"] is None
+    assert row["timing_label"] is None

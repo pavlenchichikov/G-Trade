@@ -202,10 +202,10 @@ def _top_signals(signals, n=5):
                   reverse=True)[:n]
 
 
-def _timing_badge(row):
-    """Divergence-only badge string for a radar row, or None. Honors the
-    reversibility guard (spec section 4.3)."""
-    if not (timing_policy.timing_on() and timing_policy.load_policy() is not None):
+def _timing_badge(row, show_timing):
+    """Divergence-only badge string for a radar row, or None. `show_timing` is
+    the reversibility guard (spec section 4.3), precomputed once per request."""
+    if not show_timing:
         return None
     act = row.get("timing_action")
     if not act:
@@ -215,13 +215,14 @@ def _timing_badge(row):
 
 
 def _grouped_signals(signals):
+    show_timing = timing_policy.timing_on() and timing_policy.load_policy() is not None
     sigs = {s["asset"]: s for s in signals}
     groups = []
     for group, members in RADAR_GROUPS.items():
         rows = [sigs[a] for a in members if a in sigs]
         for r in rows:
             r["cat"] = radar_category(r["asset"])
-            r["timing_badge"] = _timing_badge(r)
+            r["timing_badge"] = _timing_badge(r, show_timing)
         if rows:
             groups.append({"name": group, "rows": rows})
     return groups

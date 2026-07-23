@@ -46,6 +46,7 @@ def build_payload(signals: list):
     n_buy = n_sell = n_wait = 0
     accs = []
     max_date = None
+    show_timing = timing_policy.timing_on() and timing_policy.load_policy() is not None
 
     for s in signals:
         action = (s.get("signal") or "WAIT").upper()
@@ -64,10 +65,13 @@ def build_payload(signals: list):
         if date and (max_date is None or date > max_date):
             max_date = date
 
-        t_act = s.get("timing_action")
-        t_rsn = s.get("timing_reason")
-        _text, _div = timing_policy.display_label(t_act, t_rsn)
-        t_label = _text if _div else None
+        if show_timing:
+            t_act = s.get("timing_action")
+            t_rsn = s.get("timing_reason")
+            _text, _div = timing_policy.display_label(t_act, t_rsn)
+            t_label = _text if _div else None
+        else:
+            t_act = t_rsn = t_label = None
 
         rows.append({
             "asset": s["asset"],
