@@ -61,6 +61,31 @@ def _raw_side(prob, buy_thr, sell_thr):
     return 1 if prob > buy_thr else (-1 if prob < sell_thr else 0)
 
 
+_TIMING_LABELS = {
+    ("STAY_OUT", "entry_margin"): ("policy: too weak to enter", True),
+    ("STAY_OUT", "confirm"): ("policy: waiting for confirmation", True),
+    ("STAY_OUT", "cooldown"): ("policy: cooling down after exit", True),
+    ("HOLD", "ok"): ("policy: holding", False),
+    ("EXIT", "flip"): ("policy: exit - signal flipped", True),
+    ("EXIT", "hysteresis"): ("policy: exit - momentum faded", True),
+    ("EXIT", "max_hold"): ("policy: exit - max hold reached", True),
+    ("EXIT", "trail_stop"): ("policy: exit - trailing stop", True),
+}
+
+
+def display_label(action, reason):
+    """Map a (timing_action, timing_reason) pair to (text, is_divergence).
+
+    Single source of the display wording (spec 2026-07-23-timing-policy-
+    display-layer section 3). `text` is None when nothing should be shown
+    (aligned/flat states); `is_divergence` is True when the policy blocks or
+    exits against a live signal, which the radar/mobile use to decide whether
+    to show a badge at all. `action` may be "ENTER:+1"/"ENTER:-1"."""
+    if action and action.startswith("ENTER"):
+        return ("policy: entering", False)
+    return _TIMING_LABELS.get((action, reason), (None, False))
+
+
 def policy_step(policy, prob, buy_thr, sell_thr, atr_now, taleb_hi_now,
                 risky, state):
     """One-bar decision. Returns (action, reason, new_state).

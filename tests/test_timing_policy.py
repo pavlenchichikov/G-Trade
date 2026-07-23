@@ -2,6 +2,7 @@
 import numpy as np
 
 from core import timing_policy as tp
+from core.timing_policy import display_label
 
 
 def _arr(*vals):
@@ -259,3 +260,48 @@ class TestScoringOffPathGuard:
         load_idx = src.index("timing_policy.load_policy()")
         assert on_idx < load_idx, (
             "load_policy() must appear textually after the timing_on() guard")
+
+
+class TestDisplayLabel:
+    def test_stay_out_confirm_is_divergence(self):
+        assert display_label("STAY_OUT", "confirm") == (
+            "policy: waiting for confirmation", True)
+
+    def test_stay_out_entry_margin(self):
+        assert display_label("STAY_OUT", "entry_margin") == (
+            "policy: too weak to enter", True)
+
+    def test_stay_out_cooldown(self):
+        assert display_label("STAY_OUT", "cooldown") == (
+            "policy: cooling down after exit", True)
+
+    def test_enter_long_not_divergence(self):
+        assert display_label("ENTER:+1", "ok") == ("policy: entering", False)
+
+    def test_enter_short_not_divergence(self):
+        assert display_label("ENTER:-1", "ok") == ("policy: entering", False)
+
+    def test_hold_not_divergence(self):
+        assert display_label("HOLD", "ok") == ("policy: holding", False)
+
+    def test_exit_flip_is_divergence(self):
+        assert display_label("EXIT", "flip") == (
+            "policy: exit - signal flipped", True)
+
+    def test_exit_trail_stop(self):
+        assert display_label("EXIT", "trail_stop") == (
+            "policy: exit - trailing stop", True)
+
+    def test_exit_hysteresis(self):
+        assert display_label("EXIT", "hysteresis") == (
+            "policy: exit - momentum faded", True)
+
+    def test_exit_max_hold(self):
+        assert display_label("EXIT", "max_hold") == (
+            "policy: exit - max hold reached", True)
+
+    def test_stay_out_ok_is_blank(self):
+        assert display_label("STAY_OUT", "ok") == (None, False)
+
+    def test_none_action_is_blank(self):
+        assert display_label(None, None) == (None, False)
