@@ -34,7 +34,7 @@ except Exception:
     pass
 
 from config import FULL_ASSET_MAP
-from core import track_record
+from core import timing_policy, track_record
 
 BAR_LIMIT = 180   # bars per asset exported for the mobile price chart
 SIG_LIMIT = 90    # prediction_log rows per asset for the mobile track record
@@ -64,6 +64,11 @@ def build_payload(signals: list):
         if date and (max_date is None or date > max_date):
             max_date = date
 
+        t_act = s.get("timing_action")
+        t_rsn = s.get("timing_reason")
+        _text, _div = timing_policy.display_label(t_act, t_rsn)
+        t_label = _text if _div else None
+
         rows.append({
             "asset": s["asset"],
             "action": action,
@@ -72,6 +77,9 @@ def build_payload(signals: list):
             "taleb": None,
             "accuracy": acc,
             "snapshot_date": date,
+            "timing_action": t_act,
+            "timing_reason": t_rsn,
+            "timing_label": t_label,
         })
 
     total = len(signals) or 1

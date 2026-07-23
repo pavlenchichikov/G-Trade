@@ -167,3 +167,30 @@ def test_send_push_noop_without_creds(monkeypatch):
     monkeypatch.delenv("GTRADE_FCM_CREDS", raising=False)
     # must not touch the network or firebase at all
     assert push_signals.send_push("https://x.supabase.co", "k", [], {}) == 0
+
+
+def test_build_payload_includes_timing_label_on_divergence():
+    sigs = [{"asset": "BTC", "signal": "BUY", "probability": 0.6,
+             "acc": {"acc": None}, "date": "2026-07-23",
+             "timing_action": "STAY_OUT", "timing_reason": "confirm"}]
+    rows, _stats = build_payload(sigs)
+    row = rows[0]
+    assert row["timing_action"] == "STAY_OUT"
+    assert row["timing_reason"] == "confirm"
+    assert row["timing_label"] == "policy: waiting for confirmation"
+
+
+def test_build_payload_timing_label_none_when_aligned():
+    sigs = [{"asset": "BTC", "signal": "BUY", "probability": 0.6,
+             "acc": {"acc": None}, "date": "2026-07-23",
+             "timing_action": "HOLD", "timing_reason": "ok"}]
+    rows, _stats = build_payload(sigs)
+    assert rows[0]["timing_label"] is None
+
+
+def test_build_payload_timing_none_when_absent():
+    sigs = [{"asset": "BTC", "signal": "BUY", "probability": 0.6,
+             "acc": {"acc": None}, "date": "2026-07-23"}]
+    rows, _stats = build_payload(sigs)
+    assert rows[0]["timing_action"] is None
+    assert rows[0]["timing_label"] is None
