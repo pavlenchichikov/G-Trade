@@ -720,3 +720,48 @@ def test_api_guru_recalculate_all_no_double_start(client, monkeypatch):
     finally:
         with webapp._guru_recalc_lock:
             webapp._guru_recalc["running"] = False
+
+
+def _client_with_timing(tmp_path, monkeypatch, action, reason):
+    path = str(tmp_path / "market.db")
+    con = sqlite3.connect(path)
+    con.execute(
+        "CREATE TABLE prediction_log (date TEXT, asset TEXT, signal TEXT, "
+        "probability REAL, actual_next_ret REAL, correct INTEGER, cb_prob REAL, "
+        "lstm_prob REAL, sig_shown TEXT, gate_reason TEXT, timing_action TEXT, "
+        "timing_reason TEXT)")
+    con.execute("INSERT INTO prediction_log VALUES "
+                "('2026-06-10','BTC','BUY',0.62,NULL,NULL,0.62,NULL,'BUY',NULL,?,?)",
+                (action, reason))
+    con.commit()
+    con.close()
+    con2 = sqlite3.connect(path)
+    con2.execute("CREATE TABLE btc (Date TEXT, Close REAL)")
+    con2.execute("INSERT INTO btc VALUES ('2026-06-10', 100.0)")
+    con2.commit()
+    con2.close()
+    monkeypatch.setattr(track_record, "DB_PATH", path)
+    from core import timing_policy
+    monkeypatch.setattr(timing_policy, "timing_on", lambda: True)
+    monkeypatch.setattr(timing_policy, "load_policy", lambda path=None: object())
+    return TestClient(webapp.app)
+
+
+def test_radar_shows_timing_badge_on_divergence(tmp_path, monkeypatch):
+    client = _client_with_timing(tmp_path, monkeypatch, "STAY_OUT", "confirm")
+    r = client.get("/")
+    assert "waiting for confirmation" in r.text
+
+
+def test_radar_no_badge_when_aligned(tmp_path, monkeypatch):
+    client = _client_with_timing(tmp_path, monkeypatch, "HOLD", "ok")
+    r = client.get("/")
+    assert "policy:" not in r.text
+
+
+def test_radar_no_badge_when_flag_off(tmp_path, monkeypatch):
+    client = _client_with_timing(tmp_path, monkeypatch, "STAY_OUT", "confirm")
+    from core import timing_policy
+    monkeypatch.setattr(timing_policy, "timing_on", lambda: False)
+    r = client.get("/")
+    assert "policy:" not in r.text

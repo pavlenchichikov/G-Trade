@@ -21,6 +21,7 @@ from config import FULL_ASSET_MAP, RADAR_GROUPS, radar_category
 from core import track_record
 from core import dashboard
 from core import positions as positions_mod
+from core import timing_policy
 from risk_manager import RISK_CONFIG, RiskManager, save_risk_config_override
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -201,6 +202,18 @@ def _top_signals(signals, n=5):
                   reverse=True)[:n]
 
 
+def _timing_badge(row):
+    """Divergence-only badge string for a radar row, or None. Honors the
+    reversibility guard (spec section 4.3)."""
+    if not (timing_policy.timing_on() and timing_policy.load_policy() is not None):
+        return None
+    act = row.get("timing_action")
+    if not act:
+        return None
+    text, is_div = timing_policy.display_label(act, row.get("timing_reason"))
+    return text if is_div else None
+
+
 def _grouped_signals(signals):
     sigs = {s["asset"]: s for s in signals}
     groups = []
@@ -208,6 +221,7 @@ def _grouped_signals(signals):
         rows = [sigs[a] for a in members if a in sigs]
         for r in rows:
             r["cat"] = radar_category(r["asset"])
+            r["timing_badge"] = _timing_badge(r)
         if rows:
             groups.append({"name": group, "rows": rows})
     return groups
